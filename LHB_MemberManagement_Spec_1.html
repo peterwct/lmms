@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>LHB — Member Management Module Spec</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Mulish:wght@300;400;500;600;700&display=swap');
+:root {
+  --navy:#0B1F3A; --teal:#0E7C7B; --teal-light:#E6F4F4; --gold:#C8961E; --gold-light:#FDF4E3;
+  --red:#C0392B; --red-light:#FDECEA; --green:#1A7A4A; --green-light:#E8F5EE;
+  --slate:#4A5F78; --line:#DDE5EE; --bg:#F2F5F9; --white:#fff; --text:#1A2B3C; --muted:#7A8FA6;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Mulish',sans-serif;background:var(--bg);color:var(--text);font-size:14px;}
+
+.header{background:var(--navy);color:#fff;padding:40px 52px 32px;position:relative;overflow:hidden;}
+.header::before{content:'';position:absolute;top:-40px;right:-40px;width:240px;height:240px;border-radius:50%;background:rgba(200,150,30,.1);}
+.header .label{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--gold);margin-bottom:10px;}
+.header h1{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;margin-bottom:6px;}
+.header .sub{color:rgba(255,255,255,.55);font-size:13px;margin-bottom:24px;}
+.meta{display:flex;gap:28px;flex-wrap:wrap;}
+.meta-item .mk{font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:1px;}
+.meta-item .mv{font-size:13px;color:rgba(255,255,255,.85);font-weight:600;}
+
+.tab-nav{background:#fff;border-bottom:2px solid var(--line);padding:0 52px;display:flex;gap:0;overflow-x:auto;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.tab-btn{padding:14px 18px;font-family:'Mulish',sans-serif;font-size:13px;font-weight:600;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;transition:all .2s;}
+.tab-btn:hover{color:var(--navy);}
+.tab-btn.active{color:var(--teal);border-bottom-color:var(--teal);}
+
+.content{display:none;padding:40px 52px;max-width:1120px;}
+.content.active{display:block;}
+
+h2{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--navy);margin-bottom:6px;}
+h3{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:28px 0 12px;border-bottom:1px solid var(--line);padding-bottom:8px;}
+p.desc{font-size:13px;color:var(--muted);margin-bottom:20px;}
+
+.alert{background:var(--gold-light);border-left:4px solid var(--gold);border-radius:0 6px 6px 0;padding:12px 16px;font-size:13px;color:#7A5A10;margin-bottom:20px;}
+.alert-info{background:var(--teal-light);border-left-color:var(--teal);color:#0A4A4A;}
+.alert-red{background:var(--red-light);border-left-color:var(--red);color:#7A1A10;}
+
+/* TABLE */
+.tbl{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px;}
+.tbl th{background:var(--navy);color:#fff;padding:9px 14px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.3px;}
+.tbl td{padding:9px 14px;border-bottom:1px solid var(--line);color:#2D3A4A;vertical-align:top;}
+.tbl tr:nth-child(even) td{background:#F7FAFC;}
+.tbl tr:hover td{background:var(--teal-light);}
+.tbl .mono{font-family:monospace;font-size:12px;color:var(--teal);}
+.tbl .old{font-family:monospace;font-size:11px;color:var(--muted);}
+
+/* TAGS */
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;margin:1px;}
+.tag-must{background:var(--red-light);color:var(--red);}
+.tag-should{background:#EEF2FF;color:#4338CA;}
+.tag-migrate{background:var(--green-light);color:var(--green);}
+.tag-new{background:var(--gold-light);color:var(--gold);}
+.tag-drop{background:#F0F0F0;color:#888;}
+
+/* ENTITY CARDS */
+.entity{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:20px;}
+.entity-head{background:var(--navy);color:#fff;padding:10px 18px;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.entity-head .src{font-size:11px;color:rgba(255,255,255,.45);font-family:'Mulish',sans-serif;font-weight:400;margin-left:auto;}
+.field-row{display:grid;grid-template-columns:200px 110px 110px 1fr;align-items:center;gap:12px;padding:8px 18px;border-bottom:1px solid var(--line);font-size:13px;}
+.field-row:last-child{border-bottom:none;}
+.field-row:hover{background:#F7FAFC;}
+.fn{font-family:monospace;font-size:12px;color:var(--teal);font-weight:700;}
+.ft{font-size:11px;color:var(--muted);}
+.fd{font-size:12px;color:#4A5568;}
+.field-head{background:#F7FAFC;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+
+/* FLOW */
+.flow{display:flex;flex-wrap:wrap;gap:0;margin-bottom:24px;align-items:center;}
+.flow-step{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 16px;font-size:13px;font-weight:600;text-align:center;min-width:120px;}
+.flow-step small{display:block;font-size:10px;color:var(--muted);font-weight:400;margin-top:2px;}
+.flow-arr{padding:0 10px;color:var(--gold);font-size:18px;font-weight:700;}
+
+/* CARDS GRID */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:24px;}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px;}
+.card .ci{font-size:24px;margin-bottom:10px;}
+.card h4{font-size:14px;font-weight:700;margin-bottom:6px;}
+.card p{font-size:12px;color:var(--muted);line-height:1.6;}
+
+/* MIGRATION MAP */
+.mig-section{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:16px;}
+.mig-head{background:#152D50;color:#fff;padding:10px 18px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center;}
+.mig-head .badge{font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(255,255,255,.15);}
+
+/* CHECKLIST */
+.chk-list{display:flex;flex-direction:column;gap:8px;margin-bottom:24px;}
+.chk-item{display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:#fff;border:1px solid var(--line);border-radius:6px;cursor:pointer;}
+.chk-item:hover{background:var(--teal-light);}
+.chk-item input{margin-top:2px;accent-color:var(--teal);}
+.chk-item label{font-size:13px;cursor:pointer;flex:1;}
+.chk-item label.done{text-decoration:line-through;color:var(--muted);}
+
+.progress-bar{height:8px;background:var(--line);border-radius:4px;margin-bottom:20px;overflow:hidden;}
+.progress-fill{height:100%;background:var(--teal);border-radius:4px;transition:width .3s;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="label">Technical Specification · Module 2</div>
+  <h1>Member Management Module</h1>
+  <div class="sub">Leisure Holidays Bhd — Internal Member Management System · Based on Informix source data analysis</div>
+  <div class="meta">
+    <div class="meta-item"><span class="mk">Version</span><span class="mv">1.6 — Final Draft</span></div>
+    <div class="meta-item"><span class="mk">Date</span><span class="mv">May 2026</span></div>
+    <div class="meta-item"><span class="mk">Source Tables</span><span class="mv">si_ind_mast · si_cor_mast · si_entitlement</span></div>
+    <div class="meta-item"><span class="mk">Status</span><span class="mv">For Review</span></div>
+  </div>
+</div>
+
+<nav class="tab-nav">
+  <button class="tab-btn active" onclick="show('overview')">📋 Overview</button>
+  <button class="tab-btn" onclick="show('functional')">⚙️ Functional Req.</button>
+  <button class="tab-btn" onclick="show('datamodel')">🗄️ Data Model</button>
+  <button class="tab-btn" onclick="show('migration')">🔄 Migration Mapping</button>
+  <button class="tab-btn" onclick="show('observations')">🔍 Data Observations</button>
+  <button class="tab-btn" onclick="show('checklist')">✅ Checklist</button>
+</nav>
+
+<!-- ═══════════════════ OVERVIEW ═══════════════════ -->
+<div class="content active" id="tab-overview">
+  <h2>Module Overview</h2>
+  <p class="desc">The Member Management module handles all member profile data — both individual and corporate members — migrated from the Informix <code>si_ind_mast</code> and <code>si_cor_mast</code> tables, plus agreements from <code>si_entitlement</code>.</p>
+
+  <div class="alert alert-info">
+    <strong>Source data confirmed.</strong> Three Informix tables have been analysed: <strong>si_ind_mast</strong> (individual members), <strong>si_cor_mast</strong> (corporate members), and <strong>si_entitlement</strong> (agreements + nominees). The new schema is designed to consolidate and clean these into a unified member record.
+  </div>
+
+  <h3>Member Types Found in Source Data</h3>
+  <div class="cards">
+    <div class="card">
+      <div class="ci">👤</div>
+      <h4>Individual Member (I)</h4>
+      <p>Source: <code>si_ind_mast</code> where <code>i_acct_type = 'I'</code>. Contains personal details, IC/passport, spouse, children, employment info, and joint applicant.</p>
+    </div>
+    <div class="card">
+      <div class="ci">🏢</div>
+      <h4>Corporate Member (C)</h4>
+      <p>Source: <code>si_cor_mast</code> where <code>c_acct_type = 'C'</code>. Contains company name, registration no., incorporation date, business nature, and company address.</p>
+    </div>
+    <div class="card">
+      <div class="ci">📄</div>
+      <h4>Agreement / Entitlement</h4>
+      <p>Source: <code>si_entitlement</code> — links to both member types via <code>e_membership_no</code>. Holds agreement details, nominees (up to 2), RCI info, and account status.</p>
+    </div>
+  </div>
+
+  <h3>Key Observations from Source Data</h3>
+  <div class="alert">
+    <strong>Membership No. format decoded:</strong> e.g. <code>02099-KL-A-0222/M/I</code> = Sequential No. – Branch – Unit – Seq / M (member) / I (individual) or C (corporate). This is the primary business key and must be preserved exactly.
+  </div>
+  <div class="alert alert-info">
+    <strong>3 Product types confirmed via <code>e_cocode</code> + <code>e_enttype</code>:</strong><br/>
+    &nbsp;&nbsp;• <code>e_cocode = "01"</code> or <code>"15"</code> → <strong>LHC (Leisure Holidays Club)</strong> — Week-based (<code>e_enttype = "W"</code>). Two company codes with different selling prices and tenures.<br/>
+    &nbsp;&nbsp;• <code>e_cocode = "02"</code> → <strong>CP (ConnectionPoints)</strong> — Points-based (<code>e_enttype = "P"</code>).<br/>
+    Agreement term years confirmed: <strong>30, 33, or 50 years</strong> (<code>e_rtu_years</code>).
+  </div>
+  <div class="alert alert-red">
+    <strong>Data quality issues found</strong> — see Observations tab for full list. Some IC numbers are in old format (pre-MyKad), nominee IC fields are inconsistently populated, and some fields use coded values that need a lookup table.
+  </div>
+
+  <h3>Module Scope</h3>
+  <div class="cards">
+    <div class="card"><div class="ci">✅</div><h4>In Scope — Phase 1</h4>
+      <p>Individual member profiles · Corporate member profiles · Agreement records · Nominee details · Member search and listing · Basic member status management</p>
+    </div>
+    <div class="card"><div class="ci">🔜</div><h4>Phase 2 (Future)</h4>
+      <p>Joint applicant management · Successor/beneficiary tracking · Important dates (birthdays, anniversaries) · Member self-service portal · RCI enrolment management</p>
+    </div>
+    <div class="card"><div class="ci">❌</div><h4>Not in This Module</h4>
+      <p>AMC billing (Module 3) · Resort bookings (Module 4) · Entitlement usage tracking (Module 5) · Sales/commission data</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ FUNCTIONAL REQUIREMENTS ═══════════════════ -->
+<div class="content" id="tab-functional">
+  <h2>Functional Requirements</h2>
+  <p class="desc">All staff-facing functions for the Member Management module.</p>
+
+  <h3>Member Search & Listing</h3>
+  <table class="tbl">
+    <thead><tr><th>#</th><th>Requirement</th><th>Priority</th><th>Source Field</th></tr></thead>
+    <tbody>
+      <tr><td>M1.1</td><td>Search members by membership no., name, IC/passport, phone, email</td><td><span class="tag tag-must">Must</span></td><td class="old">i_membership_no, i_name, i_ic_pass_no</td></tr>
+      <tr><td>M1.2</td><td>Filter member list by type (Individual / Corporate), agreement status (Active/Suspended/Pending Termination/Terminated), product type (LHC/CP), branch office</td><td><span class="tag tag-must">Must</span></td><td class="old">i_acct_type, e_acct_classify, e_cocode, i_park_off</td></tr>
+      <tr><td>M1.3</td><td>Member list shows: membership no., name, type, branch, no. of agreements, status</td><td><span class="tag tag-must">Must</span></td><td class="old">i_tot_agmt, i_act_agmt</td></tr>
+      <tr><td>M1.4</td><td>Quick view panel — click member row to see summary without full page load</td><td><span class="tag tag-should">Should</span></td><td>—</td></tr>
+      <tr><td>M1.5</td><td>Export member list to Excel / CSV</td><td><span class="tag tag-should">Should</span></td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Individual Member Profile</h3>
+  <table class="tbl">
+    <thead><tr><th>#</th><th>Requirement</th><th>Priority</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>M2.1</td><td>Create new individual member — <strong>ON HOLD.</strong> No new memberships will be sold. This function is deferred; system will be used to manage existing members only.</td><td><span class="tag tag-drop">On Hold</span></td><td>No new membership sales going forward. Membership no. format preserved for any future need.</td></tr>
+      <tr><td>M2.2</td><td>View and edit all personal fields: name, salutation, IC/passport, nationality, DOB, gender, race, marital status</td><td><span class="tag tag-must">Must</span></td><td>Old IC and new IC (MyKad) both stored</td></tr>
+      <tr><td>M2.3</td><td>Manage residential address and separate mailing address</td><td><span class="tag tag-must">Must</span></td><td>Old system has both — must keep separate</td></tr>
+      <tr><td>M2.4</td><td>Store contact details: home phone, mobile, email</td><td><span class="tag tag-must">Must</span></td><td>—</td></tr>
+      <tr><td>M2.5</td><td>Store employment info: company name, company address, office phone, designation</td><td><span class="tag tag-must">Must</span></td><td>From i_company1, i_comp_add1..3, i_telno_off, i_designation. i_gross_income dropped — not migrated.</td></tr>
+      <tr><td>M2.6</td><td>Store spouse details: name, IC</td><td><span class="tag tag-must">Must</span></td><td>From i_spouse, i_spouse_ic fields</td></tr>
+      <tr><td>M2.7</td><td>Store joint applicant (JA) details within the member record: name, IC (old + new), salutation, designation, name card, address, phone (home/office/mobile), email</td><td><span class="tag tag-must">Must</span></td><td>✅ Confirmed: JA stored as fields within members table, not a separate table. From i_ja_* fields.</td></tr>
+      <tr><td>M2.8</td><td>RCI enrolment flag (enrolled: Yes/No)</td><td><span class="tag tag-must">Must</span></td><td>i_enrol_rci field</td></tr>
+      <tr><td>M2.9</td><td>Member remarks / notes field</td><td><span class="tag tag-should">Should</span></td><td>i_remark field</td></tr>
+      <tr><td>M2.10</td><td>Display total agreements and active agreements count (read-only, system-computed)</td><td><span class="tag tag-must">Must</span></td><td>i_tot_agmt, i_act_agmt</td></tr>
+      <tr><td>M2.11</td><td>Store TIN (Tax Identification Number) for e-Invoice (MyInvois) compliance. Max 15 characters. <strong>Validation rule:</strong> must match Malaysia LHDN format — prefix <code>C</code> (company), <code>SG</code> or <code>OG</code> (individual), <code>D</code> (partnership), followed by numeric digits only. Nullable — staff populate as needed. Display validation error on save if format is invalid.</td><td><span class="tag tag-must">Must</span></td><td>New field. No equivalent in old system. Applies to both Individual and Corporate members.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Corporate Member Profile</h3>
+  <table class="tbl">
+    <thead><tr><th>#</th><th>Requirement</th><th>Priority</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>M3.1</td><td>Create and manage corporate member: company name, incorporation date, registration no., business nature</td><td><span class="tag tag-must">Must</span></td><td>From si_cor_mast</td></tr>
+      <tr><td>M3.2</td><td>Store registered address and mailing address separately</td><td><span class="tag tag-must">Must</span></td><td>Same as individual — two address blocks</td></tr>
+      <tr><td>M3.3</td><td>Store company phone, fax, email</td><td><span class="tag tag-must">Must</span></td><td>c_telno1, c_telno2, c_faxno, c_email</td></tr>
+      <tr><td>M3.4</td><td>RCI enrolment flag</td><td><span class="tag tag-must">Must</span></td><td>c_enrol_rci</td></tr>
+      <tr><td>M3.5</td><td>Display total and active agreements count</td><td><span class="tag tag-must">Must</span></td><td>c_tot_agmt, c_act_agmt</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Agreement Management (within Member profile)</h3>
+  <table class="tbl">
+    <thead><tr><th>#</th><th>Requirement</th><th>Priority</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>M4.1</td><td>List all agreements linked to a member on their profile page</td><td><span class="tag tag-must">Must</span></td><td>Via e_membership_no</td></tr>
+      <tr><td>M4.2</td><td>Agreement detail: agreement no., agreement date, end date, term years, agreement type, purchase price</td><td><span class="tag tag-must">Must</span></td><td>Core fields from si_entitlement</td></tr>
+      <tr><td>M4.3</td><td>Product type derived from <code>e_cocode</code> + <code>e_enttype</code>: LHC01 (cocode=01, week), LHC15 (cocode=15, week), CP (cocode=02, points). For CP agreements, display actual points entitlement value — points are <strong>free-form integers (range: 50–1,000)</strong>, not fixed tiers. Display the exact value stored per agreement.</td><td><span class="tag tag-must">Must</span></td><td>e_cocode, e_enttype, e_total_pts — CP points confirmed free-form, range 50–1,000</td></tr>
+      <tr><td>M4.4</td><td>Agreement term: 30, 33, or 50 years (stored as integer, end date auto-calculated from agreement date + term)</td><td><span class="tag tag-must">Must</span></td><td>e_rtu_years — confirmed values: 30, 33, 50</td></tr>
+      <tr><td>M4.5</td><td>Agreement status from <code>e_acct_classify</code>: NA=Active, SU=Suspended, PT=Pending Termination, TM=Terminated. Display as human-readable label. <code>e_acct_status</code> field is not used — ignore.</td><td><span class="tag tag-must">Must</span></td><td>e_acct_classify — confirmed 4 codes: NA, SU, PT, TM</td></tr>
+      <tr><td>M4.6</td><td>Up to <strong>2 nominees per agreement</strong> — Nominee 1 and Nominee 2. Fields per nominee: name, IC (old + new), salutation, designation, name card, phone (home/mobile), address (3 lines + city/state + postcode), email</td><td><span class="tag tag-must">Must</span></td><td>✅ Confirmed max 2 nominees. Full nom1 and nom2 sections in si_entitlement.</td></tr>
+      <tr><td>M4.7</td><td>RCI details per agreement: RCI ref no., enrolment date, expiry date, fee paid flag</td><td><span class="tag tag-must">Must</span></td><td>e_rci_refno, e_rci_enrol_date, e_rci_expiry_date</td></tr>
+      <tr><td>M4.8</td><td>Sales info: branch (e_sls_br), sales month (e_sls_mth), sales source (e_sls_source) — read-only</td><td><span class="tag tag-should">Should</span></td><td>Historical reference only</td></tr>
+      <tr><td>M4.9</td><td>Transfer flag — show if agreement has been transferred from/to another member</td><td><span class="tag tag-should">Should</span></td><td>e_transfer_flag, e_ttmembership_no, e_tfmembership_no</td></tr>
+      <tr><td>M4.10</td><td>Financial summary: purchase price, down payment, subscription fees, loan amount, loan type</td><td><span class="tag tag-should">Should</span></td><td>e_purchase_price, e_down, e_sub_fees, e_loan_amt</td></tr>
+      <tr><td>M4.11</td><td>Outstanding document flag with description and follow-up date</td><td><span class="tag tag-should">Should</span></td><td>e_outstd_doc, e_doc_desc, e_outstd_date</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Member Status Management</h3>
+  <table class="tbl">
+    <thead><tr><th>#</th><th>Requirement</th><th>Priority</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>M5.1</td><td>Agreement statuses from <code>e_acct_classify</code>: NA=Active, SU=Suspended, PT=Pending Termination, TM=Terminated. These are agreement-level statuses, not member-level.</td><td><span class="tag tag-must">Must</span></td><td>From e_acct_classify — confirmed 4 codes</td></tr>
+      <tr><td>M5.2</td><td>Change member status with reason and date — logged in audit trail</td><td><span class="tag tag-must">Must</span></td><td>—</td></tr>
+      <tr><td>M5.3</td><td>Lock status flag (<code>i_lock_status</code>, <code>e_lock_status</code>) — <strong>dropped</strong>. Not required in new web-based system. Record locking is handled natively by the web framework and database transactions.</td><td><span class="tag tag-drop">Dropped</span></td><td>Was U=Unlocked, L=Locked in Informix for multi-user concurrency. Not applicable in web architecture.</td></tr>
+      <tr><td>M5.4</td><td>Deceased member handling — mark as deceased, record date</td><td><span class="tag tag-should">Should</span></td><td>—</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════ DATA MODEL ═══════════════════ -->
+<div class="content" id="tab-datamodel">
+  <h2>New Data Model</h2>
+  <p class="desc">Consolidated PostgreSQL schema designed from the Informix source tables. Individual and corporate members share a single <code>members</code> table with a <code>member_type</code> discriminator.</p>
+
+  <div class="entity">
+    <div class="entity-head">👤 members <span class="src">consolidates si_ind_mast + si_cor_mast</span></div>
+    <div class="field-row field-head"><span>Field</span><span>Type</span><span>Tag</span><span>Description / Maps From</span></div>
+    <div class="field-row"><span class="fn">id</span><span class="ft">UUID PK</span><span><span class="tag tag-new">NEW</span></span><span class="fd">System primary key</span></div>
+    <div class="field-row"><span class="fn">membership_no</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Business key — preserved exactly. e.g. 02099-KL-A-0222/M/I. From i_membership_no / c_membership_no</span></div>
+    <div class="field-row"><span class="fn">member_type</span><span class="ft">ENUM</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">INDIVIDUAL | CORPORATE. From i_acct_type / c_acct_type (I or C)</span></div>
+    <div class="field-row"><span class="fn">branch_code</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Park/branch office. From i_park_off / c_park_off (e.g. KL, PG)</span></div>
+    <div class="field-row"><span class="fn">accpac_ref</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Legacy accounting reference. From i_accpac_ref / c_accpac_ref</span></div>
+    <div class="field-row"><span class="fn">subs_category</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Subscription category (e.g. NORMAL). From i_subs_cat / c_subs_cat</span></div>
+    <!-- Individual fields -->
+    <div class="field-row"><span class="fn">full_name</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Member's full name. From i_name / c_company1</span></div>
+    <div class="field-row"><span class="fn">salutation</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Mr/Mrs/Ms/Encik/Puan etc. From i_salutation</span></div>
+    <div class="field-row"><span class="fn">name_card</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Name as it appears on name card / display name. From i_name_card</span></div>
+    <div class="field-row"><span class="fn">ic_old</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Old format IC (pre-MyKad). From i_ic_pass_no</span></div>
+    <div class="field-row"><span class="fn">ic_new</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">New IC (MyKad 12-digit). From i_new_ic</span></div>
+    <div class="field-row"><span class="fn">nationality</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_nationality (e.g. MALAYSIAN, AMERICAN)</span></div>
+    <div class="field-row"><span class="fn">date_of_birth</span><span class="ft">DATE</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_birthdate</span></div>
+    <div class="field-row"><span class="fn">gender</span><span class="ft">ENUM</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">M | F. From i_sex</span></div>
+    <div class="field-row"><span class="fn">race</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">M=Malay, C=Chinese, I=Indian, O=Other. From i_race</span></div>
+    <div class="field-row"><span class="fn">marital_status</span><span class="ft">ENUM</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">M=Married, S=Single, D=Divorced, W=Widowed. From i_marital_status</span></div>
+    <div class="field-row"><span class="fn">email</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_email / c_email</span></div>
+    <div class="field-row"><span class="fn">tel_home</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_tel_res</span></div>
+    <div class="field-row"><span class="fn">tel_mobile</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_handphone</span></div>
+    <!-- Address -->
+    <div class="field-row"><span class="fn">res_add1..3</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Residential address lines 1–3. From i_add1, i_add2, i_add3</span></div>
+    <div class="field-row"><span class="fn">res_city_state</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_city_state</span></div>
+    <div class="field-row"><span class="fn">res_postcode</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_postcode</span></div>
+    <div class="field-row"><span class="fn">res_state_code</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_statecode (2-char state code)</span></div>
+    <div class="field-row"><span class="fn">mail_add1..3</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Mailing address (may differ). From i_mailadd1..3</span></div>
+    <div class="field-row"><span class="fn">mail_city_state</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_mail_city_state</span></div>
+    <div class="field-row"><span class="fn">mail_postcode</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_mail_postcode</span></div>
+    <div class="field-row"><span class="fn">mail_state_code</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_mail_statecode</span></div>
+    <!-- Employment (individual only) -->
+    <div class="field-row"><span class="fn">work_nature</span><span class="ft">CHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">E=Employed, O=Own business, etc. From i_work_nature</span></div>
+    <div class="field-row"><span class="fn">company_name</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Employer / own company. From i_company1</span></div>
+    <div class="field-row"><span class="fn">company_add1..3</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_comp_add1..3</span></div>
+    <div class="field-row"><span class="fn">tel_office</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_telno_off</span></div>
+    <div class="field-row"><span class="fn">designation</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Job title. From i_designation</span></div>
+    <div class="field-row"><span class="fn">tin_number</span><span class="ft">VARCHAR(15)</span><span><span class="tag tag-new">NEW</span></span><span class="fd">Tax Identification Number (TIN) — max 15 chars. Malaysia LHDN format validation: must start with prefix C (company), SG or OG (individual), D (partnership), followed by numeric digits. Nullable; staff to populate for e-Invoice compliance.</span></div>
+    <!-- Spouse -->
+    <div class="field-row"><span class="fn">spouse_name</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_spouse</span></div>
+    <div class="field-row"><span class="fn">spouse_ic</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_spouse_ic / i_spouse_new_ic</span></div>
+    <!-- Joint Applicant — confirmed as fields within members table -->
+    <div class="field-row"><span class="fn">ja_name</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Joint applicant full name. From i_ja_name</span></div>
+    <div class="field-row"><span class="fn">ja_ic</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">JA old IC. From i_ja_ic</span></div>
+    <div class="field-row"><span class="fn">ja_ic_new</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">JA new IC (MyKad). From i_ja_new_ic</span></div>
+    <div class="field-row"><span class="fn">ja_salutation</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_ja_salutation</span></div>
+    <div class="field-row"><span class="fn">ja_designation</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_ja_designation</span></div>
+    <div class="field-row"><span class="fn">ja_name_card</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_ja_name_card</span></div>
+    <div class="field-row"><span class="fn">ja_add1..3</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">JA address lines. From i_ja_add1, i_ja_add2, i_ja_add3</span></div>
+    <div class="field-row"><span class="fn">ja_city</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_ja_city</span></div>
+    <div class="field-row"><span class="fn">ja_postcode</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_ja_postcode</span></div>
+    <div class="field-row"><span class="fn">ja_state</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_ja_state</span></div>
+    <div class="field-row"><span class="fn">ja_tel_home</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_ja_tel_h</span></div>
+    <div class="field-row"><span class="fn">ja_tel_office</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_ja_tel_o</span></div>
+    <div class="field-row"><span class="fn">ja_mobile</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_ja_hp</span></div>
+    <div class="field-row"><span class="fn">ja_email</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From i_ja_email</span></div>
+    <!-- Corporate specific -->
+    <div class="field-row"><span class="fn">registration_no</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Company reg no. (corporate only). From c_registration_no</span></div>
+    <div class="field-row"><span class="fn">incorporation_date</span><span class="ft">DATE</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From c_incorporation</span></div>
+    <div class="field-row"><span class="fn">business_nature</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From c_business_nature</span></div>
+    <!-- System fields -->
+    <div class="field-row"><span class="fn">enrol_rci</span><span class="ft">BOOLEAN</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">RCI enrolled? From i_enrol_rci / c_enrol_rci (Y/N)</span></div>
+    <div class="field-row"><span class="fn">active_hcm</span><span class="ft">BOOLEAN</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Active in HCM system. From i_active_hcm / c_active_hcm</span></div>
+    <div class="field-row"><span class="fn">remarks</span><span class="ft">TEXT</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Free-text notes. From i_remark</span></div>
+    <div class="field-row"><span class="fn">lock_status</span><span class="ft">CHAR</span><span><span class="tag tag-drop">DROP</span></span><span class="fd">i_lock_status / c_lock_status — not needed in new web-based system. Concurrency handled by DB transactions.</span></div>
+    <div class="field-row"><span class="fn">legacy_created_at</span><span class="ft">DATE</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Original creation date. From i_sysdate</span></div>
+    <div class="field-row"><span class="fn">legacy_modified_at</span><span class="ft">DATE</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Last modified in old system. From i_mod_date</span></div>
+    <div class="field-row"><span class="fn">created_at / updated_at</span><span class="ft">TIMESTAMP</span><span><span class="tag tag-new">NEW</span></span><span class="fd">New system audit timestamps</span></div>
+    <div class="field-row"><span class="fn">status</span><span class="ft">ENUM</span><span><span class="tag tag-new">NEW</span></span><span class="fd">ACTIVE | SUSPENDED | CLOSED | DECEASED | TRANSFERRED</span></div>
+  </div>
+
+  <div class="entity">
+    <div class="entity-head">📄 agreements <span class="src">from si_entitlement</span></div>
+    <div class="field-row field-head"><span>Field</span><span>Type</span><span>Tag</span><span>Description / Maps From</span></div>
+    <div class="field-row"><span class="fn">id</span><span class="ft">UUID PK</span><span><span class="tag tag-new">NEW</span></span><span class="fd">System PK</span></div>
+    <div class="field-row"><span class="fn">agreement_no</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_agreement_no (padded, e.g. "00253   ")</span></div>
+    <div class="field-row"><span class="fn">member_id</span><span class="ft">UUID FK</span><span><span class="tag tag-new">NEW</span></span><span class="fd">Links to members.id (resolved via e_membership_no)</span></div>
+    <div class="field-row"><span class="fn">membership_no</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Preserved for reference. From e_membership_no</span></div>
+    <div class="field-row"><span class="fn">agreement_date</span><span class="ft">DATE</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_agreement_date</span></div>
+    <div class="field-row"><span class="fn">end_date</span><span class="ft">DATE</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_enddate</span></div>
+    <div class="field-row"><span class="fn">term_years</span><span class="ft">INT</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">30, 33, or 50 years. Confirmed 3 valid values. From e_rtu_years</span></div>
+    <div class="field-row"><span class="fn">co_code</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Product company code. 01=LHC variant A, 15=LHC variant B, 02=CP. From e_cocode</span></div>
+    <div class="field-row"><span class="fn">entitlement_type</span><span class="ft">CHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">W=Week-based (LHC cocode 01 or 15), P=Points-based (CP cocode 02). From e_enttype</span></div>
+    <div class="field-row"><span class="fn">agreement_type</span><span class="ft">CHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">O=Original. From e_agreement_type</span></div>
+    <div class="field-row"><span class="fn">member_type</span><span class="ft">CHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">I=Individual, C=Corporate. From e_member_type</span></div>
+    <div class="field-row"><span class="fn">total_points</span><span class="ft">INT</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">CP annual points entitlement. <strong>Free-form integer, range 50–1,000</strong> — not a fixed tier set. Many non-standard values exist (51, 62, 117 etc.). Store exact value. NULL or 0 for LHC. From e_total_pts</span></div>
+    <div class="field-row"><span class="fn">acct_classify</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd"><strong>Agreement status</strong>: NA=Active, SU=Suspended, PT=Pending Termination, TM=Terminated. From e_acct_classify</span></div>
+    <div class="field-row"><span class="fn">purchase_price</span><span class="ft">DECIMAL</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_purchase_price</span></div>
+    <div class="field-row"><span class="fn">down_payment</span><span class="ft">DECIMAL</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_down</span></div>
+    <div class="field-row"><span class="fn">sub_fees</span><span class="ft">DECIMAL</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_sub_fees</span></div>
+    <div class="field-row"><span class="fn">loan_amount</span><span class="ft">DECIMAL</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_loan_amt</span></div>
+    <div class="field-row"><span class="fn">loan_type</span><span class="ft">CHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">F=Full, I=Instalment etc. From e_loan_type</span></div>
+    <div class="field-row"><span class="fn">sales_branch</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_sls_br</span></div>
+    <div class="field-row"><span class="fn">sales_month</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_sls_mth (e.g. 09/1987)</span></div>
+    <div class="field-row"><span class="fn">sales_source</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_sls_source</span></div>
+    <div class="field-row"><span class="fn">certificate_no</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_certificate_no</span></div>
+    <div class="field-row"><span class="fn">transfer_flag</span><span class="ft">CHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">NR=Not transferred, TT=Transferred to, TF=Transferred from. From e_transfer_flag / e_can_code</span></div>
+    <div class="field-row"><span class="fn">transfer_to_membership</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_ttmembership_no</span></div>
+    <div class="field-row"><span class="fn">transfer_from_membership</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_tfmembership_no</span></div>
+    <div class="field-row"><span class="fn">rci_ref_no</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_rci_refno</span></div>
+    <div class="field-row"><span class="fn">rci_enrol_date</span><span class="ft">DATE</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_rci_enrol_date</span></div>
+    <div class="field-row"><span class="fn">rci_expiry_date</span><span class="ft">DATE</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_rci_expiry_date</span></div>
+    <div class="field-row"><span class="fn">rci_fee_paid</span><span class="ft">DECIMAL</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_rci_fee_paid</span></div>
+    <div class="field-row"><span class="fn">outstd_doc</span><span class="ft">CHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">Y/N outstanding document. From e_outstd_doc</span></div>
+    <div class="field-row"><span class="fn">doc_description</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_doc_desc</span></div>
+    <div class="field-row"><span class="fn">lock_status</span><span class="ft">CHAR</span><span><span class="tag tag-drop">DROP</span></span><span class="fd">e_lock_status — not needed in new web-based system. Concurrency handled by DB transactions.</span></div>
+    <div class="field-row"><span class="fn">legacy_created_at</span><span class="ft">DATE</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_sysdate</span></div>
+    <div class="field-row"><span class="fn">created_at / updated_at</span><span class="ft">TIMESTAMP</span><span><span class="tag tag-new">NEW</span></span><span class="fd">New system timestamps</span></div>
+  </div>
+
+  <div class="entity">
+    <div class="entity-head">👨‍👩‍👧 nominees <span class="src">max 2 per agreement · extracted from si_entitlement nom1 / nom2 fields</span></div>
+    <div class="field-row field-head"><span>Field</span><span>Type</span><span>Tag</span><span>Description / Maps From</span></div>
+    <div class="field-row"><span class="fn">id</span><span class="ft">UUID PK</span><span><span class="tag tag-new">NEW</span></span><span class="fd">System PK</span></div>
+    <div class="field-row"><span class="fn">agreement_id</span><span class="ft">UUID FK</span><span><span class="tag tag-new">NEW</span></span><span class="fd">Links to agreements.id</span></div>
+    <div class="field-row"><span class="fn">nominee_seq</span><span class="ft">INT</span><span><span class="tag tag-new">NEW</span></span><span class="fd">1 or 2 (from nom1 / nom2 columns)</span></div>
+    <div class="field-row"><span class="fn">full_name</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_name / e_nom2_name</span></div>
+    <div class="field-row"><span class="fn">ic_old</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_ic / e_nom2_ic</span></div>
+    <div class="field-row"><span class="fn">ic_new</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_new_ic / e_nom2_new_ic</span></div>
+    <div class="field-row"><span class="fn">salutation</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_salutation / e_nom2_salutation</span></div>
+    <div class="field-row"><span class="fn">designation</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_designation / e_nom2_designation</span></div>
+    <div class="field-row"><span class="fn">name_card</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_name_card / e_nom2_name_card</span></div>
+    <div class="field-row"><span class="fn">tel_home</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_tel_h / e_nom2_tel_h</span></div>
+    <div class="field-row"><span class="fn">tel_mobile</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_tel_hp / e_nom2_tel_hp</span></div>
+    <div class="field-row"><span class="fn">address_add1..3</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_add1..3 / e_nom2_add1..3</span></div>
+    <div class="field-row"><span class="fn">city_state</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_city_state / e_nom2_city_state</span></div>
+    <div class="field-row"><span class="fn">postcode</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_postcode / e_nom2_postcode</span></div>
+    <div class="field-row"><span class="fn">email</span><span class="ft">VARCHAR</span><span><span class="tag tag-migrate">MIGRATE</span></span><span class="fd">From e_nom1_email / e_nom2_email</span></div>
+  </div>
+</div>
+
+<!-- ═══════════════════ MIGRATION MAPPING ═══════════════════ -->
+<div class="content" id="tab-migration">
+  <h2>Migration Field Mapping</h2>
+  <p class="desc">How each Informix source table maps to the new PostgreSQL schema. Coded values that need lookup tables are highlighted.</p>
+
+  <h3>Coded Values — Lookup Tables Required</h3>
+  <table class="tbl">
+    <thead><tr><th>Field</th><th>Source Table</th><th>Confirmed Values</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">e_acct_classify</td><td>si_entitlement</td><td>NA=Active, SU=Suspended, PT=Pending Termination, TM=Terminated</td><td>✅ Confirmed. Build status dropdown with these 4 values. <strong>This is the agreement status field.</strong></td></tr>
+      <tr><td class="mono">e_acct_status</td><td>si_entitlement</td><td>Not used</td><td><span class="tag tag-drop">DROP</span> Not migrated. Use <code>e_acct_classify</code> for agreement status.</td></tr>
+      <tr><td class="mono">e_cocode</td><td>si_entitlement</td><td>01=LHC (variant A), 15=LHC (variant B), 02=CP</td><td>✅ Confirmed. Create product_type lookup: LHC01, LHC15, CP. Store cocode + derive label.</td></tr>
+      <tr><td class="mono">e_enttype</td><td>si_entitlement</td><td>W=Week-based (LHC), P=Points-based (CP)</td><td>✅ Confirmed. Store as-is. Derive product label from cocode+enttype combination.</td></tr>
+      <tr><td class="mono">e_rtu_years</td><td>si_entitlement</td><td>30, 33, 50</td><td>✅ Confirmed. Store as integer. All 3 values are valid.</td></tr>
+      <tr><td class="mono">e_can_code</td><td>si_entitlement</td><td>Refs agmt_can_cate: 01=10 Days Cooling Off, 02=Bounced Cheque, 03=Misrepresentation, 04=Return D/Pyt, 06=Carried Fwd, 07=Mbr Change Mind (Points), 08=Voluntary Termination, 09=Change of Mind, 10=Not Interested, 11=Default In-House Payment</td><td>✅ Confirmed. Migrate agmt_can_cate as lookup table. Note: some e_can_code values in data (e.g. "45") have no matching master record — flag as "Unknown/Legacy Code" during migration.</td></tr>
+      <tr><td class="mono">e_total_pts</td><td>si_entitlement</td><td>Free-form integer. Range: 50 – 1,000. Includes non-standard values (51, 62, 73, 117, 251 etc.). 0 = LHC week-based.</td><td>✅ Confirmed. Store as integer. No dropdown — display actual value. Do NOT validate against a fixed tier list.</td></tr>
+      <tr><td class="mono">i_gross_income</td><td>si_ind_mast</td><td>A, B, C, D, E, U</td><td><span class="tag tag-drop">DROP</span> Not migrated — field excluded from new system entirely.</td></tr>
+      <tr><td class="mono">c_acct_type</td><td>si_cor_mast</td><td>Not used</td><td><span class="tag tag-drop">DROP</span> Not migrated — field excluded from new system entirely.</td></tr>
+      <tr><td class="mono">tin_number</td><td>—</td><td>New field — no source in Informix</td><td><span class="tag tag-new">NEW</span> VARCHAR(15). Nullable. LHDN format validated (C / SG / OG / D prefix + digits). Staff populate post-migration.</td></tr>
+      <tr><td class="mono">i_work_nature</td><td>si_ind_mast</td><td>E=Employed, O=Own business</td><td>Confirm remaining codes. Store with human-readable label.</td></tr>
+      <tr><td class="mono">i_race</td><td>si_ind_mast</td><td>M=Malay, C=Chinese, I=Indian, O=Other</td><td>Store with human-readable label.</td></tr>
+      <tr><td class="mono">i_statecode / c_statecode</td><td>Both</td><td>01=Selangor, 02=KL, 03=Penang…</td><td>Map to state names using Malaysia standard state code table.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Related Tables to Migrate Later (other modules)</h3>
+  <table class="tbl">
+    <thead><tr><th>Informix Table</th><th>Record Count</th><th>New Table</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">si_ind_mast</td><td><strong>30,851</strong></td><td>members (INDIVIDUAL rows)</td><td>Individual members</td></tr>
+      <tr><td class="mono">si_cor_mast</td><td><strong>1,536</strong></td><td>members (CORPORATE rows)</td><td>Corporate members</td></tr>
+      <tr><td class="mono">si_entitlement</td><td><strong>33,841</strong></td><td>agreements + nominees</td><td>~32,387 individual + ~1,454 corporate agreements (approx). Each row may generate up to 2 nominee records.</td></tr>
+    </tbody>
+  </table>
+  <div class="alert alert-info">
+    <strong>Total members after merge:</strong> 30,851 + 1,536 = <strong>32,387 member records</strong>. The 33,841 agreements slightly exceed member count — some members have multiple agreements (i_tot_agmt &gt; 1), consistent with sample data showing i_tot_agmt = 2 in some records.
+  </div>
+
+  <h3>AMC Billing Note (for Module 3)</h3>
+  <div class="alert">
+    <strong>AMC rate structure confirmed:</strong><br/>
+    &nbsp;&nbsp;• LHC (cocode 01 and 15) — use <strong>LHC AMC rate</strong><br/>
+    &nbsp;&nbsp;• CP (cocode 02) — use <strong>CP AMC rate</strong> (different rate schedule)<br/>
+    Rates are stored in an AMC master table in Informix. This will be analysed in the <strong>AMC Billing module spec</strong>. The <code>e_cocode</code> field in the agreements table is the key discriminator for which rate applies.
+  </div>
+
+  <h3>Migration Steps</h3>
+  <div class="flow">
+    <div class="flow-step">1. Extract<small>dbexport from Informix</small></div>
+    <div class="flow-arr">→</div>
+    <div class="flow-step">2. Cleanse<small>Fix nulls, trim spaces, decode codes</small></div>
+    <div class="flow-arr">→</div>
+    <div class="flow-step">3. Transform<small>Map fields to new schema</small></div>
+    <div class="flow-arr">→</div>
+    <div class="flow-step">4. Split Nominees<small>nom1/nom2 → nominees rows</small></div>
+    <div class="flow-arr">→</div>
+    <div class="flow-step">5. Load<small>Insert to PostgreSQL</small></div>
+    <div class="flow-arr">→</div>
+    <div class="flow-step">6. Validate<small>Count checks + spot checks</small></div>
+  </div>
+
+  <h3>Key Transformation Rules</h3>
+  <table class="tbl">
+    <thead><tr><th>Issue</th><th>Source</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td>Trailing spaces in text fields</td><td>All tables</td><td>TRIM() all VARCHAR fields during ETL</td></tr>
+      <tr><td>Padded agreement_no (e.g. "00253   ")</td><td>si_entitlement</td><td>TRIM() and store cleaned value; keep original in legacy_agreement_no</td></tr>
+      <tr><td>nom1 / nom2 flat columns → relational rows</td><td>si_entitlement</td><td>For each entitlement row, create up to 2 nominee rows if name is not null</td></tr>
+      <tr><td>Merge si_ind_mast + si_cor_mast → members</td><td>Both</td><td>Use member_type discriminator; individual-only fields NULL for corporate rows</td></tr>
+      <tr><td>Y/N flag fields</td><td>All tables</td><td>Convert to PostgreSQL BOOLEAN (Y→true, N→false, null→false)</td></tr>
+      <tr><td>Date format (Informix DATETIME)</td><td>All tables</td><td>Convert to ISO 8601 DATE / TIMESTAMP</td></tr>
+      <tr><td>lock_status field — all tables</td><td>si_ind_mast, si_cor_mast, si_entitlement</td><td><strong>DROP from all new tables.</strong> i_lock_status, c_lock_status, e_lock_status all excluded. Concurrency handled by DB-level transactions in the new web system.</td></tr>
+      <tr><td>Duplicate membership_no risk</td><td>Both mast tables</td><td>Run duplicate check before load; flag any duplicates for manual review</td></tr>
+    </tbody>
+  </table>
+
+  <h3>agmt_can_cate — Cancellation / Termination Lookup Table</h3>
+  <div class="alert alert-info">Migrate this table as-is into a new <code>cancellation_reasons</code> lookup table. Use <code>acc_code</code> as the key, joined to <code>agreements.can_code</code>.</div>
+  <table class="tbl">
+    <thead><tr><th>Code</th><th>Description</th><th>Category</th><th>Type</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">01</td><td>10 Days Cooling Off Period</td><td>CC — Cancellation</td><td>D</td><td>Active</td></tr>
+      <tr><td class="mono">02</td><td>Bounced Cheque</td><td>CC — Cancellation</td><td>D</td><td>Active</td></tr>
+      <tr><td class="mono">03</td><td>Misrepresentation</td><td>CC — Cancellation</td><td>D</td><td>Active</td></tr>
+      <tr><td class="mono">04</td><td>Request to Return D/Pyt Before Bank-In</td><td>CC — Cancellation</td><td>D</td><td>Active</td></tr>
+      <tr><td class="mono">06</td><td>Carried Forward to Next Month</td><td>CC — Cancellation</td><td>D</td><td>Active</td></tr>
+      <tr><td class="mono">07</td><td>Member Change Mind on Points Purchased</td><td>CC — Cancellation</td><td>D</td><td>Active</td></tr>
+      <tr><td class="mono">08</td><td>Voluntary Termination</td><td>TM — Termination</td><td>D</td><td>Active</td></tr>
+      <tr><td class="mono">09</td><td>Change of Mind</td><td>TM — Termination</td><td>D</td><td>Active</td></tr>
+      <tr><td class="mono">10</td><td>Not Interested</td><td>TM — Termination</td><td>D</td><td>Active</td></tr>
+      <tr><td class="mono">11</td><td>Default in In-House Payment</td><td>TM — Termination</td><td>D</td><td>Active</td></tr>
+      <tr><td class="mono">05, 12–99</td><td><em>Not found in master table</em></td><td>—</td><td>—</td><td>⚠️ Legacy/unmapped — store as "Unknown Code (XX)" during migration</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Related Tables to Migrate Later (other modules)</h3>
+  <table class="tbl">
+    <thead><tr><th>Informix Table</th><th>Purpose</th><th>Module</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">ac_amcbill</td><td>AMC billing records</td><td>Module 3 — AMC Billing</td></tr>
+      <tr><td class="mono">amc_mem, amc_outstd, amc_price</td><td>AMC membership charges and outstanding</td><td>Module 3 — AMC Billing</td></tr>
+      <tr><td class="mono">resmt, res_avail_mast</td><td>Resort availability and bookings</td><td>Module 4 — Resort Booking</td></tr>
+      <tr><td class="mono">v_bookent1, v_entitle</td><td>Booking entitlement views</td><td>Module 5 — Entitlements</td></tr>
+      <tr><td class="mono">rci, rci_enrol, rci_week</td><td>RCI exchange data</td><td>Future — RCI Module</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════ OBSERVATIONS ═══════════════════ -->
+<div class="content" id="tab-observations">
+  <h2>Data Observations & Issues</h2>
+  <p class="desc">Findings from analysing the sample data. These must be addressed before or during migration.</p>
+
+  <div class="alert alert-info"><strong>Updated after business feedback (May 2026).</strong> Items marked ✅ are resolved. Items marked 🔴 still need action. Items marked 🟡 are warnings to handle during migration.</div>
+
+  <table class="tbl">
+    <thead><tr><th>Status</th><th>Observation</th><th>Example from Data</th><th>Resolution</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>✅</td>
+        <td><strong>Agreement status field confirmed</strong> — use <code>e_acct_classify</code> only. <code>e_acct_status</code> dropped.</td>
+        <td>NA, SU, PT, TM</td>
+        <td>NA=Active, SU=Suspended, PT=Pending Termination, TM=Terminated. <code>e_acct_status</code> not migrated — dropped entirely.</td>
+      </tr>
+      <tr>
+        <td>✅</td>
+        <td><strong>3 product types confirmed via <code>e_cocode</code></strong></td>
+        <td>cocode=01, 15, 02</td>
+        <td>01=LHC variant A, 15=LHC variant B (different price/tenure), 02=CP points-based. W=week, P=points.</td>
+      </tr>
+      <tr>
+        <td>✅</td>
+        <td><strong>e_can_code purpose confirmed</strong> — references cancellation/termination master table</td>
+        <td>e_can_code = "45"</td>
+        <td>Join to <code>agmt_can_cate</code> table to get termination description. Migrate agmt_can_cate as a lookup table.</td>
+      </tr>
+      <tr>
+        <td>✅</td>
+        <td><strong>Agreement term years confirmed</strong> — 30, 33, or 50</td>
+        <td>e_rtu_years = 33</td>
+        <td>All 3 values are valid. Store as integer in new schema.</td>
+      </tr>
+      <tr>
+        <td>✅</td>
+        <td><strong>c_acct_type not used</strong> — dropped entirely</td>
+        <td>c_acct_type = "T" or "C"</td>
+        <td>Not migrated. Field excluded from new system.</td>
+      </tr>
+      <tr>
+        <td>✅</td>
+        <td><strong>lock_status dropped from all tables</strong> — not needed in new web-based system</td>
+        <td>i_lock_status, c_lock_status, e_lock_status all = "U" in active records</td>
+        <td>Dropped from members, agreements tables. Concurrency handled by DB transactions and HTTP session management in new system.</td>
+      </tr>
+        <td>i_gross_income = "A"</td>
+        <td>Field excluded entirely. Not migrated and not shown in UI.</td>
+      </tr>
+      <tr>
+        <td>🔴</td>
+        <td>Many records have only old IC format — no new 12-digit MyKad IC</td>
+        <td><code>i_ic_pass_no = "1486535"</code>, <code>i_new_ic = null</code></td>
+        <td>Store both fields. Staff to update new IC over time. Do NOT block migration on missing new IC.</td>
+      </tr>
+      <tr>
+        <td>✅</td>
+        <td><strong>agmt_can_cate lookup table confirmed</strong> — 10 codes across 2 categories</td>
+        <td>acc_for = CC or TM</td>
+        <td>CC (Cancellation): 01–07 · TM (Termination): 08–11. Full list in Migration Mapping tab. Migrate as lookup table. Note: sample data shows e_can_code values up to "45" — only 10 codes found in master. Some legacy codes may be inactive or missing. Migrate all and flag any unmapped codes.</td>
+      </tr>
+      <tr>
+        <td>✅</td>
+        <td><strong>CP points values confirmed</strong> — free-form, not fixed tiers</td>
+        <td>Range: 50 – 1,000</td>
+        <td>Points are free-form per agreement, not a fixed set of tiers. Range: 50 to 1,000. Many non-standard values (51, 62, 73, 117, 251 etc.). Store as integer, no dropdown — display actual value per agreement.</td>
+      </tr>
+      <tr>
+        <td>🟡</td>
+        <td>Nominee IC fields inconsistently populated</td>
+        <td>nom1_ic null but nom1_new_ic has value</td>
+        <td>Store both ic_old and ic_new in nominees table. Accept nulls during migration.</td>
+      </tr>
+      <tr>
+        <td>🟡</td>
+        <td>Agreement no. has trailing spaces (8-char padded field)</td>
+        <td><code>"00253   "</code>, <code>"5085    "</code></td>
+        <td>TRIM() on migration. Store trimmed value; keep original padded value in legacy_agreement_no field.</td>
+      </tr>
+      <tr>
+        <td>🟡</td>
+        <td>Phone numbers have irregular formatting</td>
+        <td><code>"03-76200000 ent202"</code></td>
+        <td>Migrate as-is. Optional normalisation in Phase 2.</td>
+      </tr>
+      <tr>
+        <td>🟡</td>
+        <td>Legacy usernames are informal (not system users)</td>
+        <td><code>i_user = "old"</code>, <code>e_mod_user = "beeting"</code></td>
+        <td>Store in legacy_created_by / legacy_modified_by fields for reference only.</td>
+      </tr>
+      <tr>
+        <td>🟡</td>
+        <td>Some birthdates very old — likely deceased members</td>
+        <td><code>i_birthdate = "1939-07-14"</code></td>
+        <td>Migrate all. Review deceased flag after migration as a data cleanup exercise.</td>
+      </tr>
+      <tr>
+        <td>🟡</td>
+        <td><code>e_locality</code> NULL in all sample records</td>
+        <td>All null</td>
+        <td>Migrate as nullable. Check for non-null values in full dataset before deciding to drop.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>SQL Queries — All Resolved ✅</h3>
+  <div class="alert alert-info" style="background:var(--green-light);border-left-color:var(--green);color:#0A4A1A;">All outstanding queries have been answered. The spec is now complete and ready for sign-off.</div>
+  <table class="tbl">
+    <thead><tr><th>Purpose</th><th>Query</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Cancellation/termination reason codes</td><td class="mono">SELECT * FROM agmt_can_cate ORDER BY 1;</td><td>✅ 10 codes confirmed (01–11, no 05). See lookup table above.</td></tr>
+      <tr><td>Total record counts</td><td class="mono">SELECT COUNT(*) FROM si_ind_mast / si_cor_mast / si_entitlement;</td><td>✅ 30,851 · 1,536 · 33,841</td></tr>
+      <tr><td>CP points values</td><td class="mono">SELECT DISTINCT e_total_pts FROM si_entitlement WHERE e_enttype = 'P' ORDER BY 1;</td><td>✅ Free-form range 50–1,000. ~150 distinct values. Not fixed tiers.</td></tr>
+      <tr><td>All work nature codes</td><td class="mono">SELECT DISTINCT i_work_nature FROM si_ind_mast GROUP BY 1;</td><td>🟡 Optional — can run during ETL phase</td></tr>
+      <tr><td>Non-null e_locality values</td><td class="mono">SELECT COUNT(*) FROM si_entitlement WHERE e_locality IS NOT NULL;</td><td>🟡 Optional — can check during ETL phase</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════ CHECKLIST ═══════════════════ -->
+<div class="content" id="tab-checklist">
+  <h2>Pre-Development Checklist</h2>
+  <p class="desc">Items to confirm before development of this module begins.</p>
+  <div class="progress-bar"><div class="progress-fill" id="prog" style="width:0%"></div></div>
+  <span id="prog-label" style="font-size:12px;color:var(--muted);display:block;margin-bottom:20px;"></span>
+
+  <h3>Business Decisions Needed 🔴</h3>
+  <div class="chk-list">
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm all e_acct_classify codes ✅ Confirmed: NA, SU, PT, TM</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm e_can_code purpose ✅ Confirmed: references agmt_can_cate master table</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm e_enttype values ✅ Confirmed: W=Week, P=Points</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm product types ✅ Confirmed: cocode 01+15=LHC, 02=CP</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm e_rtu_years values ✅ Confirmed: 30, 33, 50</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm c_acct_type and i_gross_income usage ✅ Both dropped — not migrated, not in new system.</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Run: agmt_can_cate query ✅ 10 codes confirmed — full lookup table documented</label></div>
+  </div>
+
+  <h3>Technical Actions Needed</h3>
+  <div class="chk-list">
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Get total record counts ✅ si_ind_mast: 30,851 · si_cor_mast: 1,536 · si_entitlement: 33,841</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">CP points confirmed ✅ Free-form integers range 50–1,000. Not fixed tiers. ~150 distinct values.</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Cancellation lookup table confirmed ✅ 10 active codes. Legacy unmapped codes flagged as "Unknown" during migration.</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">e_acct_status and c_acct_type confirmed dropped ✅ Not migrated, not in new system.</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">TIN number field confirmed ✅ VARCHAR(15), LHDN format validation (C/SG/OG/D prefix + digits), nullable</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">i_gross_income confirmed dropped ✅ Not migrated, not maintained in new system</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox"/><label>Spec v1.6 reviewed and signed off by stakeholders — ready for development</label></div>
+  </div>
+
+  <h3>Design Decisions</h3>
+  <div class="chk-list">
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm: individual and corporate in one members table ✅ Confirmed</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm: maximum nominees per agreement ✅ Confirmed: max 2</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm: joint applicant as separate table or fields within members ✅ Confirmed: fields within members table</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm: membership number format for new members ✅ Same format as existing. New member creation ON HOLD — no new sales.</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm: LHC cocode 01 vs 15 difference ✅ Both LHC week-based, different selling price and tenures. AMC rates to be defined in AMC Billing module.</label></div>
+    <div class="chk-item" onclick="chk(this)"><input type="checkbox" checked/><label class="done">Confirm: CP points minimum and range ✅ Minimum 60 pts. Common values: 150, 200, 250 and others.</label></div>
+  </div>
+</div>
+
+<script>
+function show(id) {
+  document.querySelectorAll('.content').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+function chk(item) {
+  const cb = item.querySelector('input');
+  const lbl = item.querySelector('label');
+  cb.checked = !cb.checked;
+  lbl.classList.toggle('done', cb.checked);
+  const all = document.querySelectorAll('.chk-item input');
+  const done = document.querySelectorAll('.chk-item input:checked');
+  const pct = Math.round(done.length/all.length*100);
+  document.getElementById('prog').style.width = pct+'%';
+  document.getElementById('prog-label').textContent = done.length+' of '+all.length+' items completed';
+}
+document.getElementById('prog-label').textContent = '0 of '+document.querySelectorAll('.chk-item input').length+' items completed';
+</script>
+</body>
+</html>

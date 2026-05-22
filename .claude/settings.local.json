@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-Content \"C:\\\\Users\\\\peter\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--Websites-lmms\\\\5b167166-098f-4826-acc4-996013fdc067\\\\tasks\\\\b2002q7av.output\" -Wait)",
+      "Bash(Select-String -Pattern \"added|error|warn|npm|ERR\" --SimpleMatch)",
+      "PowerShell(npm config set strict-ssl false)",
+      "PowerShell(cd \"E:\\\\Websites\\\\lmms\"; $env:NODE_TLS_REJECT_UNAUTHORIZED=\"0\"; npx prisma migrate dev --name init 2>&1)"
+    ]
+  }
+}
