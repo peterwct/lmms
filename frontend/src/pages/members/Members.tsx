@@ -8,6 +8,7 @@ import { Select } from '../../components/ui/Select';
 import { Pagination } from '../../components/ui/Pagination';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { AgreementStatusBadge } from '../../components/AgreementStatusBadge';
+import { RecordCount } from '../../components/ui/RecordCount';
 import { format } from 'date-fns';
 
 type SortField = 'coCode' | 'membershipNo' | 'agreementNo' | 'agreementDate' | 'acctClassify' | 'fullName' | 'icNew';
@@ -148,6 +149,8 @@ export function Members() {
         </CardBody>
       </Card>
 
+      {searched && hasSearch && <RecordCount total={data?.meta?.total} loading={isLoading} />}
+
       {!searched ? (
         <p className="text-sm text-gray-400 text-center py-8">Enter search criteria above and click Search.</p>
       ) : !hasSearch ? (
@@ -196,8 +199,7 @@ export function Members() {
             </table>
           </div>
           {data?.meta && (
-            <div className="px-4 py-2 border-t text-xs text-gray-400 flex items-center justify-between">
-              <span>{data.meta.total.toLocaleString()} record{data.meta.total !== 1 ? 's' : ''} found</span>
+            <div className="px-4 py-2 border-t flex justify-end">
               <Pagination {...data.meta} onPage={handlePage} />
             </div>
           )}

@@ -8,6 +8,7 @@ import { AgreementStatusBadge } from '../../components/AgreementStatusBadge';
 import { Pagination } from '../../components/ui/Pagination';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { ProductBadge } from '../../components/ProductBadge';
+import { RecordCount } from '../../components/ui/RecordCount';
 import { format } from 'date-fns';
 
 export function Schedules() {
@@ -99,6 +100,8 @@ export function Schedules() {
         </Select>
 
       </div>
+
+      <RecordCount total={data?.meta?.total} loading={isLoading} />
 
       <Card>
         {isLoading ? <PageSpinner /> : (

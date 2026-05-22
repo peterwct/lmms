@@ -14,6 +14,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Pagination } from '../../components/ui/Pagination';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { ProductBadge } from '../../components/ProductBadge';
+import { RecordCount } from '../../components/ui/RecordCount';
 import { format } from 'date-fns';
 
 const billTypeLabel: Record<string, string> = { N: 'Normal', A: 'Advance', H: 'Ad-hoc', F: 'Final' };
@@ -70,6 +71,8 @@ export function Invoices() {
           </Button>
         )}
       </div>
+
+      <RecordCount total={data?.meta?.total} loading={isLoading} />
 
       <Card>
         {isLoading ? <PageSpinner /> : (

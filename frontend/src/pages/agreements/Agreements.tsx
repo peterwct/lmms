@@ -8,6 +8,7 @@ import { Pagination } from '../../components/ui/Pagination';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { AgreementStatusBadge } from '../../components/AgreementStatusBadge';
 import { ProductBadge } from '../../components/ProductBadge';
+import { RecordCount } from '../../components/ui/RecordCount';
 import { format } from 'date-fns';
 
 type SortField = 'fullName' | 'agreementDate';
@@ -120,6 +121,8 @@ export function Agreements() {
           <option value="TM">Terminated (TM)</option>
         </Select>
       </div>
+
+      <RecordCount total={data?.meta?.total} loading={isLoading} />
 
       <Card>
         {isLoading ? <PageSpinner /> : (
