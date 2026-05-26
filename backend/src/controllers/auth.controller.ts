@@ -31,7 +31,8 @@ const JWT_MS = (() => {
 
 const COOKIE_OPTS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  // Use COOKIE_SECURE=false to allow plain HTTP on test servers (default: true in production)
+  secure: process.env.COOKIE_SECURE === 'false' ? false : process.env.NODE_ENV === 'production',
   sameSite: 'lax' as const,
   maxAge: JWT_MS,
 };

@@ -46,11 +46,16 @@ const d = (s: string | null): Date | null => {
   const ddmmyyyy = str.match(/^(\d{2})-(\d{2})-(\d{4})$/);
   if (ddmmyyyy) {
     const dt = new Date(`${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`);
-    return isNaN(dt.getTime()) ? null : dt;
+    if (isNaN(dt.getTime())) return null;
+    if (dt.getFullYear() > 9999) return null;
+    return dt;
   }
   // Fallback: try ISO or other parseable format
   const dt = new Date(str);
-  return isNaN(dt.getTime()) ? null : dt;
+  if (isNaN(dt.getTime())) return null;
+  // Guard against out-of-range years that PostgreSQL rejects (max 294276 AD, but we cap at 9999)
+  if (dt.getFullYear() > 9999) return null;
+  return dt;
 };
 
 const n = (s: string | null): number | null => {
@@ -103,6 +108,8 @@ async function* readLines(filename: string): AsyncGenerator<string[]> {
 
 function mapIndividual(c: string[]) {
   return {
+    id:               randomUUID(),
+    updatedAt:        new Date(),
     membershipNo:     t(c[0])!,
     memberType:       MemberType.INDIVIDUAL,
     branchCode:       t(c[2]),
@@ -188,6 +195,8 @@ function mapIndividual(c: string[]) {
 
 function mapCorporate(c: string[]) {
   return {
+    id:                randomUUID(),
+    updatedAt:         new Date(),
     membershipNo:      t(c[0])!,
     memberType:        MemberType.CORPORATE,
     branchCode:        t(c[1]),
@@ -223,32 +232,36 @@ function mapCorporate(c: string[]) {
 
 // ─── Agreements + Nominees (si_entitlement) ───────────────────────────────────
 //
-// Verified column indices from re-exported file (64 tokens per row incl. trailing):
-//  0  e_membership_no    13 e_sub_fees      26 e_nom1_salut    39 e_nom2_new_ic
-//  1  e_agreement_no     14 e_sink_fund     27 e_nom1_desig    40 e_nom2_salut
-//  2  e_agreement_date   15 e_govt_tax      28 e_nom1_namecard 41 e_nom2_desig
-//  3  e_enddate          16 e_loan_amt      29 e_nom1_tel_h    42 e_nom2_namecard
-//  4  e_rtu_years        17 e_loan_type     30 e_nom1_tel_hp   43 e_nom2_tel_h
-//  5  e_cocode           18 e_sls_br        31 e_nom1_add1     44 e_nom2_tel_hp
-//  6  e_enttype          19 e_sls_mth       32 e_nom1_add2     45 e_nom2_add1
-//  7  e_agreement_type   20 e_sls_source    33 e_nom1_add3     46 e_nom2_add2
-//  8  e_member_type      21 e_certificate   34 e_nom1_city     47 e_nom2_add3
-//  9  e_total_pts        22 e_transfer_flg  35 e_nom1_postcode 48 e_nom2_city
-// 10  e_acct_classify    23 e_ttmembno      36 e_nom1_email    49 e_nom2_postcode  57 e_outstd_doc
-// 11  e_purchase_price   24 e_tfmembno      37 e_nom2_name     50 e_nom2_email     58 e_doc_desc
-// 12  e_down             25 e_nom1_name     38 e_nom2_ic       51 e_nom2_email     59 e_locality
-//                                                              53 e_rci_refno      60 e_can_code
-//                                                              54 e_rci_enrol_date 61 e_sysdate
-//                                                              55 e_rci_expiry     62 e_mod_date
-//                                                              56 e_rci_fee_paid   63 (trailing)
+// Fresh-export column indices (63 tokens per row incl. trailing):
+//  0  e_membership_no    13 e_sub_fees      25 e_nom1_name     37 e_nom2_name     52 e_rci_refno
+//  1  e_agreement_no     14 e_sink_fund     26 e_nom1_salut    38 e_nom2_ic       53 e_rci_enrol_date
+//  2  e_agreement_date   15 e_govt_tax      27 e_nom1_desig    39 e_nom2_new_ic   54 e_rci_expiry
+//  3  e_enddate          16 e_loan_amt      28 e_nom1_namecard 40 e_nom2_salut    55 e_rci_fee_paid
+//  4  e_rtu_years        17 e_loan_type     29 e_nom1_tel_h    41 e_nom2_desig    56 e_outstd_doc
+//  5  e_cocode           18 e_sls_br        30 e_nom1_tel_hp   42 e_nom2_namecard 57 e_doc_desc
+//  6  e_enttype          19 e_sls_mth       31 e_nom1_add1     43 e_nom2_tel_h    58 e_locality
+//  7  e_agreement_type   20 e_sls_source    32 e_nom1_add2     44 e_nom2_tel_hp   59 e_can_code
+//  8  e_member_type      21 e_certificate   33 e_nom1_add3     45 e_nom2_add1     60 e_sysdate
+//  9  e_total_pts        22 e_transfer_flg  34 e_nom1_city     46 e_nom2_add2     61 e_mod_date
+// 10  e_acct_classify    23 e_ttmembno      35 e_nom1_postcode 47 e_nom2_add3     62 (trailing)
+// 11  e_purchase_price   24 e_tfmembno      36 e_nom1_email    48 e_nom2_city
+// 12  e_down                                                   49 e_nom2_postcode
+//                                                              50 e_nom2_email
+//                                                              51 e_nom2_email (dup — ignored)
+//
+// nom1 (c[25..36]): 12 fields — name, salut, desig, nameCard, telH, telMobile,
+//                               add1, add2, add3, city, postcode, email (NO icOld/icNew)
+// nom2 (c[37..51]): 15 fields — name, icOld, icNew, salut, desig, nameCard,
+//                               telH, telMobile, add1, add2, add3, city, postcode, email, email(dup)
 
 function mapAgreement(c: string[], memberId: string) {
   const rawAgmtNo = c[1] ?? '';
   const agmtNo    = rawAgmtNo.trim();
-  const classify  = t(c[10]) as AgreementStatus | null;
+  const classify  = t(c[10]);
   const enttype   = t(c[6]);
 
   return {
+    updatedAt:               new Date(),
     agreementNo:             agmtNo,
     legacyAgreementNo:       rawAgmtNo !== agmtNo ? rawAgmtNo : null,
     memberId,
@@ -263,8 +276,8 @@ function mapAgreement(c: string[], memberId: string) {
     totalPoints:             i(c[9]),
     acctClassify:            classify === 'CC' ? AgreementStatus.TM
                              : (classify === 'RA' || classify === 'NA') ? AgreementStatus.NA
-                             : (classify && Object.values(AgreementStatus).includes(classify))
-                               ? classify
+                             : (classify && Object.values(AgreementStatus).includes(classify as AgreementStatus))
+                               ? classify as AgreementStatus
                                : AgreementStatus.NA,
     purchasePrice:           n(c[11]),
     downPayment:             n(c[12]),
@@ -280,40 +293,65 @@ function mapAgreement(c: string[], memberId: string) {
     transferFlag:            t(c[22]),
     transferToMembership:    t(c[23]),
     transferFromMembership:  t(c[24]),
-    rciRefNo:                t(c[53]),
-    rciEnrolDate:            d(c[54]),
-    rciExpiryDate:           d(c[55]),
-    rciFeePaid:              n(c[56]),
-    outstdDoc:               b(c[57]),
-    docDescription:          t(c[58]),
-    canCode:                 t(c[60]),
-    legacyCreatedAt:         d(c[61]),
-    legacyModifiedAt:        d(c[62]),
+    rciRefNo:                t(c[52]),
+    rciEnrolDate:            d(c[53]),
+    rciExpiryDate:           d(c[54]),
+    rciFeePaid:              n(c[55]),
+    outstdDoc:               b(c[56]),
+    docDescription:          t(c[57]),
+    canCode:                 t(c[59]),
+    legacyCreatedAt:         d(c[60]),
+    legacyModifiedAt:        d(c[61]),
   };
 }
 
-// nom1 starts at col 25, nom2 at col 39 (shifted +2 from original due to new sink_fund/govt_tax cols)
-function mapNominee(c: string[], agreementId: string, seq: 1 | 2) {
-  const base = seq === 1 ? 25 : 39;
-  const name = t(c[base]);
+// nom1: c[25..36], 12 fields — Informix stores no IC fields for nom1
+function mapNom1(c: string[], agreementId: string) {
+  const name = t(c[25]);
   if (!name) return null;
   return {
+    id:          randomUUID(),
     agreementId,
-    nomineeSeq:  seq,
+    nomineeSeq:  1,
     fullName:    name,
-    icOld:       t(c[base + 1]),
-    icNew:       t(c[base + 2]),
-    salutation:  t(c[base + 3]),
-    designation: t(c[base + 4]),
-    nameCard:    t(c[base + 5]),
-    telHome:     t(c[base + 6]),
-    telMobile:   t(c[base + 7]),
-    add1:        t(c[base + 8]),
-    add2:        t(c[base + 9]),
-    add3:        t(c[base + 10]),
-    cityState:   t(c[base + 11]),
-    postcode:    t(c[base + 12]),
-    email:       t(c[base + 13]),
+    icOld:       null,
+    icNew:       null,
+    salutation:  t(c[26]),
+    designation: t(c[27]),
+    nameCard:    t(c[28]),
+    telHome:     t(c[29]),
+    telMobile:   t(c[30]),
+    add1:        t(c[31]),
+    add2:        t(c[32]),
+    add3:        t(c[33]),
+    cityState:   t(c[34]),
+    postcode:    t(c[35]),
+    email:       t(c[36]),
+  };
+}
+
+// nom2: c[37..51], 15 fields (c[51] is duplicate email — ignored)
+function mapNom2(c: string[], agreementId: string) {
+  const name = t(c[37]);
+  if (!name) return null;
+  return {
+    id:          randomUUID(),
+    agreementId,
+    nomineeSeq:  2,
+    fullName:    name,
+    icOld:       t(c[38]),
+    icNew:       t(c[39]),
+    salutation:  t(c[40]),
+    designation: t(c[41]),
+    nameCard:    t(c[42]),
+    telHome:     t(c[43]),
+    telMobile:   t(c[44]),
+    add1:        t(c[45]),
+    add2:        t(c[46]),
+    add3:        t(c[47]),
+    cityState:   t(c[48]),
+    postcode:    t(c[49]),
+    email:       t(c[50]),
   };
 }
 
@@ -425,8 +463,8 @@ async function main() {
     const agmtId = randomUUID();
     agmtBatch.push({ id: agmtId, ...mapAgreement(cols, memberId) });
 
-    const nom1 = mapNominee(cols, agmtId, 1);
-    const nom2 = mapNominee(cols, agmtId, 2);
+    const nom1 = mapNom1(cols, agmtId);
+    const nom2 = mapNom2(cols, agmtId);
     if (nom1) { nomBatch.push(nom1); nomTotal++; }
     if (nom2) { nomBatch.push(nom2); nomTotal++; }
 
@@ -453,10 +491,10 @@ async function main() {
     console.log('\n  ┌──────────────────────────────────────────────┐');
     console.log('  │  Table            Expected     Actual         │');
     console.log('  ├──────────────────────────────────────────────┤');
-    console.log(`  │  Members (IND)      30,851   ${String(mInd).padStart(8)}         │`);
-    console.log(`  │  Members (COR)       1,536   ${String(mCor).padStart(8)}         │`);
-    console.log(`  │  Agreements         33,841   ${String(agmt).padStart(8)}         │`);
-    console.log(`  │  Nominees          ≤67,682   ${String(nom).padStart(8)}         │`);
+    console.log(`  │  Members (IND)      30,446   ${String(mInd).padStart(8)}         │`);
+    console.log(`  │  Members (COR)       1,527   ${String(mCor).padStart(8)}         │`);
+    console.log(`  │  Agreements         33,406   ${String(agmt).padStart(8)}         │`);
+    console.log(`  │  Nominees           27,469   ${String(nom).padStart(8)}         │`);
     console.log('  └──────────────────────────────────────────────┘');
   } else {
     console.log(`\n  DRY RUN totals:`);

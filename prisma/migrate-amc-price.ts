@@ -12,6 +12,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -50,7 +51,7 @@ async function main() {
     await prisma.amcPrice.upsert({
       where: { coCode_priceCode_effectiveDate: { coCode, priceCode, effectiveDate } },
       update: { currencyCode, amcAmount, sinkingFund, serviceTax, totalAmount, amountInWords, rate },
-      create: { coCode, effectiveDate, priceCode, currencyCode, amcAmount, sinkingFund, serviceTax, totalAmount, amountInWords, rate },
+      create: { id: randomUUID(), updatedAt: new Date(), coCode, effectiveDate, priceCode, currencyCode, amcAmount, sinkingFund, serviceTax, totalAmount, amountInWords, rate },
     });
 
     console.log(`  ✔ coCode=${coCode} | priceCode=${priceCode} | effective=${effectiveDate.toISOString().slice(0,10)} | AMC=${amcAmount} | Sink=${sinkingFund} | Tax=${serviceTax} | Total=${totalAmount}`);

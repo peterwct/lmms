@@ -52,6 +52,7 @@ async function main() {
     await prisma.amcPricePoints.create({
       data: {
         id: randomUUID(),
+        updatedAt: new Date(),
         coCode, effectiveDate,
         minPoints, maxPoints,
         unitPrice, amcRatePerPoint,

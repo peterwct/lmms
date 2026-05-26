@@ -126,6 +126,7 @@ async function main() {
 
     batch.push({
       id:              randomUUID(),
+      updatedAt:       new Date(),
       agreementId,
       membershipNo,
       agreementNo,
@@ -172,6 +173,7 @@ async function main() {
 
     batch.push({
       id:              randomUUID(),
+      updatedAt:       new Date(),
       agreementId,
       membershipNo,
       agreementNo,
@@ -181,7 +183,7 @@ async function main() {
       lastInvoiceDate: d(c[5] ?? ''),
       invoicesIssued:  intVal(c[6] ?? '0'),
       totalInvoices:   intVal(c[7] ?? '0'),
-      priceCode:       null,           // CP has no price code
+      priceCode:       null,
       billingStatus:   'N',
       legacyCreatedAt: d(c[8] ?? ''),
     });

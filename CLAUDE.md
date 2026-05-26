@@ -19,6 +19,7 @@ lmms/
 │   ├── migrate-amc-price-points.ts  # CP points tiers from ps_ctrltab.txt
 │   ├── patch-*.ts           # Incremental data patch scripts (run once each)
 │   └── migrations/          # Applied migration history
+├── refresh-test-db.ps1      # Clears + re-imports all Informix data; use for UAT refreshes and live cutover
 ├── migrate/                 # Informix UNLOAD export files (not committed)
 │   ├── si_ind_mast.txt
 │   ├── si_cor_mast.txt
@@ -83,12 +84,55 @@ BCRYPT_ROUNDS=12
 - `bcryptjs` is used instead of `bcrypt` (native build blocked by proxy SSL)
 - `@prisma/client` is in root `package.json`, not `backend/package.json` — backend resolves it from root `node_modules/`
 
+## Prisma 5.22.0 quirks
+
+- `createMany` and `upsert.create` require **explicit `id`** and **`updatedAt`** even when the schema has `@id @default(uuid())` and `@updatedAt`. Add `id: randomUUID()` and `updatedAt: new Date()` to every bulk/upsert payload.
+- Always run migration scripts with `npx ts-node --transpile-only` (not plain `ts-node`) to bypass strict type errors from the generated Prisma client.
+
+## PowerShell quirks
+
+- PowerShell 5.1 `Out-File -Encoding utf8` writes a UTF-8 BOM, which causes PostgreSQL to reject the file with `syntax error at or near '﻿SELECT'`. Use `[System.IO.File]::WriteAllText($path, $content)` for BOM-free SQL temp files (as done in `refresh-test-db.ps1`).
+
 ## Database
 
 - **PostgreSQL** — database `lhb_mms` on `localhost:5432` (user: postgres / pass: postgres)
 - **Prisma** schema at `prisma/schema.prisma`
 - After every `prisma migrate dev`, restart the backend — Windows locks the Prisma query engine DLL while the server is running, causing an EPERM error on regeneration. The migration still applies; only the DLL replacement fails.
 - **Table names are PascalCase** — always use double quotes in raw SQL: `SELECT * FROM "Member"`, `SELECT * FROM "Agreement"`, etc.
+- After `prisma migrate reset`, the `lhb_app` role loses all table permissions (tables are dropped and recreated by postgres). Always re-run the GRANT block afterwards:
+  ```sql
+  GRANT USAGE ON SCHEMA public TO lhb_app;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO lhb_app;
+  GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lhb_app;
+  ```
+  `refresh-test-db.ps1` includes this step automatically.
+
+## Test server
+
+- Live at `http://199.1.1.32` (Windows, `E:\Apps\lhb-mms`) — in UAT
+- PostgreSQL 18 at `E:\PostgreSQL18`, database `lhb_mms`, user `lhb_app`
+- PM2 manages backend (`ecosystem.config.js`), nginx serves frontend + proxies `/api`
+- `COOKIE_SECURE=false` required in `ecosystem.config.js` `env_production` — HTTP-only server; without it every login immediately redirects back to login
+- Always stop PM2 before any Prisma operations on the test server (Windows DLL lock): `pm2 stop lhb-mms-backend`
+- To restart after changes: `pm2 delete lhb-mms-backend && pm2 start ecosystem.config.js --env production`
+
+### Refreshing test server data
+
+Use `refresh-test-db.ps1` to wipe and reload all Informix data without touching Users, Departments, States, or AMC Rates:
+
+```powershell
+# 1. Re-export from Informix (see UNLOAD queries in the script .NOTES header)
+#    Copy output files to: E:\Websites\lmms\migrate\
+
+# 2. Set remote DB URL and run
+$env:DATABASE_URL = "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
+.\refresh-test-db.ps1
+
+# Dry run (parses files, no DB writes)
+.\refresh-test-db.ps1 -DryRun
+```
+
+The script: truncates Member CASCADE → migrates members/agreements/nominees → runs 4 patches → migrates AMC schedules + PBS schemes → re-grants lhb_app permissions → prints final row counts.
 
 ## Authentication
 
@@ -196,8 +240,8 @@ Source tables and their column counts (verified from actual export files):
 |---|---|---|---|
 | `si_ind_mast.txt` | Individual members | 67 | [61] compCityState, [62] compPostcode, [63] compStateCode, [64] telOffice2, [65] faxOffice |
 | `si_cor_mast.txt` | Corporate members | 29 | faxNo at [22] |
-| `si_entitlement.txt` | Agreements + nominees | 64 | [14] sinkFund, [15] govtTax, [62] modDate |
-| `maa_mem.txt` | PBS schemes | fixed-width 229 chars | cocode[0-5], agmt_no[7-14], cert_no[27-36], scheme_type[38-48], payback_date[50-61], pbs_indc[120-127], claim_indc[129-138] |
+| `si_entitlement.txt` | Agreements + nominees | 63 (fresh export) | nom1: c[25..36] (12 fields, no icOld/icNew); nom2: c[37..51] (15 fields, base=37); rciRefNo=c[52]; canCode=c[59]; legacyCreatedAt=c[60]; legacyModifiedAt=c[61] |
+| `maa_mem.txt` | PBS schemes | pipe-delimited | coCode[0], agmt_no[1], certNo[3], schemeType[4], paybackDate[5] (dd-mm-yyyy), topUp[6], pbsIndc[11], claimIndc[12] |
 | `amc_mem.txt` | LHC AMC schedules | 11 cols pipe-delimited | mem_no[0], agmt_no[1], cocode[2], first_due[3], next_due[4], last_invdate[5], no_of_inv[6], ttl_inv[7], price_code[8] |
 | `ps_amc_mem.txt` | CP AMC schedules | 10 cols pipe-delimited | same pattern, no price_code |
 | `amc_price.txt` | LHC AMC price master | pipe-delimited | coCode[0], effectiveDate[1], priceCode[2], currencyCode[3], amcAmount[4], sinkFund[5], serviceTax[6], totalAmount[7], amountInWords[9], rate[10] |

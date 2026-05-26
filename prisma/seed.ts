@@ -1,5 +1,6 @@
 import { PrismaClient, AppModule } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -180,8 +181,9 @@ async function main() {
       username:      'admin',
       email:         'admin@leisureholidays.com.my',
       passwordHash,
-      mustChangePwd: false, // Seed user pre-configured; set true for real deployments
+      mustChangePwd: false,
       departmentId:  deptMap['IT'],
+      updatedAt:     new Date(),
     },
   });
 
@@ -215,7 +217,7 @@ async function main() {
         rate:         price.rate,
         currencyCode: price.currencyCode,
       },
-      create: price,
+      create: { id: randomUUID(), updatedAt: new Date(), ...price },
     });
   }
 
@@ -236,7 +238,7 @@ async function main() {
         sinkingFundPct:  tier.sinkingFundPct,
         gstPct:          tier.gstPct,
       },
-      create: tier,
+      create: { id: randomUUID(), updatedAt: new Date(), ...tier },
     });
   }
 
