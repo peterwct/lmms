@@ -48,12 +48,12 @@ model Agreement {
   govtTax                Decimal?            @db.Decimal(12, 2)
   legacyModifiedAt       DateTime?
   sinkFund               Decimal?            @db.Decimal(12, 2)
-  CancellationReason     CancellationReason? @relation(fields: [canCode], references: [code])
-  Member                 Member              @relation(fields: [memberId], references: [id])
-  AmcInvoice             AmcInvoice[]
-  AmcSchedule            AmcSchedule?
-  Nominee                Nominee[]
-  PbsScheme              PbsScheme?
+  cancellationReason     CancellationReason? @relation(fields: [canCode], references: [code])
+  member                 Member              @relation(fields: [memberId], references: [id])
+  amcInvoices            AmcInvoice[]
+  amcSchedule            AmcSchedule?
+  nominees               Nominee[]
+  pbsScheme              PbsScheme?
 }
 
 model AmcInvoice {
@@ -84,8 +84,8 @@ model AmcInvoice {
   legacyCreatedAt DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime
-  Agreement       Agreement    @relation(fields: [agreementId], references: [id])
-  AmcSchedule     AmcSchedule  @relation(fields: [scheduleId], references: [id])
+  agreement       Agreement    @relation(fields: [agreementId], references: [id])
+  schedule        AmcSchedule  @relation(fields: [scheduleId], references: [id])
 }
 
 model AmcPrice {
@@ -141,8 +141,8 @@ model AmcSchedule {
   legacyCreatedAt DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime
-  AmcInvoice      AmcInvoice[]
-  Agreement       Agreement     @relation(fields: [agreementId], references: [id])
+  invoices        AmcInvoice[]
+  agreement       Agreement     @relation(fields: [agreementId], references: [id])
 }
 
 model AuditLog {
@@ -164,7 +164,7 @@ model CancellationReason {
   type        String?
   status      String      @default("A")
   createdAt   DateTime    @default(now())
-  Agreement   Agreement[]
+  agreements  Agreement[]
 }
 
 model Department {
@@ -185,7 +185,7 @@ model DeptModulePermission {
   canCreate    Boolean    @default(false)
   canEdit      Boolean    @default(false)
   canDelete    Boolean    @default(false)
-  Department   Department @relation(fields: [departmentId], references: [id])
+  department   Department @relation(fields: [departmentId], references: [id])
 
   @@unique([departmentId, module])
 }
@@ -265,7 +265,7 @@ model Member {
   faxNo             String?
   faxOffice         String?
   telOffice2        String?
-  Agreement         Agreement[]
+  agreements        Agreement[]
 }
 
 model Nominee {
@@ -286,7 +286,7 @@ model Nominee {
   cityState   String?
   postcode    String?
   email       String?
-  Agreement   Agreement @relation(fields: [agreementId], references: [id])
+  agreement   Agreement @relation(fields: [agreementId], references: [id])
 
   @@unique([agreementId, nomineeSeq])
 }
@@ -304,7 +304,7 @@ model PbsScheme {
   claimIndc   Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime
-  Agreement   Agreement @relation(fields: [agreementId], references: [id])
+  agreement   Agreement @relation(fields: [agreementId], references: [id])
 }
 
 model State {
