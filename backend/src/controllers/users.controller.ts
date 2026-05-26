@@ -61,7 +61,7 @@ export async function createUser(req: Request, res: Response): Promise<void> {
 
   try {
     const user = await prisma.user.create({
-      data: { ...rest, passwordHash, mustChangePwd: true },
+      data: { ...rest, passwordHash, mustChangePwd: true, updatedAt: new Date() },
       select: USER_SELECT,
     });
     await writeAudit({ userId: req.user.id, action: `Created user: ${user.username}`, actionType: 'CREATE', targetType: 'User', targetId: user.id });
@@ -86,7 +86,7 @@ export async function updateUser(req: Request, res: Response): Promise<void> {
   if (!parsed.success) { res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() }); return; }
 
   try {
-    const user = await prisma.user.update({ where: { id }, data: parsed.data, select: USER_SELECT });
+    const user = await prisma.user.update({ where: { id }, data: { ...parsed.data, updatedAt: new Date() }, select: USER_SELECT });
     await writeAudit({ userId: req.user.id, action: `Updated user: ${user.username}`, actionType: 'UPDATE', targetType: 'User', targetId: id });
     res.json({ data: user });
   } catch (e: unknown) {
@@ -103,7 +103,7 @@ export async function toggleSuspend(req: Request, res: Response): Promise<void> 
   if (!existing) { res.status(404).json({ error: 'User not found' }); return; }
 
   const newStatus = existing.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-  const user = await prisma.user.update({ where: { id }, data: { status: newStatus }, select: USER_SELECT });
+  const user = await prisma.user.update({ where: { id }, data: { status: newStatus, updatedAt: new Date() }, select: USER_SELECT });
   await writeAudit({
     userId: req.user.id,
     action: `${newStatus === 'SUSPENDED' ? 'Suspended' : 'Reactivated'} user: ${existing.username}`,
@@ -125,7 +125,7 @@ export async function resetPassword(req: Request, res: Response): Promise<void> 
 
   await prisma.user.update({
     where: { id },
-    data: { passwordHash, mustChangePwd: true, failedAttempts: 0, lockedAt: null },
+    data: { passwordHash, mustChangePwd: true, failedAttempts: 0, lockedAt: null, updatedAt: new Date() },
   });
   await writeAudit({ userId: req.user.id, action: `Reset password for user: ${user.username}`, actionType: 'UPDATE', targetType: 'User', targetId: id });
   res.json({ message: 'Password reset successfully', tempPassword });
@@ -157,6 +157,7 @@ export async function cloneUser(req: Request, res: Response): Promise<void> {
         passwordHash,
         mustChangePwd: true,
         departmentId: source.departmentId,
+        updatedAt: new Date(),
       },
       select: USER_SELECT,
     });

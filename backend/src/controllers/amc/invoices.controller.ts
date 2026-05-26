@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { Prisma, InvComponent, BillType } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { writeAudit } from '../../utils/audit';
@@ -147,6 +148,7 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
           for (const { component, amount } of components) {
             await tx.amcInvoice.create({
               data: {
+                id:             randomUUID(),
                 scheduleId:     schedule.id,
                 agreementId:    agreement.id,
                 membershipNo:   agreement.membershipNo,
@@ -162,6 +164,7 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
                 rate:           rate.rate,
                 billType,
                 coCode:         schedule.coCode,
+                updatedAt:      new Date(),
               },
             });
           }
@@ -174,6 +177,7 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
               lastInvoiceDate: invDate,
               nextDueDate:     nextDue,
               billingStatus:   isFinalYear ? 'C' : 'N',
+              updatedAt:       new Date(),
             },
           });
 
@@ -205,6 +209,7 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
           for (const { component, amount } of components) {
             await tx.amcInvoice.create({
               data: {
+                id:             randomUUID(),
                 scheduleId:     schedule.id,
                 agreementId:    agreement.id,
                 membershipNo:   agreement.membershipNo,
@@ -220,6 +225,7 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
                 totalPoints:    pts,
                 billType,
                 coCode:         '02',
+                updatedAt:      new Date(),
               },
             });
           }
@@ -232,6 +238,7 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
               lastInvoiceDate: invDate,
               nextDueDate:     nextDue,
               billingStatus:   isFinalYear ? 'C' : 'N',
+              updatedAt:       new Date(),
             },
           });
         }
@@ -266,7 +273,7 @@ export async function downloadInvoicePdf(req: Request, res: Response): Promise<v
   // Update print tracking
   await prisma.amcInvoice.update({
     where: { id: invoice.id },
-    data: { printCount: invoice.printCount + 1, printDate: new Date(), printUser: req.user.username },
+    data: { printCount: invoice.printCount + 1, printDate: new Date(), printUser: req.user.username, updatedAt: new Date() },
   });
 
   // Fetch all sibling invoices for the same agreementNo + invoiceYearSeq

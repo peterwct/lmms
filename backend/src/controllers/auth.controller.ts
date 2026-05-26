@@ -63,7 +63,7 @@ export async function login(req: Request, res: Response): Promise<void> {
     const attempts = user.failedAttempts + 1;
     await prisma.user.update({
       where: { id: user.id },
-      data: { failedAttempts: attempts, ...(attempts >= 5 ? { lockedAt: new Date() } : {}) },
+      data: { failedAttempts: attempts, ...(attempts >= 5 ? { lockedAt: new Date() } : {}), updatedAt: new Date() },
     });
     const msg = attempts >= 5
       ? 'Account locked after 5 failed attempts. Contact IT.'
@@ -74,7 +74,7 @@ export async function login(req: Request, res: Response): Promise<void> {
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { failedAttempts: 0, lockedAt: null, lastLoginAt: new Date() },
+    data: { failedAttempts: 0, lockedAt: null, lastLoginAt: new Date(), updatedAt: new Date() },
   });
   await writeAudit({ userId: user.id, action: `Login: ${username}`, actionType: 'LOGIN' });
 
@@ -110,7 +110,7 @@ export async function changePassword(req: Request, res: Response): Promise<void>
 
   const rounds = parseInt(process.env.BCRYPT_ROUNDS ?? '12', 10);
   const passwordHash = await bcrypt.hash(newPassword, rounds);
-  await prisma.user.update({ where: { id: user.id }, data: { passwordHash, mustChangePwd: false } });
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash, mustChangePwd: false, updatedAt: new Date() } });
   await writeAudit({ userId: user.id, action: `Password changed: ${user.username}`, actionType: 'UPDATE', targetType: 'User', targetId: user.id });
   res.json({ message: 'Password changed successfully' });
 }

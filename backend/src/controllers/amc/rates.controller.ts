@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { prisma } from '../../utils/prisma';
 import { writeAudit } from '../../utils/audit';
 
@@ -40,7 +41,7 @@ export async function createLhcRate(req: Request, res: Response): Promise<void> 
 
   const { effectiveDate, ...rest } = parsed.data;
   try {
-    const rate = await prisma.amcPrice.create({ data: { ...rest, effectiveDate: new Date(effectiveDate) } });
+    const rate = await prisma.amcPrice.create({ data: { id: randomUUID(), ...rest, effectiveDate: new Date(effectiveDate), updatedAt: new Date() } });
     await writeAudit({ userId: req.user.id, action: `Created LHC rate: coCode=${rate.coCode} priceCode=${rate.priceCode}`, actionType: 'CREATE', targetType: 'AmcPrice' });
     res.status(201).json({ data: rate });
   } catch (e: unknown) {
@@ -57,7 +58,7 @@ export async function updateLhcRate(req: Request, res: Response): Promise<void> 
   try {
     const rate = await prisma.amcPrice.update({
       where: { id },
-      data: { ...rest, ...(effectiveDate ? { effectiveDate: new Date(effectiveDate) } : {}) },
+      data: { ...rest, ...(effectiveDate ? { effectiveDate: new Date(effectiveDate) } : {}), updatedAt: new Date() },
     });
     await writeAudit({ userId: req.user.id, action: `Updated LHC rate: ${id}`, actionType: 'UPDATE', targetType: 'AmcPrice' });
     res.json({ data: rate });
@@ -83,7 +84,7 @@ export async function toggleLhcRate(req: Request, res: Response): Promise<void> 
   const id = req.params.id;
   const existing = await prisma.amcPrice.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ error: 'Rate not found' }); return; }
-  const rate = await prisma.amcPrice.update({ where: { id }, data: { isActive: !existing.isActive } });
+  const rate = await prisma.amcPrice.update({ where: { id }, data: { isActive: !existing.isActive, updatedAt: new Date() } });
   await writeAudit({ userId: req.user.id, action: `${rate.isActive ? 'Activated' : 'Deactivated'} LHC rate: ${id}`, actionType: 'UPDATE', targetType: 'AmcPrice' });
   res.json({ data: rate });
 }
@@ -106,7 +107,7 @@ export async function createCpRate(req: Request, res: Response): Promise<void> {
 
   const { effectiveDate, ...rest } = parsed.data;
   try {
-    const rate = await prisma.amcPricePoints.create({ data: { ...rest, coCode: '02', effectiveDate: new Date(effectiveDate) } });
+    const rate = await prisma.amcPricePoints.create({ data: { id: randomUUID(), ...rest, coCode: '02', effectiveDate: new Date(effectiveDate), updatedAt: new Date() } });
     await writeAudit({ userId: req.user.id, action: `Created CP rate tier: ${rate.minPoints}-${rate.maxPoints} pts`, actionType: 'CREATE', targetType: 'AmcPricePoints' });
     res.status(201).json({ data: rate });
   } catch (e: unknown) {
@@ -123,7 +124,7 @@ export async function updateCpRate(req: Request, res: Response): Promise<void> {
   try {
     const rate = await prisma.amcPricePoints.update({
       where: { id },
-      data: { ...rest, ...(effectiveDate ? { effectiveDate: new Date(effectiveDate) } : {}) },
+      data: { ...rest, ...(effectiveDate ? { effectiveDate: new Date(effectiveDate) } : {}), updatedAt: new Date() },
     });
     await writeAudit({ userId: req.user.id, action: `Updated CP rate tier: ${id}`, actionType: 'UPDATE', targetType: 'AmcPricePoints' });
     res.json({ data: rate });
@@ -149,7 +150,7 @@ export async function toggleCpRate(req: Request, res: Response): Promise<void> {
   const id = req.params.id;
   const existing = await prisma.amcPricePoints.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ error: 'Rate tier not found' }); return; }
-  const rate = await prisma.amcPricePoints.update({ where: { id }, data: { isActive: !existing.isActive } });
+  const rate = await prisma.amcPricePoints.update({ where: { id }, data: { isActive: !existing.isActive, updatedAt: new Date() } });
   await writeAudit({ userId: req.user.id, action: `${rate.isActive ? 'Activated' : 'Deactivated'} CP rate tier: ${id}`, actionType: 'UPDATE', targetType: 'AmcPricePoints' });
   res.json({ data: rate });
 }

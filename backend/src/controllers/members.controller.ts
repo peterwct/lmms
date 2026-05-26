@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { prisma } from '../utils/prisma';
 import { writeAudit } from '../utils/audit';
 
@@ -123,6 +124,8 @@ export async function createMember(req: Request, res: Response): Promise<void> {
     ...parsed.data,
     dateOfBirth:       toDate(parsed.data.dateOfBirth),
     incorporationDate: toDate(parsed.data.incorporationDate),
+    id: randomUUID(),
+    updatedAt: new Date(),
   };
 
   try {
@@ -165,7 +168,7 @@ export async function updateMember(req: Request, res: Response): Promise<void> {
   };
 
   try {
-    const member = await prisma.member.update({ where: { id }, data });
+    const member = await prisma.member.update({ where: { id }, data: { ...data, updatedAt: new Date() } });
     await writeAudit({ userId: req.user.id, action: `Updated member: ${member.membershipNo}`, actionType: 'UPDATE', targetType: 'Member', metadata: { memberId: id } });
     res.json({ data: member });
   } catch (e: unknown) {
@@ -178,7 +181,7 @@ export async function changeMemberStatus(req: Request, res: Response): Promise<v
   const id = req.params.id;
   const { status } = z.object({ status: z.enum(['ACTIVE', 'SUSPENDED', 'CLOSED', 'DECEASED', 'TRANSFERRED']) }).parse(req.body);
 
-  const member = await prisma.member.update({ where: { id }, data: { status } });
+  const member = await prisma.member.update({ where: { id }, data: { status, updatedAt: new Date() } });
   await writeAudit({ userId: req.user.id, action: `Changed member status to ${status}: ${member.membershipNo}`, actionType: 'UPDATE', targetType: 'Member', metadata: { memberId: id } });
   res.json({ data: member });
 }

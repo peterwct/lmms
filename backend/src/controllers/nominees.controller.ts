@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { prisma } from '../utils/prisma';
 import { writeAudit } from '../utils/audit';
 
@@ -38,7 +39,7 @@ export async function updateNominees(req: Request, res: Response): Promise<void>
       prisma.nominee.upsert({
         where: { agreementId_nomineeSeq: { agreementId, nomineeSeq: n.nomineeSeq } },
         update: { ...n },
-        create: { agreementId, ...n },
+        create: { id: randomUUID(), agreementId, ...n },
       })
     )
   );
