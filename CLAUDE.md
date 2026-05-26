@@ -115,7 +115,63 @@ BCRYPT_ROUNDS=12
 - PM2 manages backend (`ecosystem.config.js`), nginx serves frontend + proxies `/api`
 - `COOKIE_SECURE=false` required in `ecosystem.config.js` `env_production` — HTTP-only server; without it every login immediately redirects back to login
 - Always stop PM2 before any Prisma operations on the test server (Windows DLL lock): `pm2 stop lhb-mms-backend`
-- To restart after changes: `pm2 delete lhb-mms-backend && pm2 start ecosystem.config.js --env production`
+- PM2 ecosystem config is at `backend/ecosystem.config.js` (not project root)
+- **PM2 runs compiled JavaScript** (`backend/dist/index.js`) — never TypeScript source. Always deploy via `deploy-test.ps1`, which builds locally first. Copying `backend/src` manually to the server has no effect.
+- To restart after changes manually on the server: `pm2 delete lhb-mms-backend && pm2 start backend\ecosystem.config.js --env production`
+
+### Deploying to test server
+
+Use `deploy-test.ps1` (project root). It uses **PowerShell Remoting (WinRM)** — Windows-native, no SSH required. Prompts for the Administrator password via a Windows credential dialog each run.
+
+**One-time setup on the TEST SERVER** (via RDP, PowerShell as Administrator):
+```powershell
+Enable-PSRemoting -Force
+New-NetFirewallRule -Name "WinRM-HTTP" -DisplayName "WinRM HTTP" -Enabled True -Direction Inbound -Protocol TCP -LocalPort 5985 -Action Allow
+```
+
+**One-time setup on the DEV MACHINE** (PowerShell as Administrator — both lines required):
+```powershell
+winrm quickconfig -quiet                                                  # starts + configures WinRM service
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value "199.1.1.32" -Force  # trusts the test server
+```
+> `winrm quickconfig` must run first — `Set-Item WSMan:\...` fails with a connection error if the WinRM service is not yet running.
+
+**Deploy commands** (regular PowerShell, not elevated):
+```powershell
+# Backend controllers/utils changed only (most common)
+.\deploy-test.ps1 -SkipFrontend
+
+# prisma/schema.prisma changed (relation renames, field additions — no DB migration)
+.\deploy-test.ps1 -SkipFrontend -SchemaChanged
+
+# New Prisma migration added (new files under prisma/migrations/)
+.\deploy-test.ps1 -SkipFrontend -SchemaChanged -MigrateDb
+
+# New npm package added to backend/package.json
+.\deploy-test.ps1 -SkipFrontend -InstallPackages
+
+# Frontend changed (React/Tailwind — builds locally then copies dist/)
+.\deploy-test.ps1
+
+# Preview all steps without executing
+.\deploy-test.ps1 -SkipFrontend -SchemaChanged -DryRun
+```
+
+**What the script does:**
+1. Prompts for Administrator password (Windows credential dialog)
+2. Opens a WinRM session to the test server
+3. Builds backend TypeScript locally (`npm run build` in `backend/`), copies `backend/dist/` to the test server
+4. Copies `prisma/schema.prisma` to the test server
+5. (If `-MigrateDb`) copies `prisma/migrations/` to the test server
+6. (If `-InstallPackages`) copies `backend/package.json` and runs `npm install --omit=dev` on the server
+7. (If not `-SkipFrontend`) builds frontend locally (`npm run build` in `frontend/`), copies `frontend/dist/` to the test server
+8. Remote: `pm2 stop` → `npm install` (if `-InstallPackages`) → `prisma migrate deploy` (if `-MigrateDb`) → `prisma generate` (if `-SchemaChanged`) → `pm2 delete` + `pm2 start backend\ecosystem.config.js --env production`
+
+**PowerShell 5.1 script quirks** (already fixed in `deploy-test.ps1`, keep in mind for future edits):
+- Non-ASCII characters (`—`, `→`, etc.) in string literals cause parse errors — PowerShell 5.1 reads scripts as Windows-1252 by default; UTF-8 multi-byte sequences for those chars include `0x94` which maps to a smart-quote (`"`) and prematurely closes the string. Use only ASCII in string literals; non-ASCII is safe in comments.
+- Do not name a function parameter `$args` — it shadows PowerShell's built-in automatic variable and silently receives `$null` instead of the passed value.
+- Do not use `exit` inside a `Invoke-Command` scriptblock — it closes the remote PS session, making all subsequent `Invoke-Command` calls fail with "session state is not Open".
+- `Set-Location` in a remote scriptblock changes the PS path but not the native process working directory. Pass absolute paths to native executables (e.g. `pm2 start "$p\backend\ecosystem.config.js"`) instead of relying on `Set-Location`.
 
 ### Refreshing test server data
 
@@ -154,6 +210,7 @@ The script: truncates Member CASCADE → migrates members/agreements/nominees �
 - `writeAudit()` called on every mutating operation
 - Prisma client is a singleton at `backend/src/utils/prisma.ts`
 - `accessLevel` field removed — access control is entirely department-permission-based
+- **`express-async-errors` is imported in `index.ts`** — patches Express 4 so unhandled errors in `async` route handlers are forwarded to the global error handler instead of hanging the request. Without it, any uncaught async error causes a 504 timeout (nginx never gets a response). Do not remove this import.
 
 ### Frontend
 - All API calls go through `frontend/src/api/` — never call `fetch`/`axios` directly in components
