@@ -12,7 +12,8 @@ import { Departments } from './pages/admin/Departments';
 import { AuditLog } from './pages/admin/AuditLog';
 import { Members } from './pages/members/Members';
 import { MemberDetail } from './pages/members/MemberDetail';
-import { MemberForm } from './pages/members/MemberForm';
+import { MemberForm }   from './pages/members/MemberForm';
+import { MemberReport } from './pages/members/MemberReport';
 import { Agreements } from './pages/agreements/Agreements';
 import { AgreementDetail } from './pages/agreements/AgreementDetail';
 import { Schedules } from './pages/amc/Schedules';
@@ -41,6 +42,7 @@ export default function App() {
               <Route path="members"             element={<Members />} />
               <Route path="members/:id"         element={<MemberDetail />} />
               <Route path="members/:id/edit"    element={<MemberForm />} />
+              <Route path="members/reports"     element={<MemberReport />} />
               <Route path="agreements"          element={<Agreements />} />
               <Route path="agreements/:id"      element={<AgreementDetail />} />
               <Route path="amc/schedules"       element={<Schedules />} />

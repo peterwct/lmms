@@ -3,7 +3,7 @@ import { clsx } from 'clsx';
 import {
   Users, Building2, ClipboardList, UserSearch,
   FileText, CalendarClock, Receipt, BarChart3,
-  Hotel, Award, LogOut,
+  Hotel, Award, LogOut, FileBarChart2,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -60,8 +60,9 @@ export function Sidebar() {
   }
 
   const memberItems: NavItem[] = [];
-  if (canView('MEMBERS'))    memberItems.push({ to: '/members',    label: 'Members',    icon: <UserSearch className="h-4 w-4" /> });
-  if (canView('AGREEMENTS')) memberItems.push({ to: '/agreements', label: 'Agreements', icon: <FileText className="h-4 w-4" /> });
+  if (canView('MEMBERS'))    memberItems.push({ to: '/members',         label: 'Members',        icon: <UserSearch className="h-4 w-4" /> });
+  if (canView('AGREEMENTS')) memberItems.push({ to: '/agreements',      label: 'Agreements',     icon: <FileText className="h-4 w-4" /> });
+  if (canView('MEMBERS'))    memberItems.push({ to: '/members/reports', label: 'Member Reports', icon: <FileBarChart2 className="h-4 w-4" /> });
 
   const amcItems: NavItem[] = [];
   if (canView('AMC_BILLING')) {
