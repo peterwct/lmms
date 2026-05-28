@@ -18,18 +18,26 @@ function fmtDate(d: Date | null | undefined): string {
   return `${day}/${month}/${d.getFullYear()}`;
 }
 
-async function fetchMembers(coCode: string | undefined, status: string | undefined) {
+async function fetchMembers(
+  coCode: string | undefined,
+  acctClassify: string | undefined,
+) {
+  // Build the agreement filter used in both the member WHERE clause and the agreements include
+  const agmtFilter: Record<string, unknown> = {};
+  if (coCode)       agmtFilter.coCode       = coCode;
+  if (acctClassify) agmtFilter.acctClassify = acctClassify;
+  const hasAgmtFilter = Object.keys(agmtFilter).length > 0;
+
   return prisma.member.findMany({
     where: {
-      ...(status ? { status: status as 'ACTIVE' | 'SUSPENDED' | 'CLOSED' | 'DECEASED' | 'TRANSFERRED' } : {}),
-      ...(coCode ? { agreements: { some: { coCode } } } : {}),
+      ...(hasAgmtFilter ? { agreements: { some: agmtFilter } } : {}),
     },
     select: {
       membershipNo: true, fullName: true, memberType: true, status: true,
       icNew: true, icOld: true, email: true, telMobile: true, telHome: true,
       mailAdd1: true, mailAdd2: true, mailAdd3: true, mailCityState: true, mailPostcode: true,
       agreements: {
-        where: coCode ? { coCode } : {},
+        where: hasAgmtFilter ? agmtFilter : {},
         select: {
           agreementNo: true, coCode: true,
           agreementDate: true, acctClassify: true,
@@ -47,17 +55,16 @@ type FetchedMember = Awaited<ReturnType<typeof fetchMembers>>[0];
 
 const PDF_COLS = [
   { h: '#',               key: 'no',          w: 20  },
-  { h: 'Membership No.',  key: 'memNo',        w: 70  },
-  { h: 'Full Name',       key: 'fullName',     w: 90  },
-  { h: 'IC New',          key: 'icNew',        w: 72  },
-  { h: 'IC Old',          key: 'icOld',        w: 65  },
-  { h: 'Status',          key: 'status',       w: 52  },
-  { h: 'Tel Mobile',      key: 'telMobile',    w: 62  },
-  { h: 'Email',           key: 'email',        w: 95  },
-  { h: 'Mailing Address', key: 'mailAddr',     w: 125 },
-  { h: 'Co Code',         key: 'coCode',       w: 30  },
-  { h: 'Agreement No.',   key: 'agmtNos',      w: 65  },
-  { h: 'Agmt Status',     key: 'agmtStatus',   w: 54  },
+  { h: 'Membership No.',  key: 'memNo',        w: 75  },
+  { h: 'Full Name',       key: 'fullName',     w: 100 },
+  { h: 'IC New',          key: 'icNew',        w: 75  },
+  { h: 'IC Old',          key: 'icOld',        w: 68  },
+  { h: 'Tel Mobile',      key: 'telMobile',    w: 65  },
+  { h: 'Email',           key: 'email',        w: 110 },
+  { h: 'Mailing Address', key: 'mailAddr',     w: 135 },
+  { h: 'Co Code',         key: 'coCode',       w: 32  },
+  { h: 'Agreement No.',   key: 'agmtNos',      w: 68  },
+  { h: 'Agmt Status',     key: 'agmtStatus',   w: 52  },
 ] as const;
 
 type PdfRowKey = typeof PDF_COLS[number]['key'];
@@ -114,7 +121,6 @@ function buildPdfRow(m: FetchedMember, idx: number): PdfRow {
     fullName:   m.fullName ?? '',
     icNew:      m.icNew ?? '',
     icOld:      m.icOld ?? '',
-    status:     m.status ?? '',
     telMobile:  m.telMobile ?? '',
     email:      m.email ?? '',
     mailAddr:   [m.mailAdd1, m.mailAdd2, m.mailAdd3, m.mailCityState, m.mailPostcode]
@@ -127,11 +133,12 @@ function buildPdfRow(m: FetchedMember, idx: number): PdfRow {
 
 function generatePdf(
   members: FetchedMember[],
-  filters: { coCode?: string; status?: string },
+  filters: { coCode?: string; acctClassify?: string },
   res: Response,
 ): void {
   const dateStr  = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const coLabel  = filters.coCode ? (CO_LABELS[filters.coCode] ?? filters.coCode) : 'All';
+  const agmtStatusLabel = filters.acctClassify ? (AGMT_STATUS_LABELS[filters.acctClassify] ?? filters.acctClassify) : 'All';
   const nowStr   = new Date().toLocaleString('en-MY', { hour12: false });
 
   res.setHeader('Content-Type', 'application/pdf');
@@ -139,7 +146,10 @@ function generatePdf(
 
   const doc = new PDFDocument({
     size: 'A4', layout: 'landscape',
-    margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN },
+    // bottom: 0 so pdfkit's maxY = pageH; footerY (pageH-14) would otherwise exceed
+    // maxY (pageH-20) and trigger automatic page breaks in the footer text calls.
+    // The bottomLimit guard below controls where data rows actually stop.
+    margins: { top: MARGIN, bottom: 0, left: MARGIN, right: MARGIN },
     autoFirstPage: true,
     info: { Title: 'Member Detail Listing', Author: 'LHB MMS' },
   });
@@ -151,14 +161,11 @@ function generatePdf(
   const bottomLimit = pageH - 24;
 
   const addFooter = () => {
-    const info = [
-      `Co Code: ${coLabel}`,
-      `Status: ${filters.status ?? 'All'}`,
-      `Generated: ${nowStr}`,
-    ].join('   |   ');
+    const footerY = pageH - 14;
+    const info = `Co Code: ${coLabel}   |   Agmt Status: ${agmtStatusLabel}   |   Generated: ${nowStr}`;
     doc.fontSize(6).fillColor('#888888').font('Helvetica');
-    doc.text(info,   MARGIN, pageH - 14, { width: pageW - MARGIN * 2 - 50, lineBreak: false, align: 'left' });
-    doc.text(`Page ${pageNum}`, MARGIN, pageH - 14, { width: pageW - MARGIN * 2, lineBreak: false, align: 'right' });
+    doc.text(info, MARGIN, footerY, { width: pageW - MARGIN * 2 - 50, lineBreak: false, align: 'left' });
+    doc.text(`Page ${pageNum}`, MARGIN, footerY, { width: pageW - MARGIN * 2, lineBreak: false, align: 'right' });
   };
 
   // Title
@@ -166,7 +173,7 @@ function generatePdf(
   doc.text('Member Detail Listing', MARGIN, MARGIN, { width: TOTAL_W, lineBreak: false });
   doc.fontSize(8).font('Helvetica').fillColor('#555555');
   doc.text(
-    `Company Code: ${coLabel}   |   Status: ${filters.status ?? 'All'}   |   Total: ${members.length} records`,
+    `Company Code: ${coLabel}   |   Agmt Status: ${agmtStatusLabel}   |   Total: ${members.length} records`,
     MARGIN, MARGIN + 18, { width: TOTAL_W, lineBreak: false },
   );
 
@@ -201,7 +208,6 @@ const XL_COLS = [
   { header: 'Member Type',          width: 12 },
   { header: 'IC New',               width: 16 },
   { header: 'IC Old',               width: 16 },
-  { header: 'Status',               width: 14 },
   { header: 'Tel Mobile',           width: 16 },
   { header: 'Tel Home',             width: 16 },
   { header: 'Email',                width: 32 },
@@ -216,15 +222,16 @@ const XL_COLS = [
   { header: 'Agreement Status',     width: 18 },
 ] as const;
 
-const XL_LAST_COL = String.fromCharCode(64 + XL_COLS.length); // 'S' for 19 cols
+const XL_LAST_COL = String.fromCharCode(64 + XL_COLS.length); // 'R' for 18 cols
 
 async function generateExcel(
   members: FetchedMember[],
-  filters: { coCode?: string; status?: string },
+  filters: { coCode?: string; acctClassify?: string },
   res: Response,
 ): Promise<void> {
   const dateStr  = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const coLabel  = filters.coCode ? (CO_LABELS[filters.coCode] ?? filters.coCode) : 'All';
+  const agmtStatusLabel = filters.acctClassify ? (AGMT_STATUS_LABELS[filters.acctClassify] ?? filters.acctClassify) : 'All';
   const nowStr   = new Date().toLocaleString('en-MY', { hour12: false });
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -245,7 +252,7 @@ async function generateExcel(
   r1.getCell(1).alignment = { vertical: 'middle' };
 
   // Row 2: subtitle
-  const r2 = ws.addRow([`Company Code: ${coLabel}   |   Status: ${filters.status ?? 'All'}   |   Generated: ${nowStr}   |   Total: ${members.length} records`]);
+  const r2 = ws.addRow([`Company Code: ${coLabel}   |   Agmt Status: ${agmtStatusLabel}   |   Generated: ${nowStr}   |   Total: ${members.length} records`]);
   ws.mergeCells(`A${r2.number}:${XL_LAST_COL}${r2.number}`);
   r2.height = 16;
   r2.getCell(1).font      = { size: 9, color: { argb: 'FF555555' } };
@@ -277,7 +284,6 @@ async function generateExcel(
       m.memberType === 'INDIVIDUAL' ? 'Individual' : 'Corporate',
       m.icNew        ?? '',
       m.icOld        ?? '',
-      m.status       ?? '',
       m.telMobile    ?? '',
       m.telHome      ?? '',
       m.email        ?? '',
@@ -301,17 +307,74 @@ async function generateExcel(
   await wb.xlsx.write(res);
 }
 
+// ─── Preview handler ───────────────────────────────────────────────────────────
+
+const PREVIEW_LIMIT = 20;
+
+export async function previewMembersReport(req: Request, res: Response): Promise<void> {
+  const { coCode, acctClassify } = req.query as Record<string, string>;
+
+  const agmtFilter: Record<string, unknown> = {};
+  if (coCode)       agmtFilter.coCode       = coCode;
+  if (acctClassify) agmtFilter.acctClassify = acctClassify;
+  const hasAgmtFilter = Object.keys(agmtFilter).length > 0;
+
+  const where = {
+    ...(hasAgmtFilter ? { agreements: { some: agmtFilter } } : {}),
+  };
+
+  const [total, members] = await Promise.all([
+    prisma.member.count({ where }),
+    prisma.member.findMany({
+      where,
+      select: {
+        membershipNo: true, fullName: true, memberType: true, status: true,
+        icNew: true, icOld: true, email: true, telMobile: true,
+        mailAdd1: true, mailAdd2: true, mailAdd3: true, mailCityState: true, mailPostcode: true,
+        agreements: {
+          where: hasAgmtFilter ? agmtFilter : {},
+          select: { agreementNo: true, coCode: true, agreementDate: true, acctClassify: true },
+          orderBy: { agreementDate: 'asc' },
+        },
+      },
+      orderBy: { fullName: 'asc' },
+      take: PREVIEW_LIMIT,
+    }),
+  ]);
+
+  const rows = members.map((m, i) => {
+    const agmts = m.agreements;
+    return {
+      no:           i + 1,
+      membershipNo: m.membershipNo ?? '',
+      fullName:     m.fullName ?? '',
+      memberType:   m.memberType === 'INDIVIDUAL' ? 'Individual' : 'Corporate',
+      icNew:        m.icNew ?? '',
+      icOld:        m.icOld ?? '',
+      telMobile:    m.telMobile ?? '',
+      email:        m.email ?? '',
+      mailAddr:     [m.mailAdd1, m.mailAdd2, m.mailAdd3, m.mailCityState, m.mailPostcode]
+                      .filter(Boolean).join(', '),
+      coCode:       [...new Set(agmts.map(a => a.coCode))].join(', '),
+      agmtNos:      agmts.map(a => a.agreementNo).join(', '),
+      agmtStatus:   [...new Set(agmts.map(a => AGMT_STATUS_LABELS[a.acctClassify] ?? a.acctClassify))].join(', '),
+    };
+  });
+
+  res.json({ data: rows, meta: { total, shown: rows.length } });
+}
+
 // ─── Main handler ──────────────────────────────────────────────────────────────
 
 export async function generateMembersReport(req: Request, res: Response): Promise<void> {
-  const { coCode, status, format } = req.query as Record<string, string>;
+  const { coCode, acctClassify, format } = req.query as Record<string, string>;
 
   if (format !== 'pdf' && format !== 'excel') {
     res.status(400).json({ error: 'format must be pdf or excel' });
     return;
   }
 
-  const members = await fetchMembers(coCode || undefined, status || undefined);
+  const members = await fetchMembers(coCode || undefined, acctClassify || undefined);
 
   await writeAudit({
     userId: req.user.id,
@@ -319,16 +382,21 @@ export async function generateMembersReport(req: Request, res: Response): Promis
     actionType: 'CREATE',
     targetType: 'Member',
     metadata: {
-      coCode:  coCode  || 'All',
-      status:  status  || 'All',
+      coCode:       coCode       || 'All',
+      acctClassify: acctClassify || 'All',
       format,
-      count:   members.length,
+      count:        members.length,
     },
   });
 
+  const filters = {
+    coCode:       coCode       || undefined,
+    acctClassify: acctClassify || undefined,
+  };
+
   if (format === 'pdf') {
-    generatePdf(members, { coCode: coCode || undefined, status: status || undefined }, res);
+    generatePdf(members, filters, res);
   } else {
-    await generateExcel(members, { coCode: coCode || undefined, status: status || undefined }, res);
+    await generateExcel(members, filters, res);
   }
 }
