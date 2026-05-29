@@ -16,6 +16,7 @@ import { MemberForm }   from './pages/members/MemberForm';
 import { MemberReport } from './pages/members/MemberReport';
 import { Agreements } from './pages/agreements/Agreements';
 import { AgreementDetail } from './pages/agreements/AgreementDetail';
+import { AgreementReport } from './pages/agreements/AgreementReport';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -44,6 +45,7 @@ export default function App() {
               <Route path="members/:id/edit"    element={<MemberForm />} />
               <Route path="members/reports"     element={<MemberReport />} />
               <Route path="agreements"          element={<Agreements />} />
+              <Route path="agreements/reports"  element={<AgreementReport />} />
               <Route path="agreements/:id"      element={<AgreementDetail />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
