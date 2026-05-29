@@ -46,7 +46,7 @@ function NavGroup({ title, items }: { title: string; items: NavItem[] }) {
 }
 
 export function Sidebar() {
-  const { user, logout, canView } = useAuth();
+  const { user, logout, canView, hasReport } = useAuth();
 
   const adminItems: NavItem[] = [];
   if (canView('ADMIN')) {
@@ -60,10 +60,13 @@ export function Sidebar() {
   }
 
   const memberItems: NavItem[] = [];
-  if (canView('MEMBERS'))    memberItems.push({ to: '/members',              label: 'Members',             icon: <UserSearch className="h-4 w-4" /> });
-  if (canView('AGREEMENTS')) memberItems.push({ to: '/agreements',           label: 'Agreements',          icon: <FileText className="h-4 w-4" /> });
-  if (canView('MEMBERS'))    memberItems.push({ to: '/members/reports',      label: 'Member Reports',      icon: <FileBarChart2 className="h-4 w-4" /> });
-  if (canView('AGREEMENTS')) memberItems.push({ to: '/agreements/reports',   label: 'Agreement Reports',   icon: <FileBarChart2 className="h-4 w-4" /> });
+  if (canView('MEMBERS'))    memberItems.push({ to: '/members',    label: 'Members',    icon: <UserSearch className="h-4 w-4" /> });
+  if (canView('AGREEMENTS')) memberItems.push({ to: '/agreements', label: 'Agreements', icon: <FileText className="h-4 w-4" /> });
+
+  const reportItems: NavItem[] = [];
+  if (hasReport('MEMBER_REPORT') || hasReport('AGREEMENT_REPORT')) {
+    reportItems.push({ to: '/reports', label: 'Reports', icon: <FileBarChart2 className="h-4 w-4" /> });
+  }
 
   const amcItems: NavItem[] = [];
   if (canView('AMC_BILLING')) {
@@ -92,6 +95,7 @@ export function Sidebar() {
         {adminItems.length > 0    && <NavGroup title="Admin"        items={adminItems} />}
         {memberItems.length > 0   && <NavGroup title="Members"      items={memberItems} />}
         {amcItems.length > 0      && <NavGroup title="AMC Billing"  items={amcItems} />}
+        {reportItems.length > 0   && <NavGroup title="Reports"      items={reportItems} />}
         {comingSoon.length > 0    && <NavGroup title="Coming Soon"  items={comingSoon} />}
       </nav>
 

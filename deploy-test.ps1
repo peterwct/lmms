@@ -187,7 +187,7 @@ Remote "pm2 stop lhb-mms-backend" {
 
 if ($InstallPackages) {
     Step "5b. Running npm install on backend ..."
-    Remote "npm install --omit=dev" { param($p); Set-Location "$p\backend"; npm install --omit=dev } @($RemotePath)
+    Remote "npm install --omit=dev" { param($p); Set-Location "$p\backend"; npm install --omit=dev 2>$null } @($RemotePath)
 }
 
 # ── 6. prisma migrate / generate ─────────────────────────────────────────────
@@ -195,6 +195,11 @@ if ($InstallPackages) {
 if ($MigrateDb) {
     Step "6a. Running prisma migrate deploy ..."
     Remote "prisma migrate deploy" { param($p); Set-Location $p; npx prisma migrate deploy } @($RemotePath)
+
+    Step "6a2. Granting lhb_app permissions on new tables ..."
+    Remote "psql GRANT" {
+        & "E:\PostgreSQL18\bin\psql.exe" -U postgres -d lhb_mms -c "GRANT USAGE ON SCHEMA public TO lhb_app; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO lhb_app; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lhb_app;"
+    }
 }
 
 if ($SchemaChanged -or $MigrateDb) {

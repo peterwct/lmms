@@ -100,13 +100,15 @@ BCRYPT_ROUNDS=12
 - **Prisma** schema at `prisma/schema.prisma`
 - After every `prisma migrate dev`, restart the backend — Windows locks the Prisma query engine DLL while the server is running, causing an EPERM error on regeneration. The migration still applies; only the DLL replacement fails.
 - **Table names are PascalCase** — always use double quotes in raw SQL: `SELECT * FROM "Member"`, `SELECT * FROM "Agreement"`, etc.
-- After `prisma migrate reset`, the `lhb_app` role loses all table permissions (tables are dropped and recreated by postgres). Always re-run the GRANT block afterwards:
+- **`lhb_app` permissions must be re-granted after any migration that creates new tables** — PostgreSQL does not automatically grant permissions on newly created tables to existing roles. Two scenarios require this:
+  - After `prisma migrate reset` (all tables are dropped and recreated)
+  - After `prisma migrate deploy` when the migration adds a new table (e.g. new model in schema)
   ```sql
   GRANT USAGE ON SCHEMA public TO lhb_app;
   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO lhb_app;
   GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lhb_app;
   ```
-  `refresh-test-db.ps1` includes this step automatically.
+  `refresh-test-db.ps1` and `deploy-test.ps1 -MigrateDb` both run this automatically. If you ever apply a migration manually, run the block above afterwards.
 
 ## Test server
 
@@ -117,7 +119,7 @@ BCRYPT_ROUNDS=12
 - Always stop PM2 before any Prisma operations on the test server (Windows DLL lock): `pm2 stop lhb-mms-backend`
 - PM2 ecosystem config is at `backend/ecosystem.config.js` (not project root)
 - **PM2 runs compiled JavaScript** (`backend/dist/index.js`) — never TypeScript source. Always deploy via `deploy-test.ps1`, which builds locally first. Copying `backend/src` manually to the server has no effect.
-- To restart after changes manually on the server: `pm2 delete lhb-mms-backend && pm2 start backend\ecosystem.config.js --env production`
+- To restart after changes manually on the server: `pm2 delete lhb-mms-backend; pm2 start backend\ecosystem.config.js --env production`
 
 ### Deploying to test server
 
@@ -199,6 +201,7 @@ The script: truncates Member CASCADE → migrates members/agreements/nominees �
 - `mustChangePwd: true` forces password change on first login
 - `req.user` is augmented via `backend/src/types/express.d.ts`
 - Login response includes full department permissions so sidebar renders correctly on first login
+- Login response also includes `reportAccess: ReportKey[]` — list of report keys the user has been explicitly granted
 
 ## Key conventions
 
@@ -206,6 +209,7 @@ The script: truncates Member CASCADE → migrates members/agreements/nominees �
 - Controllers in `backend/src/controllers/` — one file per resource
 - Routes in `backend/src/routes/` — thin, just auth middleware + controller wiring
 - All routes require `authenticate` + `requirePasswordChanged` + `requirePermission(module, action)`
+- **Report routes** use `requireReportAccess(reportKey)` instead of `requirePermission` — see `backend/src/middleware/permissions.ts`
 - Zod used for all request body validation; all optional string fields use `.nullish()` to accept null (field clearing)
 - `writeAudit()` called on every mutating operation
 - Prisma client is a singleton at `backend/src/utils/prisma.ts`
@@ -287,6 +291,10 @@ Unique: `[coCode, priceCode, effectiveDate]`.
 Fields: `coCode` (always "02"), `effectiveDate`, `minPoints`, `maxPoints`, `amcRatePerPoint`, `sinkingFundPct`, `gstPct`, `unitPrice`, `rciPoints`, `isActive`.
 Unique: `[coCode, minPoints, maxPoints, effectiveDate]`.
 
+### UserReportAccess
+Per-user report grants. Fields: `userId` (FK → User), `reportKey` (ReportKey enum), `grantedById` (FK → User), `grantedAt`, `updatedAt`.
+Unique on `[userId, reportKey]`. IT users bypass this table entirely — checked via `requireReportAccess` middleware.
+
 ### State
 39 records from `state.txt`. Fields: `code` (PK, 2-digit), `name`. Served via `GET /api/states`.
 
@@ -334,6 +342,13 @@ POST /api/amc/rates/cp                      Add CP tier
 PUT  /api/amc/rates/cp/:id                  Edit CP tier
 PATCH /api/amc/rates/cp/:id/toggle          Activate/deactivate CP tier
 DELETE /api/amc/rates/cp/:id               Delete CP tier
+GET  /api/reports/members/preview           Member report preview (requireReportAccess)
+GET  /api/reports/members                   Generate member report PDF/Excel (requireReportAccess)
+GET  /api/reports/agreements/preview        Agreement report preview (requireReportAccess)
+GET  /api/reports/agreements                Generate agreement report PDF/Excel (requireReportAccess)
+GET  /api/reports/access/:userId            Get user's report access list (IT only)
+POST /api/reports/access/:userId/:reportKey Grant report access (IT only)
+DELETE /api/reports/access/:userId/:reportKey Revoke report access (IT only)
 ```
 
 ## Modules
@@ -349,6 +364,7 @@ DELETE /api/amc/rates/cp/:id               Delete CP tier
 | AMC Billing — Invoices | ✅ Done | Invoices, InvoiceDetail |
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
+| Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports` |
 
 ## Navigation / permissions
 
@@ -356,6 +372,25 @@ DELETE /api/amc/rates/cp/:id               Delete CP tier
 - IT department (`isLocked=true`) bypasses all permission checks
 - Access control is entirely department-based (`DeptModulePermission` table)
 - Login response includes full department permissions (sidebar renders correctly immediately on login)
+
+### Report access (per-user)
+
+Reports use a separate per-user access model — independent of department permissions.
+
+- **`UserReportAccess`** table: `userId`, `reportKey` (enum), `grantedById`, `grantedAt`. Unique on `[userId, reportKey]`.
+- **`ReportKey` enum**: `MEMBER_REPORT`, `AGREEMENT_REPORT` — add new values here when adding reports.
+- IT department bypasses all report access checks (same as module permissions).
+- IT grants/revokes access via the "Report Access" card on the User Detail page (`/admin/users/:id`).
+- Sidebar shows a single **Reports** link only when `hasReport()` returns true for at least one key. Clicking it goes to `/reports`, which renders a card grid of accessible reports.
+- Clone user copies report access records to the new user automatically.
+- `hasReport(key)` helper in `AuthContext` — `isIT || user.reportAccess.includes(key)`.
+
+**Adding a new report — checklist:**
+1. Add the new key to `ReportKey` enum in `prisma/schema.prisma` → `npx prisma migrate dev`
+2. Add to `ALL_REPORT_KEYS` + `REPORT_LABELS` in `backend/src/controllers/reports/access.controller.ts`
+3. Add route in `backend/src/routes/reports.ts` with `requireReportAccess('NEW_KEY')`
+4. Add a `ReportCard` entry to `REPORT_CARDS` in `frontend/src/pages/reports/Reports.tsx`
+5. Add `hasReport('NEW_KEY')` to the OR condition in the `reportItems` block in `frontend/src/components/Sidebar.tsx`
 
 ## Agreement Detail card order
 1. Agreement Details (net purchase price, loan type/amount, termination reason)

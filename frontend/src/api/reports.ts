@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { ReportKey, UserReportAccessEntry } from '../types';
 
 export interface MemberPreviewRow {
   no: number;
@@ -70,4 +71,13 @@ export const reportsApi = {
     api.get<AgreementDetailPreviewResponse<AgreementCorpPreviewRow>>('/reports/agreements/preview', {
       params: { ...params, memberType: 'CORPORATE' },
     }),
+
+  getReportAccess: (userId: number) =>
+    api.get<{ data: UserReportAccessEntry[] }>(`/reports/access/${userId}`),
+
+  grantReportAccess: (userId: number, reportKey: ReportKey) =>
+    api.post(`/reports/access/${userId}/${reportKey}`),
+
+  revokeReportAccess: (userId: number, reportKey: ReportKey) =>
+    api.delete(`/reports/access/${userId}/${reportKey}`),
 };

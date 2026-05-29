@@ -142,7 +142,10 @@ export async function cloneUser(req: Request, res: Response): Promise<void> {
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() }); return; }
 
-  const source = await prisma.user.findUnique({ where: { id: sourceId }, select: { departmentId: true, username: true } });
+  const source = await prisma.user.findUnique({
+    where: { id: sourceId },
+    select: { departmentId: true, username: true, reportAccess: { select: { reportKey: true } } },
+  });
   if (!source) { res.status(404).json({ error: 'Source user not found' }); return; }
 
   const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -161,6 +164,19 @@ export async function cloneUser(req: Request, res: Response): Promise<void> {
       },
       select: USER_SELECT,
     });
+
+    if (source.reportAccess.length > 0) {
+      await prisma.userReportAccess.createMany({
+        data: source.reportAccess.map(r => ({
+          userId: user.id,
+          reportKey: r.reportKey,
+          grantedById: req.user.id,
+          grantedAt: new Date(),
+          updatedAt: new Date(),
+        })),
+      });
+    }
+
     await writeAudit({ userId: req.user.id, action: `Cloned user ${source.username} → ${user.username}`, actionType: 'CREATE', targetType: 'User', targetId: user.id });
     res.status(201).json({ data: user, tempPassword });
   } catch (e: unknown) {

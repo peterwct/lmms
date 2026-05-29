@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { authApi } from '../api/auth';
-import type { User, AppModule, Permission } from '../types';
+import type { User, AppModule, Permission, ReportKey } from '../types';
 
 interface AuthContextType {
   user: User | null;
@@ -12,6 +12,7 @@ interface AuthContextType {
   canCreate: (module: AppModule) => boolean;
   canEdit: (module: AppModule) => boolean;
   canDelete: (module: AppModule) => boolean;
+  hasReport: (key: ReportKey) => boolean;
   isIT: boolean;
 }
 
@@ -55,9 +56,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const canCreate = (m: AppModule) => isIT || (getPerm(user, m)?.canCreate ?? false);
   const canEdit   = (m: AppModule) => isIT || (getPerm(user, m)?.canEdit   ?? false);
   const canDelete = (m: AppModule) => isIT || (getPerm(user, m)?.canDelete ?? false);
+  const hasReport = (key: ReportKey) => isIT || (user?.reportAccess?.includes(key) ?? false);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refresh, canView, canCreate, canEdit, canDelete, isIT }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refresh, canView, canCreate, canEdit, canDelete, hasReport, isIT }}>
       {children}
     </AuthContext.Provider>
   );

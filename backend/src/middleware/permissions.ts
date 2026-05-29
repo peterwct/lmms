@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppModule } from '@prisma/client';
+import { AppModule, ReportKey } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 
 type PermAction = 'view' | 'create' | 'edit' | 'delete';
@@ -18,6 +18,19 @@ export function requirePermission(module: AppModule, action: PermAction) {
       : false;
 
     if (!allowed) { res.status(403).json({ error: 'Access denied' }); return; }
+    next();
+  };
+}
+
+export function requireReportAccess(reportKey: ReportKey) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    if (req.user.department.isLocked) { next(); return; }
+
+    const access = await prisma.userReportAccess.findUnique({
+      where: { userId_reportKey: { userId: req.user.id, reportKey } },
+    });
+
+    if (!access) { res.status(403).json({ error: 'Report access denied' }); return; }
     next();
   };
 }

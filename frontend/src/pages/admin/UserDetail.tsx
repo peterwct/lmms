@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '../../api/users';
 import { departmentsApi } from '../../api/departments';
+import { reportsApi } from '../../api/reports';
 import { apiError } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -12,7 +13,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { PageSpinner } from '../../components/ui/Spinner';
-import type { User } from '../../types';
+import type { User, UserReportAccessEntry } from '../../types';
 import { format } from 'date-fns';
 
 export function UserDetail() {
@@ -53,6 +54,22 @@ export function UserDetail() {
     mutationFn: () => usersApi.clone(Number(id), cloneForm),
     onSuccess: (res) => { setCloneModal(false); navigate(`/admin/users/${res.data.data.id}`); },
     onError: (err) => setError(apiError(err)),
+  });
+
+  const { data: reportAccess } = useQuery<UserReportAccessEntry[]>({
+    queryKey: ['reportAccess', id],
+    queryFn: () => reportsApi.getReportAccess(Number(id)).then(r => r.data.data),
+    enabled: isIT && !!id,
+  });
+
+  const grantMut = useMutation({
+    mutationFn: (reportKey: string) => reportsApi.grantReportAccess(Number(id), reportKey as import('../../types').ReportKey),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reportAccess', id] }),
+  });
+
+  const revokeMut = useMutation({
+    mutationFn: (reportKey: string) => reportsApi.revokeReportAccess(Number(id), reportKey as import('../../types').ReportKey),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reportAccess', id] }),
   });
 
   if (isLoading) return <PageSpinner />;
@@ -108,6 +125,60 @@ export function UserDetail() {
         {isIT && <Button variant="secondary" onClick={() => setCloneModal(true)}>Clone user</Button>}
         <Button variant="secondary" onClick={() => navigate('/admin/users')}>Back to list</Button>
       </div>
+
+      {isIT && (
+        <Card>
+          <CardHeader>
+            <h3 className="font-semibold text-gray-800">Report Access</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Grant or revoke access to individual reports for this user.</p>
+          </CardHeader>
+          <CardBody>
+            {data.department.isLocked ? (
+              <p className="text-sm text-gray-500">IT department has access to all reports by default.</p>
+            ) : reportAccess ? (
+              <div className="divide-y divide-gray-100">
+                {reportAccess.map(entry => (
+                  <div key={entry.reportKey} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{entry.label}</p>
+                      {entry.granted && entry.grantedBy && (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Granted by {entry.grantedBy.fullName}
+                          {entry.grantedAt ? ` on ${format(new Date(entry.grantedAt), 'dd/MM/yyyy')}` : ''}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge color={entry.granted ? 'green' : 'gray'}>{entry.granted ? 'Granted' : 'No access'}</Badge>
+                      {entry.granted ? (
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => revokeMut.mutate(entry.reportKey)}
+                          loading={revokeMut.isPending && revokeMut.variables === entry.reportKey}
+                        >
+                          Revoke
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => grantMut.mutate(entry.reportKey)}
+                          loading={grantMut.isPending && grantMut.variables === entry.reportKey}
+                        >
+                          Grant
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">Loading...</p>
+            )}
+          </CardBody>
+        </Card>
+      )}
 
       <Modal open={!!tempPwd} title="Password Reset" onClose={() => setTempPwd('')}>
         <div className="rounded-md bg-gray-100 px-4 py-3 font-mono text-lg text-center tracking-widest select-all">{tempPwd}</div>

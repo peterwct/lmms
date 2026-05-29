@@ -1,4 +1,5 @@
 export type AppModule = 'ADMIN' | 'MEMBERS' | 'AGREEMENTS' | 'AMC_BILLING' | 'RESORT_BOOKING' | 'ENTITLEMENTS';
+export type ReportKey = 'MEMBER_REPORT' | 'AGREEMENT_REPORT';
 export type UserStatus = 'ACTIVE' | 'SUSPENDED';
 export type MemberStatus = 'ACTIVE' | 'SUSPENDED' | 'CLOSED' | 'DECEASED' | 'TRANSFERRED';
 export type MemberType = 'INDIVIDUAL' | 'CORPORATE';
@@ -27,6 +28,15 @@ export interface Department {
   permissions?: Permission[];
 }
 
+export interface UserReportAccessEntry {
+  reportKey: ReportKey;
+  label: string;
+  granted: boolean;
+  grantedAt: string | null;
+  grantedBy: { id: number; fullName: string } | null;
+  itOverride: boolean;
+}
+
 export interface User {
   id: number;
   fullName: string;
@@ -41,6 +51,7 @@ export interface User {
   createdAt: string;
   updatedAt: string;
   department: { id: number; name: string; isLocked: boolean; permissions?: Permission[] };
+  reportAccess?: ReportKey[];
 }
 
 export interface Member {

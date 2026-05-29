@@ -313,22 +313,37 @@ model State {
 }
 
 model User {
-  id             Int        @id @default(autoincrement())
+  id             Int                @id @default(autoincrement())
   fullName       String
-  username       String     @unique
-  email          String     @unique
+  username       String             @unique
+  email          String             @unique
   phone          String?
   passwordHash   String
-  mustChangePwd  Boolean    @default(true)
-  status         UserStatus @default(ACTIVE)
+  mustChangePwd  Boolean            @default(true)
+  status         UserStatus         @default(ACTIVE)
   departmentId   Int
   lastLoginAt    DateTime?
-  failedAttempts Int        @default(0)
+  failedAttempts Int                @default(0)
   lockedAt       DateTime?
-  createdAt      DateTime   @default(now())
+  createdAt      DateTime           @default(now())
   updatedAt      DateTime
   auditLogs      AuditLog[]
-  department     Department @relation(fields: [departmentId], references: [id])
+  department     Department         @relation(fields: [departmentId], references: [id])
+  reportAccess   UserReportAccess[] @relation("userReports")
+  grantedReports UserReportAccess[] @relation("grantedReports")
+}
+
+model UserReportAccess {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  reportKey   ReportKey
+  grantedById Int
+  grantedAt   DateTime  @default(now())
+  updatedAt   DateTime
+  user        User      @relation("userReports", fields: [userId], references: [id])
+  grantedBy   User      @relation("grantedReports", fields: [grantedById], references: [id])
+
+  @@unique([userId, reportKey])
 }
 
 enum AgreementStatus {
@@ -360,6 +375,11 @@ enum BillType {
   A
   H
   F
+}
+
+enum ReportKey {
+  MEMBER_REPORT
+  AGREEMENT_REPORT
 }
 
 enum BillingStatus {

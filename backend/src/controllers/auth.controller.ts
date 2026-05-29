@@ -51,6 +51,7 @@ export async function login(req: Request, res: Response): Promise<void> {
           permissions: { select: { module: true, canView: true, canCreate: true, canEdit: true, canDelete: true } },
         },
       },
+      reportAccess: { select: { reportKey: true } },
     },
   });
 
@@ -85,6 +86,7 @@ export async function login(req: Request, res: Response): Promise<void> {
       id: user.id, fullName: user.fullName, username: user.username,
       email: user.email,
       department: user.department, mustChangePwd: user.mustChangePwd,
+      reportAccess: user.reportAccess.map(r => r.reportKey),
     },
   });
 }
@@ -116,7 +118,7 @@ export async function changePassword(req: Request, res: Response): Promise<void>
 }
 
 export async function me(req: Request, res: Response): Promise<void> {
-  const user = await prisma.user.findUnique({
+  const raw = await prisma.user.findUnique({
     where: { id: req.user.id },
     select: {
       id: true, fullName: true, username: true, email: true, phone: true,
@@ -127,7 +129,10 @@ export async function me(req: Request, res: Response): Promise<void> {
           permissions: { select: { module: true, canView: true, canCreate: true, canEdit: true, canDelete: true } },
         },
       },
+      reportAccess: { select: { reportKey: true } },
     },
   });
+  if (!raw) { res.status(404).json({ error: 'User not found' }); return; }
+  const user = { ...raw, reportAccess: raw.reportAccess.map(r => r.reportKey) };
   res.json({ user });
 }
