@@ -149,7 +149,15 @@ export async function changeAgreementStatus(req: Request, res: Response): Promis
   if (!agreement) { res.status(404).json({ error: 'Agreement not found' }); return; }
 
   await prisma.$transaction(async (tx) => {
-    await tx.agreement.update({ where: { id }, data: { acctClassify, updatedAt: new Date() } });
+    await tx.agreement.update({
+      where: { id },
+      data: {
+        acctClassify,
+        statusChangeDate: acctClassify === 'NA' ? null : new Date(),
+        statusChangeUser: acctClassify === 'NA' ? null : req.user!.username,
+        updatedAt: new Date(),
+      },
+    });
     // Stop billing if suspended or pending termination
     if (agreement.amcSchedule && (acctClassify === 'SU' || acctClassify === 'PT' || acctClassify === 'TM')) {
       await tx.amcSchedule.update({ where: { id: agreement.amcSchedule.id }, data: { billingStatus: 'C', updatedAt: new Date() } });

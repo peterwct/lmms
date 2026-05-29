@@ -194,7 +194,12 @@ if ($InstallPackages) {
 
 if ($MigrateDb) {
     Step "6a. Running prisma migrate deploy ..."
-    Remote "prisma migrate deploy" { param($p); Set-Location $p; npx prisma migrate deploy } @($RemotePath)
+    Remote "prisma migrate deploy" {
+        param($p)
+        Set-Location $p
+        npx prisma migrate deploy 2>$null
+        if ($LASTEXITCODE -ne 0) { throw "prisma migrate deploy failed (exit $LASTEXITCODE)" }
+    } @($RemotePath)
 
     Step "6a2. Granting lhb_app permissions on new tables ..."
     Remote "psql GRANT" {
@@ -204,7 +209,12 @@ if ($MigrateDb) {
 
 if ($SchemaChanged -or $MigrateDb) {
     Step "6b. Running prisma generate ..."
-    Remote "prisma generate" { param($p); Set-Location $p; npx prisma generate } @($RemotePath)
+    Remote "prisma generate" {
+        param($p)
+        Set-Location $p
+        npx prisma generate 2>$null
+        if ($LASTEXITCODE -ne 0) { throw "prisma generate failed (exit $LASTEXITCODE)" }
+    } @($RemotePath)
 }
 
 # ── 7. Start PM2 ──────────────────────────────────────────────────────────────

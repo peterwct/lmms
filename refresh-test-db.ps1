@@ -59,7 +59,8 @@
            e_nom2_add1, e_nom2_add2, e_nom2_add3, e_nom2_city_state, e_nom2_postcode, e_nom2_email,
            e_nom2_email,
            e_rci_refno, e_rci_enrol_date, e_rci_expiry_date, e_rci_fee_paid,
-           e_outstd_doc, e_doc_desc, e_locality, e_can_code, e_sysdate, e_mod_date
+           e_outstd_doc, e_doc_desc, e_locality, e_can_code, e_sysdate, e_mod_date,
+           e_term_user, e_aterm_date
     FROM si_entitlement WHERE e_cocode IN ('03', '15', '02');
 
     UNLOAD TO 'amc_mem.txt' DELIMITER '|'
@@ -91,6 +92,17 @@ if ((Split-Path $PSScriptRoot -Leaf) -ne 'scripts') {
 }
 
 Set-Location $root
+
+# ── Auto-load DATABASE_URL from .env if not already set ───────────────────────
+if (-not $DatabaseUrl) {
+    $envFile = Join-Path $root ".env"
+    if (Test-Path $envFile) {
+        $match = Get-Content $envFile | Where-Object { $_ -match '^DATABASE_URL\s*=\s*(.+)$' } | Select-Object -First 1
+        if ($match -and $match -match '^DATABASE_URL\s*=\s*(.+)$') {
+            $DatabaseUrl = $Matches[1].Trim().Trim('"').Trim("'")
+        }
+    }
+}
 
 # ── Validate DATABASE_URL ──────────────────────────────────────────────────────
 if (-not $DatabaseUrl) {
@@ -133,7 +145,7 @@ if ($missing) {
 # ── Show plan ──────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host ("=" * 62)
-Write-Host "  LHB MMS — Test Database Refresh"
+Write-Host "  LHB MMS - Test Database Refresh"
 Write-Host ("=" * 62)
 Write-Host "  Target  : $DatabaseUrl"
 Write-Host "  Mode    : $(if ($DryRun) { 'DRY RUN (no writes)' } else { 'LIVE' })"
@@ -165,7 +177,7 @@ function Invoke-Sql {
     param([string]$Sql, [string]$Label)
     Write-Host ""
     Write-Host "  [SQL] $Label" -ForegroundColor Cyan
-    if ($DryRun) { Write-Host "        (skipped — dry run)"; return }
+    if ($DryRun) { Write-Host "        (skipped - dry run)"; return }
     $tmp = Join-Path $root "_refresh_tmp.sql"
     [System.IO.File]::WriteAllText($tmp, $Sql)
     try {

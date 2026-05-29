@@ -102,10 +102,16 @@ export function AgreementDetail() {
       </button>
       <div className="flex items-start justify-between">
         <div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-xl font-bold font-mono">{agmt.agreementNo}</h2>
             <ProductBadge coCode={agmt.coCode} />
             <AgreementStatusBadge status={agmt.acctClassify} />
+            {agmt.acctClassify !== 'NA' && (agmt.statusChangeDate || agmt.statusChangeUser) && (
+              <span className="text-xs text-gray-500">
+                {agmt.statusChangeDate && format(new Date(agmt.statusChangeDate), 'dd/MM/yyyy')}
+                {agmt.statusChangeUser && ` by ${agmt.statusChangeUser}`}
+              </span>
+            )}
           </div>
           <p className="text-sm text-gray-500 mt-0.5">
             Member: <Link to={`/members/${agmt.memberId}`} className="text-blue-600 hover:underline">
@@ -148,6 +154,18 @@ export function AgreementDetail() {
                     {agmt.cancellationReason.category === 'CC' ? 'Cancellation' : 'Termination'}
                   </span>
                 </dd>
+              </div>
+            )}
+            {agmt.acctClassify !== 'NA' && agmt.statusChangeDate && (
+              <div>
+                <dt className="text-xs text-gray-500 uppercase tracking-wide">Status change date</dt>
+                <dd className="mt-0.5 font-medium">{format(new Date(agmt.statusChangeDate), 'dd/MM/yyyy')}</dd>
+              </div>
+            )}
+            {agmt.acctClassify !== 'NA' && agmt.statusChangeUser && (
+              <div>
+                <dt className="text-xs text-gray-500 uppercase tracking-wide">Status changed by</dt>
+                <dd className="mt-0.5 font-medium">{agmt.statusChangeUser}</dd>
               </div>
             )}
             {/* ── Financial fields ── */}

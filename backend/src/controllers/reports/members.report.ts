@@ -54,16 +54,16 @@ type FetchedMember = Awaited<ReturnType<typeof fetchMembers>>[0];
 // ─── PDF ───────────────────────────────────────────────────────────────────────
 
 const PDF_COLS = [
-  { h: '#',               key: 'no',          w: 20  },
+  { h: '#',               key: 'no',          w: 18  },
   { h: 'Membership No.',  key: 'memNo',        w: 75  },
   { h: 'Full Name',       key: 'fullName',     w: 100 },
   { h: 'IC New',          key: 'icNew',        w: 75  },
-  { h: 'IC Old',          key: 'icOld',        w: 68  },
-  { h: 'Tel Mobile',      key: 'telMobile',    w: 65  },
-  { h: 'Email',           key: 'email',        w: 110 },
+  { h: 'IC Old',          key: 'icOld',        w: 65  },
+  { h: 'Tel Mobile',      key: 'telMobile',    w: 62  },
+  { h: 'Email',           key: 'email',        w: 107 },
   { h: 'Mailing Address', key: 'mailAddr',     w: 135 },
-  { h: 'Co Code',         key: 'coCode',       w: 32  },
-  { h: 'Agreement No.',   key: 'agmtNos',      w: 68  },
+  { h: 'Co Code',         key: 'coCode',       w: 45  },
+  { h: 'Agreement No.',   key: 'agmtNos',      w: 66  },
   { h: 'Agmt Status',     key: 'agmtStatus',   w: 52  },
 ] as const;
 

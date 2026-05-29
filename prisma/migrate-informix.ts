@@ -243,7 +243,9 @@ function mapCorporate(c: string[]) {
 //  7  e_agreement_type   20 e_sls_source    32 e_nom1_add2     44 e_nom2_tel_hp   59 e_can_code
 //  8  e_member_type      21 e_certificate   33 e_nom1_add3     45 e_nom2_add1     60 e_sysdate
 //  9  e_total_pts        22 e_transfer_flg  34 e_nom1_city     46 e_nom2_add2     61 e_mod_date
-// 10  e_acct_classify    23 e_ttmembno      35 e_nom1_postcode 47 e_nom2_add3     62 (trailing)
+// 10  e_acct_classify    23 e_ttmembno      35 e_nom1_postcode 47 e_nom2_add3     62 e_term_user
+//                                                                                63 e_aterm_date
+//                                                                                64 (trailing)
 // 11  e_purchase_price   24 e_tfmembno      36 e_nom1_email    48 e_nom2_city
 // 12  e_down                                                   49 e_nom2_postcode
 //                                                              50 e_nom2_email
@@ -302,6 +304,8 @@ function mapAgreement(c: string[], memberId: string) {
     canCode:                 t(c[59]),
     legacyCreatedAt:         d(c[60]),
     legacyModifiedAt:        d(c[61]),
+    statusChangeUser:        t(c[62]),
+    statusChangeDate:        d(c[63]),
   };
 }
 

@@ -210,6 +210,8 @@ export interface Agreement {
   docDescription?: string;
   canCode?: string;
   cancellationReason?: CancellationReason;
+  statusChangeDate?: string;
+  statusChangeUser?: string;
   createdAt: string;
   updatedAt: string;
   member?: Partial<Member>;

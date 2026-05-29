@@ -47,6 +47,8 @@ model Agreement {
   updatedAt              DateTime
   govtTax                Decimal?            @db.Decimal(12, 2)
   legacyModifiedAt       DateTime?
+  statusChangeDate       DateTime?
+  statusChangeUser       String?
   sinkFund               Decimal?            @db.Decimal(12, 2)
   cancellationReason     CancellationReason? @relation(fields: [canCode], references: [code])
   member                 Member              @relation(fields: [memberId], references: [id])

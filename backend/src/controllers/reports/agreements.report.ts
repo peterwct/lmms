@@ -71,19 +71,27 @@ function drawDataRow(
   y: number,
   cols: readonly PdfColDef[],
   totalW: number,
+  rowH = ROW_H,
+  wrapColIdx = -1,
 ): void {
   const bg = rowIdx % 2 === 0 ? '#FFFFFF' : '#EBF5FB';
-  doc.rect(MARGIN, y, totalW, ROW_H).fill(bg);
+  doc.rect(MARGIN, y, totalW, rowH).fill(bg);
   doc.fillColor('#111111').font('Helvetica').fontSize(FS);
   let cx = MARGIN;
   for (let i = 0; i < cols.length; i++) {
-    const txt = truncatePdf(doc, values[i] ?? '', cols[i].w);
-    doc.text(txt, cx + PAD, y + Math.floor((ROW_H - FS) / 2), {
-      width: cols[i].w - PAD * 2, lineBreak: false,
-    });
+    if (i === wrapColIdx) {
+      doc.text(values[i] ?? '', cx + PAD, y + PAD, {
+        width: cols[i].w - PAD * 2, lineBreak: true, height: rowH - PAD * 2,
+      });
+    } else {
+      const txt = truncatePdf(doc, values[i] ?? '', cols[i].w);
+      doc.text(txt, cx + PAD, y + Math.floor((rowH - FS) / 2), {
+        width: cols[i].w - PAD * 2, lineBreak: false,
+      });
+    }
     cx += cols[i].w;
   }
-  doc.moveTo(MARGIN, y + ROW_H).lineTo(MARGIN + totalW, y + ROW_H)
+  doc.moveTo(MARGIN, y + rowH).lineTo(MARGIN + totalW, y + rowH)
      .strokeColor('#D5D8DC').lineWidth(0.2).stroke();
 }
 
@@ -95,6 +103,8 @@ function renderPdf(
   footerInfo: string,
   cols: readonly PdfColDef[],
   rows: string[][],
+  rowH = ROW_H,
+  wrapColIdx = -1,
 ): void {
   const totalW = cols.reduce((s, c) => s + c.w, 0);
 
@@ -131,7 +141,7 @@ function renderPdf(
   y += HDR_H;
 
   for (let i = 0; i < rows.length; i++) {
-    if (y + ROW_H > bottomLimit) {
+    if (y + rowH > bottomLimit) {
       addFooter();
       doc.addPage();
       pageNum++;
@@ -139,8 +149,8 @@ function renderPdf(
       drawTableHeader(doc, y, cols, totalW);
       y += HDR_H;
     }
-    drawDataRow(doc, rows[i], i, y, cols, totalW);
-    y += ROW_H;
+    drawDataRow(doc, rows[i], i, y, cols, totalW, rowH, wrapColIdx);
+    y += rowH;
   }
 
   addFooter();
@@ -523,7 +533,7 @@ export async function generateAgreementsReport(req: Request, res: Response): Pro
     const xlRows      = agreements.map((a, i) => corpToXlRow(a, i));
 
     if (format === 'pdf') {
-      renderPdf(res, `${filename}.pdf`, title, subtitle, footerInfo, PDF_COLS_CORP, pdfRows);
+      renderPdf(res, `${filename}.pdf`, title, subtitle, footerInfo, PDF_COLS_CORP, pdfRows, 26, 5);
     } else {
       await renderExcel(res, `${filename}.xlsx`, 'Agreement Detail', title, subtitle, XL_COLS_CORP, xlRows);
     }
