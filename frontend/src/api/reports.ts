@@ -47,6 +47,14 @@ export interface AgreementCorpPreviewRow {
   mailAddr: string;
 }
 
+export interface ExpiryRow {
+  year: number;
+  lhcNa: number; lhcNonNa: number; lhcTotal: number;
+  cpNa: number;  cpNonNa: number;  cpTotal: number;
+  combinedNa: number; combinedNonNa: number; combinedTotal: number;
+  cumNa: number; cumNonNa: number; cumTotal: number;
+}
+
 export interface AgreementDetailPreviewResponse<T> {
   data: T[];
   meta: { total: number; shown: number };
@@ -71,6 +79,12 @@ export const reportsApi = {
     api.get<AgreementDetailPreviewResponse<AgreementCorpPreviewRow>>('/reports/agreements/preview', {
       params: { ...params, memberType: 'CORPORATE' },
     }),
+
+  expiryPreview: () =>
+    api.get<{ data: ExpiryRow[]; meta: { totalAgreements: number } }>('/reports/expiry/preview'),
+
+  expiryReport: (format: 'pdf' | 'excel') =>
+    api.get('/reports/expiry', { params: { format }, responseType: 'blob' }),
 
   getReportAccess: (userId: number) =>
     api.get<{ data: UserReportAccessEntry[] }>(`/reports/access/${userId}`),

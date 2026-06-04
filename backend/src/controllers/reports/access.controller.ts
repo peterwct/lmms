@@ -3,11 +3,12 @@ import { ReportKey } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { writeAudit } from '../../utils/audit';
 
-const ALL_REPORT_KEYS: ReportKey[] = ['MEMBER_REPORT', 'AGREEMENT_REPORT'];
+const ALL_REPORT_KEYS: ReportKey[] = ['MEMBER_REPORT', 'AGREEMENT_REPORT', 'EXPIRY_REPORT'];
 
 const REPORT_LABELS: Record<ReportKey, string> = {
-  MEMBER_REPORT: 'Member Report',
-  AGREEMENT_REPORT: 'Agreement Report',
+  MEMBER_REPORT:    'Member Report',
+  AGREEMENT_REPORT: 'SSM Agreement Report',
+  EXPIRY_REPORT:    'Senior Management Report - Analysis of Agreement Expiry',
 };
 
 export async function getReportAccess(req: Request, res: Response): Promise<void> {

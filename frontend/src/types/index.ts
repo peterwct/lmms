@@ -1,5 +1,5 @@
 export type AppModule = 'ADMIN' | 'MEMBERS' | 'AGREEMENTS' | 'AMC_BILLING' | 'RESORT_BOOKING' | 'ENTITLEMENTS';
-export type ReportKey = 'MEMBER_REPORT' | 'AGREEMENT_REPORT';
+export type ReportKey = 'MEMBER_REPORT' | 'AGREEMENT_REPORT' | 'EXPIRY_REPORT';
 export type UserStatus = 'ACTIVE' | 'SUSPENDED';
 export type MemberStatus = 'ACTIVE' | 'SUSPENDED' | 'CLOSED' | 'DECEASED' | 'TRANSFERRED';
 export type MemberType = 'INDIVIDUAL' | 'CORPORATE';

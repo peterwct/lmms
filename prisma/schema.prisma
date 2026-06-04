@@ -382,6 +382,7 @@ enum BillType {
 enum ReportKey {
   MEMBER_REPORT
   AGREEMENT_REPORT
+  EXPIRY_REPORT
 }
 
 enum BillingStatus {

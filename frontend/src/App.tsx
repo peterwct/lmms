@@ -18,6 +18,7 @@ import { Agreements } from './pages/agreements/Agreements';
 import { AgreementDetail } from './pages/agreements/AgreementDetail';
 import { AgreementReport } from './pages/agreements/AgreementReport';
 import { Reports } from './pages/reports/Reports';
+import { ExpiryReport } from './pages/reports/ExpiryReport';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -49,6 +50,7 @@ export default function App() {
               <Route path="reports"             element={<Reports />} />
               <Route path="reports/members"     element={<MemberReport />} />
               <Route path="reports/agreements"  element={<AgreementReport />} />
+              <Route path="reports/expiry"      element={<ExpiryReport />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />

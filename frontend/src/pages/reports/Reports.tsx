@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { FileBarChart2, Users, FileText } from 'lucide-react';
+import { FileBarChart2, Users, FileText, CalendarDays } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { ReportKey } from '../../types';
 
@@ -25,6 +25,13 @@ const REPORT_CARDS: ReportCard[] = [
     description: 'Active agreements with member details by company code. Separate views for individual and corporate members.',
     to: '/reports/agreements',
     icon: <FileText className="h-6 w-6" />,
+  },
+  {
+    key: 'EXPIRY_REPORT',
+    label: 'Senior Management Report - Analysis of Agreement Expiry',
+    description: 'Summary of agreements grouped by expiry year, showing active vs non-active counts for LHC and CP with cumulative totals.',
+    to: '/reports/expiry',
+    icon: <CalendarDays className="h-6 w-6" />,
   },
 ];
 
