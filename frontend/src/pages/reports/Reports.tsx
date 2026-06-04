@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom';
-import { FileBarChart2, Users, FileText, CalendarDays } from 'lucide-react';
+import { FileBarChart2, Users, FileText, CalendarDays, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { ReportKey } from '../../types';
 
-interface ReportCard {
+interface ReportItem {
   key: ReportKey;
   label: string;
   description: string;
@@ -11,36 +11,36 @@ interface ReportCard {
   icon: React.ReactNode;
 }
 
-const REPORT_CARDS: ReportCard[] = [
+const REPORT_LIST: ReportItem[] = [
   {
     key: 'MEMBER_REPORT',
     label: 'Member Report',
     description: 'List of members with their agreements, contact details, and mailing addresses. Export as PDF or Excel.',
     to: '/reports/members',
-    icon: <Users className="h-6 w-6" />,
+    icon: <Users className="h-4 w-4" />,
   },
   {
     key: 'AGREEMENT_REPORT',
     label: 'SSM Agreement Report',
     description: 'Active agreements with member details by company code. Separate views for individual and corporate members.',
     to: '/reports/agreements',
-    icon: <FileText className="h-6 w-6" />,
+    icon: <FileText className="h-4 w-4" />,
   },
   {
     key: 'EXPIRY_REPORT',
     label: 'Senior Management Report - Analysis of Agreement Expiry',
     description: 'Summary of agreements grouped by expiry year, showing active vs non-active counts for LHC and CP with cumulative totals.',
     to: '/reports/expiry',
-    icon: <CalendarDays className="h-6 w-6" />,
+    icon: <CalendarDays className="h-4 w-4" />,
   },
 ];
 
 export function Reports() {
   const { hasReport } = useAuth();
-  const accessible = REPORT_CARDS.filter(r => hasReport(r.key));
+  const accessible = REPORT_LIST.filter(r => hasReport(r.key));
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-4xl space-y-4">
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Reports</h1>
         <p className="mt-1 text-sm text-gray-500">Select a report to generate or preview data.</p>
@@ -53,20 +53,22 @@ export function Reports() {
           <p className="mt-1 text-xs text-gray-400">Contact IT to request access to specific reports.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {accessible.map(card => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+          {accessible.map((item, idx) => (
             <Link
-              key={card.key}
-              to={card.to}
-              className="group flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+              key={item.key}
+              to={item.to}
+              title={item.description}
+              className="group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors border border-transparent hover:border-blue-200"
             >
-              <div className="flex items-center gap-3">
-                <span className="rounded-md bg-blue-50 p-2 text-blue-600 group-hover:bg-blue-100 transition-colors">
-                  {card.icon}
-                </span>
-                <h2 className="font-medium text-gray-900">{card.label}</h2>
-              </div>
-              <p className="text-sm text-gray-500">{card.description}</p>
+              <span className="w-6 shrink-0 text-xs text-gray-400 font-mono text-right">
+                {idx + 1}.
+              </span>
+              <span className="shrink-0 text-gray-400 group-hover:text-blue-500 transition-colors">
+                {item.icon}
+              </span>
+              <span className="flex-1 font-medium leading-snug">{item.label}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-300 group-hover:text-blue-400 transition-colors" />
             </Link>
           ))}
         </div>
