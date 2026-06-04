@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>LHB MMS Tech Stack</title>
+<style>
+  body { margin: 0; background: #0f172a; font-family: 'Segoe UI', Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+  svg text { font-family: 'Segoe UI', Arial, sans-serif; }
+</style>
+</head>
+<body>
+<svg viewBox="0 0 780 620" width="780" height="620" xmlns="http://www.w3.org/2000/svg">
+  <rect width="780" height="620" fill="#0f172a" rx="16"/>
+  <text x="390" y="36" text-anchor="middle" font-size="16" font-weight="700" fill="#f1f5f9">LHB MMS — Tech Stack &amp; Relationships</text>
+
+  <!-- Layer bands -->
+  <rect x="36" y="52" width="720" height="90" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <rect x="36" y="158" width="720" height="170" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <rect x="36" y="344" width="720" height="110" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <rect x="36" y="468" width="720" height="88" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+
+  <!-- Layer labels — positioned at top-left of each band, above content boxes -->
+  <text x="42" y="63" font-size="9" fill="#ffffff" font-weight="600">INFRA</text>
+  <text x="42" y="169" font-size="9" fill="#ffffff" font-weight="600">FRONTEND</text>
+  <text x="42" y="355" font-size="9" fill="#ffffff" font-weight="600">BACKEND</text>
+  <text x="42" y="469" font-size="9" fill="#ffffff" font-weight="600">DATABASE</text>
+
+  <!-- INFRA: User -->
+  <rect x="90" y="64" width="110" height="64" rx="8" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+  <text x="145" y="90" text-anchor="middle" font-size="18">👤</text>
+  <text x="145" y="110" text-anchor="middle" font-size="11" fill="#ffffff">Staff User</text>
+  <text x="145" y="124" text-anchor="middle" font-size="9" fill="#cbd5e1">Browser</text>
+
+  <!-- INFRA: Nginx -->
+  <rect x="310" y="64" width="160" height="64" rx="8" fill="#064e3b" stroke="#10b981" stroke-width="1.5"/>
+  <text x="390" y="87" text-anchor="middle" font-size="12" font-weight="700" fill="#10b981">Nginx</text>
+  <text x="390" y="103" text-anchor="middle" font-size="9" fill="#6ee7b7">Reverse Proxy / SSL</text>
+  <text x="390" y="118" text-anchor="middle" font-size="9" fill="#6ee7b7">Routes traffic to app</text>
+
+  <!-- INFRA: PM2 -->
+  <rect x="600" y="64" width="140" height="64" rx="8" fill="#1c1917" stroke="#f97316" stroke-width="1.5"/>
+  <text x="670" y="87" text-anchor="middle" font-size="12" font-weight="700" fill="#f97316">PM2</text>
+  <text x="670" y="103" text-anchor="middle" font-size="9" fill="#fdba74">Process Manager</text>
+  <text x="670" y="118" text-anchor="middle" font-size="9" fill="#fdba74">Auto-restart · Clusters</text>
+
+  <!-- FRONTEND: React — x=90, w=148, center=164 -->
+  <rect x="90" y="178" width="148" height="114" rx="8" fill="#0c1a2e" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="164" y="201" text-anchor="middle" font-size="12" font-weight="700" fill="#38bdf8">React</text>
+  <text x="164" y="218" text-anchor="middle" font-size="9" fill="#7dd3fc">UI Components</text>
+  <rect x="101" y="224" width="126" height="16" rx="3" fill="#0f2744" stroke="#1e40af" stroke-width="1"/>
+  <text x="164" y="236" text-anchor="middle" font-size="8" fill="#93c5fd">Member Management</text>
+  <rect x="101" y="243" width="126" height="16" rx="3" fill="#0f2744" stroke="#1e40af" stroke-width="1"/>
+  <text x="164" y="255" text-anchor="middle" font-size="8" fill="#93c5fd">AMC Billing</text>
+  <rect x="101" y="262" width="126" height="16" rx="3" fill="#0f2744" stroke="#1e40af" stroke-width="1"/>
+  <text x="164" y="274" text-anchor="middle" font-size="8" fill="#93c5fd">Admin / Reports</text>
+
+  <!-- FRONTEND: TypeScript — x=254, w=148, center=328 -->
+  <rect x="254" y="178" width="148" height="114" rx="8" fill="#0c1a2e" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="328" y="201" text-anchor="middle" font-size="12" font-weight="700" fill="#60a5fa">TypeScript</text>
+  <text x="328" y="218" text-anchor="middle" font-size="9" fill="#93c5fd">Type Safety</text>
+  <rect x="265" y="224" width="126" height="16" rx="3" fill="#0f2744" stroke="#1e40af" stroke-width="1"/>
+  <text x="328" y="236" text-anchor="middle" font-size="8" fill="#93c5fd">MemberRecord type</text>
+  <rect x="265" y="243" width="126" height="16" rx="3" fill="#0f2744" stroke="#1e40af" stroke-width="1"/>
+  <text x="328" y="255" text-anchor="middle" font-size="8" fill="#93c5fd">Invoice type</text>
+  <rect x="265" y="262" width="126" height="16" rx="3" fill="#0f2744" stroke="#1e40af" stroke-width="1"/>
+  <text x="328" y="274" text-anchor="middle" font-size="8" fill="#93c5fd">Compile-time checks</text>
+
+  <!-- FRONTEND: Tailwind — x=418, w=148, center=492 -->
+  <rect x="418" y="178" width="148" height="114" rx="8" fill="#0c1a2e" stroke="#2dd4bf" stroke-width="1.5"/>
+  <text x="492" y="201" text-anchor="middle" font-size="12" font-weight="700" fill="#2dd4bf">Tailwind CSS</text>
+  <text x="492" y="218" text-anchor="middle" font-size="9" fill="#99f6e4">Styling</text>
+  <rect x="429" y="224" width="126" height="16" rx="3" fill="#042f2e" stroke="#0f766e" stroke-width="1"/>
+  <text x="492" y="236" text-anchor="middle" font-size="8" fill="#99f6e4">Utility classes</text>
+  <rect x="429" y="243" width="126" height="16" rx="3" fill="#042f2e" stroke="#0f766e" stroke-width="1"/>
+  <text x="492" y="255" text-anchor="middle" font-size="8" fill="#99f6e4">Responsive design</text>
+  <rect x="429" y="262" width="126" height="16" rx="3" fill="#042f2e" stroke="#0f766e" stroke-width="1"/>
+  <text x="492" y="274" text-anchor="middle" font-size="8" fill="#99f6e4">No separate CSS files</text>
+
+  <!-- FRONTEND: Vite — x=582, w=148, center=656 -->
+  <rect x="582" y="178" width="148" height="114" rx="8" fill="#1c1410" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="656" y="201" text-anchor="middle" font-size="12" font-weight="700" fill="#fbbf24">Vite</text>
+  <text x="656" y="218" text-anchor="middle" font-size="9" fill="#fde68a">Build Tool</text>
+  <rect x="593" y="224" width="126" height="16" rx="3" fill="#2d1f04" stroke="#92400e" stroke-width="1"/>
+  <text x="656" y="236" text-anchor="middle" font-size="8" fill="#fde68a">Dev server + HMR</text>
+  <rect x="593" y="243" width="126" height="16" rx="3" fill="#2d1f04" stroke="#92400e" stroke-width="1"/>
+  <text x="656" y="255" text-anchor="middle" font-size="8" fill="#fde68a">Bundles React+TS+TW</text>
+  <rect x="593" y="262" width="126" height="16" rx="3" fill="#2d1f04" stroke="#92400e" stroke-width="1"/>
+  <text x="656" y="274" text-anchor="middle" font-size="8" fill="#fde68a">Optimised prod build</text>
+
+  <!-- BACKEND: Express -->
+  <rect x="100" y="356" width="210" height="84" rx="8" fill="#1a0a2e" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="205" y="379" text-anchor="middle" font-size="12" font-weight="700" fill="#a78bfa">Node.js + Express</text>
+  <text x="205" y="396" text-anchor="middle" font-size="9" fill="#c4b5fd">REST API · JWT Auth</text>
+  <text x="205" y="412" text-anchor="middle" font-size="9" fill="#c4b5fd">Business Logic · Routes</text>
+  <text x="205" y="428" text-anchor="middle" font-size="9" fill="#c4b5fd">Controllers · Services</text>
+
+  <!-- BACKEND: Prisma -->
+  <rect x="470" y="356" width="210" height="84" rx="8" fill="#1a0a2e" stroke="#e879f9" stroke-width="1.5"/>
+  <text x="575" y="379" text-anchor="middle" font-size="12" font-weight="700" fill="#e879f9">Prisma ORM</text>
+  <text x="575" y="396" text-anchor="middle" font-size="9" fill="#f0abfc">Schema · Client · Migrate</text>
+  <text x="575" y="412" text-anchor="middle" font-size="9" fill="#f0abfc">Type-safe DB queries</text>
+  <text x="575" y="428" text-anchor="middle" font-size="9" fill="#f0abfc">Translates code → SQL</text>
+
+  <!-- DATABASE: PostgreSQL -->
+  <rect x="270" y="480" width="240" height="62" rx="8" fill="#1a0a0a" stroke="#f87171" stroke-width="1.5"/>
+  <text x="390" y="505" text-anchor="middle" font-size="12" font-weight="700" fill="#f87171">PostgreSQL</text>
+  <text x="390" y="522" text-anchor="middle" font-size="9" fill="#fca5a5">Members · Invoices · Entitlements</text>
+  <text x="390" y="536" text-anchor="middle" font-size="9" fill="#fca5a5">Migrated from legacy Informix</text>
+
+  <!-- ARROWS -->
+  <defs>
+    <marker id="a1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#475569"/></marker>
+    <marker id="aw" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#ffffff"/></marker>
+    <marker id="a2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#38bdf8"/></marker>
+    <marker id="a3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#a78bfa"/></marker>
+    <marker id="a4" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#e879f9"/></marker>
+    <marker id="a5" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#f97316"/></marker>
+    <marker id="a6" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#10b981"/></marker>
+  </defs>
+
+  <!-- User → Nginx -->
+  <line x1="200" y1="96" x2="308" y2="96" stroke="#ffffff" stroke-width="1.5" marker-end="url(#aw)"/>
+  <text x="254" y="90" text-anchor="middle" font-size="8" fill="#ffffff">HTTPS request</text>
+
+  <!-- Nginx → PM2 -->
+  <line x1="470" y1="96" x2="598" y2="96" stroke="#10b981" stroke-width="1.5" marker-end="url(#a6)"/>
+  <text x="534" y="90" text-anchor="middle" font-size="8" fill="#10b981">proxy to API</text>
+
+  <!-- Nginx → Frontend (serves) -->
+  <line x1="370" y1="128" x2="280" y2="168" stroke="#ffffff" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#aw)"/>
+  <text x="296" y="153" text-anchor="middle" font-size="8" fill="#ffffff">serves UI</text>
+
+  <!-- Frontend → Express (API calls) -->
+  <line x1="167" y1="292" x2="190" y2="354" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#a2)"/>
+  <text x="140" y="328" text-anchor="middle" font-size="8" fill="#38bdf8">REST API calls</text>
+
+  <!-- Express ↔ Prisma -->
+  <line x1="312" y1="392" x2="468" y2="392" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#a3)"/>
+  <line x1="468" y1="404" x2="312" y2="404" stroke="#e879f9" stroke-width="1.5" marker-end="url(#a4)"/>
+  <text x="390" y="385" text-anchor="middle" font-size="8" fill="#c4b5fd">query / result</text>
+
+  <!-- Prisma → PostgreSQL -->
+  <line x1="540" y1="440" x2="460" y2="478" stroke="#e879f9" stroke-width="1.5" marker-end="url(#a4)"/>
+  <line x1="455" y1="478" x2="480" y2="440" stroke="#f87171" stroke-width="1.5" marker-end="url(#a4)"/>
+  <text x="538" y="466" text-anchor="middle" font-size="8" fill="#e879f9">SQL queries</text>
+
+  <!-- PM2 → Express (manages) — routed down far-right edge outside all boxes -->
+  <polyline points="670,128 748,128 748,455 314,455 314,442" fill="none" stroke="#f97316" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#a5)"/>
+  <text x="752" y="300" font-size="8" fill="#f97316" text-anchor="start">manages</text>
+
+  <!-- TS wraps React+Express dashed border -->
+  <rect x="84" y="171" width="326" height="125" rx="10" fill="none" stroke="#60a5fa" stroke-width="1" stroke-dasharray="5,3" opacity="0.7"/>
+  <rect x="94" y="350" width="224" height="96" rx="10" fill="none" stroke="#60a5fa" stroke-width="1" stroke-dasharray="5,3" opacity="0.7"/>
+  <text x="247" y="168" text-anchor="middle" font-size="8" fill="#ffffff">TypeScript spans both frontend &amp; backend</text>
+</svg>
+</body>
+</html>

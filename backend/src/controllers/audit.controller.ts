@@ -4,16 +4,18 @@ import { prisma } from '../utils/prisma';
 export async function listAuditLogs(req: Request, res: Response): Promise<void> {
   const page  = Math.max(1, parseInt(String(req.query.page  ?? 1), 10));
   const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? 50), 10)));
-  const { userId, actionType, targetType, from, to } = req.query as Record<string, string>;
+  const { userId, username, actionType, action, targetType, from, to } = req.query as Record<string, string>;
 
   const where: Record<string, unknown> = {};
   if (userId)     where.userId     = parseInt(userId, 10);
+  if (username)   where.user       = { username: { contains: username, mode: 'insensitive' } };
   if (actionType) where.actionType = actionType;
-  if (targetType) where.targetType = targetType;
+  if (action)     where.action     = { contains: action, mode: 'insensitive' };
+  if (targetType) where.targetType = { contains: targetType, mode: 'insensitive' };
   if (from || to) {
     where.createdAt = {
       ...(from ? { gte: new Date(from) } : {}),
-      ...(to   ? { lte: new Date(to)   } : {}),
+      ...(to   ? { lte: new Date(to + 'T23:59:59') } : {}),
     };
   }
 

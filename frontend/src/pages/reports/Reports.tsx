@@ -21,7 +21,7 @@ const REPORT_CARDS: ReportCard[] = [
   },
   {
     key: 'AGREEMENT_REPORT',
-    label: 'Agreement Report',
+    label: 'SSM Agreement Report',
     description: 'Active agreements with member details by company code. Separate views for individual and corporate members.',
     to: '/reports/agreements',
     icon: <FileText className="h-6 w-6" />,
