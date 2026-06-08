@@ -113,6 +113,14 @@ if (-not $DryRun) {
     }
 }
 
+# psql needs the postgres superuser password up front (for the GRANT step below).
+# Without it, `psql -U postgres` blocks on an interactive password prompt that
+# never arrives over a non-interactive remoting session, hanging forever.
+$pgPassword = $null
+if ($MigrateDb -and -not $DryRun) {
+    $pgPassword = Read-Host "  Enter password for 'postgres' superuser on $RemoteHost (for the lhb_app GRANT step)" -AsSecureString
+}
+
 # ── helper: run a remote scriptblock ─────────────────────────────────────────
 
 function Remote([string]$desc, [scriptblock]$sb, [object[]]$argList = @()) {
@@ -203,8 +211,15 @@ if ($MigrateDb) {
 
     Step "6a2. Granting lhb_app permissions on new tables ..."
     Remote "psql GRANT" {
-        & "E:\PostgreSQL18\bin\psql.exe" -U postgres -d lhb_mms -c "GRANT USAGE ON SCHEMA public TO lhb_app; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO lhb_app; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lhb_app;"
-    }
+        param($pw)
+        $cred = New-Object System.Management.Automation.PSCredential('postgres', $pw)
+        $env:PGPASSWORD = $cred.GetNetworkCredential().Password
+        try {
+            & "E:\PostgreSQL18\bin\psql.exe" -U postgres -d lhb_mms -c "GRANT USAGE ON SCHEMA public TO lhb_app; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO lhb_app; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lhb_app;" 2>$null
+        } finally {
+            Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+        }
+    } @($pgPassword)
 }
 
 if ($SchemaChanged -or $MigrateDb) {
@@ -222,8 +237,13 @@ if ($SchemaChanged -or $MigrateDb) {
 Step "7. Starting PM2 backend ..."
 Remote "pm2 delete + start" {
     param($p)
-    pm2 delete lhb-mms-backend 2>&1 | Out-Null
-    pm2 start "$p\backend\ecosystem.config.js" --env production
+    # pm2 forks a persistent background daemon; if it inherits this session's
+    # WinRM output pipes, Invoke-Command hangs forever waiting for them to close
+    # (the daemon never exits). Routing through cmd with redirection to a log
+    # file gives the daemon file handles instead, so cmd exits immediately and
+    # Invoke-Command returns as soon as the pm2 CLI commands finish.
+    $log = "$p\logs\pm2-restart.log"
+    cmd /c "pm2 delete lhb-mms-backend > `"$log`" 2>&1 & pm2 start `"$p\backend\ecosystem.config.js`" --env production >> `"$log`" 2>&1"
 } @($RemotePath)
 
 # ── 8. Cleanup ────────────────────────────────────────────────────────────────
