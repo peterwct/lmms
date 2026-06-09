@@ -358,8 +358,8 @@ DELETE /api/reports/access/:userId/:reportKey Revoke report access (IT only)
 | Admin — Users | ✅ Done | Users, UserDetail, UserForm. No accessLevel field (removed). |
 | Admin — Departments | ✅ Done | Departments, permissions matrix |
 | Admin — Audit Log | ✅ Done | AuditLog (IT only) |
-| Members | ✅ Done | Member Enquiry (search+sort, URL state), MemberDetail, MemberForm |
-| Agreements | ✅ Done | Agreements list (search+sort, URL state, defaults LHC-03/Active), AgreementDetail |
+| Members | ✅ Done | Member Enquiry (search+sort, URL state), MemberDetail, MemberForm. Agreement links with `transferFlag='TT'` are disabled (strikethrough) on both the list and MemberDetail accordion. Change Status removed from MemberDetail — agreements only. |
+| Agreements | ✅ Done | Agreements list (search+sort, URL state, defaults LHC-03/Active), AgreementDetail. AMC and PBS cards fetched by `coCode + agreementNo` (not FK) to handle duplicate agreementNo across members. |
 | AMC Billing — Schedules | ✅ Done | Schedules (search+sort, URL state, defaults LHC-03/Active) |
 | AMC Billing — Invoices | ✅ Done | Invoices, InvoiceDetail |
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
@@ -394,7 +394,15 @@ Reports use a separate per-user access model — independent of department permi
 
 ## Agreement Detail card order
 1. Agreement Details (net purchase price, loan type/amount, termination reason)
-2. Nominees (with designation)
+2. Nominees (salutation, full name, name card, designation — 4-column grid per nominee; edit modal has same 4 fields with auto-uppercase)
 3. Annual Maintenance Charges (AMC Billed, Total AMC, AMC Next Due)
 4. Zurich Payback Scheme (if exists — cert no, scheme type, payback date, claimed badge)
 5. Invoice History
+
+> AMC and PBS are fetched by `coCode + agreementNo` in `getAgreement()` — NOT via the Prisma FK (`agreementId`). This is intentional: the Informix source data can have multiple agreements sharing the same `agreementNo + coCode` (different members), so matching by natural key ensures both agreements resolve to the same PBS/AMC record rather than relying on whichever UUID the migration happened to link.
+
+## MemberDetail conventions
+- **Spouse name** shown inside Personal Information card (no separate Spouse card); spouse IC not displayed.
+- **Change Status** is only on AgreementDetail, not MemberDetail.
+- **Agreements accordion**: agreement number is the hyperlink (no separate View button, no date shown). Agreements with `transferFlag='TT'` show the number as strikethrough grey — link disabled.
+- All text dropdowns (salutation, gender, race, marital status, nature of work) use uppercase option labels in MemberForm. Email fields do not auto-uppercase. Remarks field does not auto-uppercase.
