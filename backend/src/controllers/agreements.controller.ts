@@ -106,16 +106,24 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
   const agreement = await prisma.agreement.findUnique({
     where: { id: req.params.id },
     include: {
-      member:      true,
-      nominees:    { orderBy: { nomineeSeq: 'asc' } },
-      amcSchedule:         true,
-      amcInvoices:         { orderBy: [{ invoiceYearSeq: 'asc' }, { invComponent: 'asc' }] },
-      pbsScheme:           true,
-      cancellationReason:  true,
+      member:             true,
+      nominees:           { orderBy: { nomineeSeq: 'asc' } },
+      amcInvoices:        { orderBy: [{ invoiceYearSeq: 'asc' }, { invComponent: 'asc' }] },
+      cancellationReason: true,
     },
   });
   if (!agreement) { res.status(404).json({ error: 'Agreement not found' }); return; }
-  res.json({ data: agreement });
+  // Match AMC schedule and PBS by coCode + agreementNo (not the FK) so that
+  // agreements sharing the same agreementNo both resolve to the correct records.
+  const [amcSchedule, pbsScheme] = await Promise.all([
+    prisma.amcSchedule.findFirst({
+      where: { coCode: agreement.coCode, agreementNo: agreement.agreementNo },
+    }),
+    prisma.pbsScheme.findFirst({
+      where: { coCode: agreement.coCode, agreementNo: agreement.agreementNo },
+    }),
+  ]);
+  res.json({ data: { ...agreement, amcSchedule: amcSchedule ?? null, pbsScheme: pbsScheme ?? null } });
 }
 
 export async function updateAgreement(req: Request, res: Response): Promise<void> {

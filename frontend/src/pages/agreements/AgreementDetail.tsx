@@ -204,14 +204,16 @@ export function AgreementDetail() {
         </CardHeader>
         <CardBody>
           {agmt.nominees?.length ? (
-            <div className="space-y-2">
+            <div className="space-y-4">
               {agmt.nominees.map(n => (
-                <div key={n.id} className="text-sm">
-                  <span className="text-gray-500">Nominee {n.nomineeSeq}:</span>{' '}
-                  <span className="font-medium">{n.fullName || '—'}</span>
-                  {n.designation && <span className="text-gray-500 ml-2">· {n.designation}</span>}
-                  {n.icNew && <span className="text-gray-500 ml-2">({n.icNew})</span>}
-                  {n.email && <span className="text-gray-500 ml-2">· {n.email}</span>}
+                <div key={n.id}>
+                  <p className="text-xs font-semibold uppercase text-gray-400 mb-2">Nominee {n.nomineeSeq}</p>
+                  <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
+                    <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Salutation</dt><dd className="mt-0.5 font-medium">{n.salutation || '—'}</dd></div>
+                    <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Full Name</dt><dd className="mt-0.5 font-medium">{n.fullName || '—'}</dd></div>
+                    <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Name Card</dt><dd className="mt-0.5 font-medium">{n.nameCard || '—'}</dd></div>
+                    <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Designation</dt><dd className="mt-0.5 font-medium">{n.designation || '—'}</dd></div>
+                  </dl>
                 </div>
               ))}
             </div>
@@ -319,9 +321,15 @@ export function AgreementDetail() {
           {[0, 1].map(i => (
             <div key={i} className="space-y-3">
               <p className="text-sm font-semibold text-gray-600">Nominee {i + 1}</p>
-              <Input label="Full name" value={nominees[i]?.fullName ?? ''} onChange={e => setNominees(n => n.map((r, idx) => idx === i ? { ...r, fullName: e.target.value } : r))} />
-              <Input label="IC (New)" value={nominees[i]?.icNew ?? ''} onChange={e => setNominees(n => n.map((r, idx) => idx === i ? { ...r, icNew: e.target.value } : r))} />
-              <Input label="Email" type="email" value={nominees[i]?.email ?? ''} onChange={e => setNominees(n => n.map((r, idx) => idx === i ? { ...r, email: e.target.value } : r))} />
+              <div className="grid grid-cols-2 gap-3">
+                <Select label="Salutation" value={nominees[i]?.salutation ?? ''} onChange={e => setNominees(n => n.map((r, idx) => idx === i ? { ...r, salutation: e.target.value.toUpperCase() } : r))}>
+                  <option value="">—</option>
+                  {['MR', 'MRS', 'MS', 'DR', 'DATO', "DATO'", 'TAN SRI', 'PUAN SRI', 'ENCIK', 'PUAN', 'CIK'].map(s => <option key={s}>{s}</option>)}
+                </Select>
+                <Input label="Full name" value={nominees[i]?.fullName ?? ''} onChange={e => setNominees(n => n.map((r, idx) => idx === i ? { ...r, fullName: e.target.value.toUpperCase() } : r))} />
+                <Input label="Name card" value={nominees[i]?.nameCard ?? ''} onChange={e => setNominees(n => n.map((r, idx) => idx === i ? { ...r, nameCard: e.target.value.toUpperCase() } : r))} />
+                <Input label="Designation" value={nominees[i]?.designation ?? ''} onChange={e => setNominees(n => n.map((r, idx) => idx === i ? { ...r, designation: e.target.value.toUpperCase() } : r))} />
+              </div>
             </div>
           ))}
           {nomError && <p className="text-sm text-red-600">{nomError}</p>}

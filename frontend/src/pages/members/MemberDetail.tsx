@@ -1,14 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Pencil, ChevronDown, ChevronUp } from 'lucide-react';
 import { membersApi } from '../../api/members';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
-import { Modal } from '../../components/ui/Modal';
-import { Select } from '../../components/ui/Select';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { AgreementStatusBadge } from '../../components/AgreementStatusBadge';
 import { ProductBadge } from '../../components/ProductBadge';
@@ -31,24 +29,12 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
 export function MemberDetail() {
   const { id } = useParams<{ id: string }>();
   const { canEdit } = useAuth();
-  const qc = useQueryClient();
   const navigate = useNavigate();
-  const [statusModal, setStatusModal] = useState(false);
-  const [newStatus, setNewStatus] = useState<MemberStatus>('ACTIVE');
   const [expandedAgmt, setExpandedAgmt] = useState<string | null>(null);
 
   const { data: member, isLoading } = useQuery<Member>({
     queryKey: ['member', id],
     queryFn: () => membersApi.get(id!).then(r => r.data.data),
-  });
-
-  useEffect(() => {
-    if (member) setNewStatus(member.status);
-  }, [member]);
-
-  const statusMut = useMutation({
-    mutationFn: (s: MemberStatus) => membersApi.changeStatus(id!, s),
-    onSuccess: () => { setStatusModal(false); qc.invalidateQueries({ queryKey: ['member', id] }); },
   });
 
   if (isLoading) return <PageSpinner />;
@@ -71,7 +57,6 @@ export function MemberDetail() {
         <div className="flex items-center gap-2">
           <Badge color={statusColor[member.status]}>{member.status}</Badge>
           <Badge color={member.memberType === 'INDIVIDUAL' ? 'blue' : 'purple'}>{member.memberType}</Badge>
-          {canEdit('MEMBERS') && <Button variant="secondary" size="sm" onClick={() => setStatusModal(true)}>Change status</Button>}
           {canEdit('MEMBERS') && (
             <Button size="sm" onClick={() => navigate(`/members/${id}/edit`, { replace: true })}>
               <Pencil className="h-3.5 w-3.5" /> Edit
@@ -98,6 +83,7 @@ export function MemberDetail() {
               <InfoRow label="Email"         value={member.email} />
               <InfoRow label="Mobile"        value={member.telMobile} />
               <InfoRow label="Home tel."     value={member.telHome} />
+              <InfoRow label="Spouse name"   value={member.spouseName} />
               <InfoRow label="Branch"        value={member.branchCode} />
               <InfoRow label="TIN"           value={member.tinNumber} />
             </dl>
@@ -175,19 +161,6 @@ export function MemberDetail() {
         </Card>
       )}
 
-      {/* ── Spouse (individual only) ─────────────────────────────── */}
-      {member.memberType === 'INDIVIDUAL' && member.spouseName && (
-        <Card>
-          <CardHeader><p className="font-semibold text-gray-700">Spouse</p></CardHeader>
-          <CardBody>
-            <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
-              <InfoRow label="Name"    value={member.spouseName} />
-              <InfoRow label="IC"      value={member.spouseIc} />
-            </dl>
-          </CardBody>
-        </Card>
-      )}
-
       {/* ── Joint Applicant (individual only) ───────────────────── */}
       {member.memberType === 'INDIVIDUAL' && member.jaName && (
         <Card>
@@ -223,22 +196,24 @@ export function MemberDetail() {
           {member.agreements?.length === 0 && <p className="px-5 py-4 text-sm text-gray-400">No agreements.</p>}
           {member.agreements?.map(agmt => (
             <div key={agmt.id}>
-              <button
-                className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 text-left"
+              <div
+                className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 cursor-pointer"
                 onClick={() => setExpandedAgmt(expandedAgmt === agmt.id ? null : agmt.id)}
               >
                 <div className="flex items-center gap-3">
-                  <span className="font-mono font-medium text-sm">{agmt.agreementNo}</span>
+                  {agmt.transferFlag === 'TT' ? (
+                    <span className="font-mono font-medium text-sm text-gray-400 line-through" title="Transferred">{agmt.agreementNo}</span>
+                  ) : (
+                    <Link to={`/agreements/${agmt.id}`} className="font-mono font-medium text-sm text-blue-600 hover:underline" onClick={e => e.stopPropagation()}>{agmt.agreementNo}</Link>
+                  )}
                   <ProductBadge coCode={agmt.coCode} />
                   <AgreementStatusBadge status={agmt.acctClassify} />
                   {(agmt.totalPoints ?? 0) > 0 && <span className="text-xs text-gray-500">{agmt.totalPoints} pts</span>}
                 </div>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
-                  <span>{format(new Date(agmt.agreementDate), 'dd/MM/yyyy')}</span>
-                  <Link to={`/agreements/${agmt.id}`} className="text-blue-600 hover:underline" onClick={e => e.stopPropagation()}>View</Link>
+                <div className="flex items-center text-gray-500">
                   {expandedAgmt === agmt.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </div>
-              </button>
+              </div>
               {expandedAgmt === agmt.id && agmt.nominees && agmt.nominees.length > 0 && (
                 <div className="px-5 pb-3 bg-gray-50">
                   <p className="text-xs font-semibold uppercase text-gray-400 mb-2">Nominees</p>
@@ -254,19 +229,6 @@ export function MemberDetail() {
         </div>
       </Card>
 
-      <Modal open={statusModal} title="Change Member Status" onClose={() => setStatusModal(false)}>
-        <div className="space-y-4">
-          <Select label="New status" value={newStatus} onChange={e => setNewStatus(e.target.value as MemberStatus)}>
-            {(['ACTIVE', 'SUSPENDED', 'CLOSED', 'DECEASED', 'TRANSFERRED'] as MemberStatus[]).map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </Select>
-          <div className="flex gap-3">
-            <Button onClick={() => statusMut.mutate(newStatus)} loading={statusMut.isPending}>Save</Button>
-            <Button variant="secondary" onClick={() => setStatusModal(false)}>Cancel</Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

@@ -121,6 +121,15 @@ export function MemberForm() {
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm(f => ({ ...f, [k]: e.target.value.toUpperCase() }));
 
+  // Email / free-text inputs — no uppercase
+  const setEmail = (k: string) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const setPlain = (k: string) =>
+    (e: React.ChangeEvent<HTMLTextAreaElement>) =>
+      setForm(f => ({ ...f, [k]: e.target.value }));
+
   // Date inputs — keep value as-is (browser date picker handles format)
   const setDate = (k: string) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -186,7 +195,7 @@ export function MemberForm() {
                     <ReadOnlyField label="Member type" value={memberTypeLabel} />
                     <Select label="Salutation" value={form.salutation ?? ''} onChange={set('salutation')}>
                       <option value="">—</option>
-                      {['Mr', 'Mrs', 'Ms', 'Dr', 'Dato', "Dato'", 'Tan Sri', 'Puan Sri', 'Encik', 'Puan', 'Cik'].map(s =>
+                      {['MR', 'MRS', 'MS', 'DR', 'DATO', "DATO'", 'TAN SRI', 'PUAN SRI', 'ENCIK', 'PUAN', 'CIK'].map(s =>
                         <option key={s}>{s}</option>)}
                     </Select>
                     <div className="col-span-2">
@@ -201,7 +210,7 @@ export function MemberForm() {
                     </Select>
                     <Select label="Salutation" value={form.salutation ?? ''} onChange={set('salutation')}>
                       <option value="">—</option>
-                      {['Mr', 'Mrs', 'Ms', 'Dr', 'Dato', "Dato'", 'Tan Sri', 'Puan Sri', 'Encik', 'Puan', 'Cik'].map(s =>
+                      {['MR', 'MRS', 'MS', 'DR', 'DATO', "DATO'", 'TAN SRI', 'PUAN SRI', 'ENCIK', 'PUAN', 'CIK'].map(s =>
                         <option key={s}>{s}</option>)}
                     </Select>
                     <div className="col-span-2">
@@ -217,26 +226,26 @@ export function MemberForm() {
                 <Input label="Date of birth" type="date" value={form.dateOfBirth?.slice(0, 10) ?? ''} onChange={setDate('dateOfBirth')} />
                 <Select label="Gender" value={form.gender ?? ''} onChange={set('gender')}>
                   <option value="">—</option>
-                  <option value="M">Male</option>
-                  <option value="F">Female</option>
+                  <option value="M">MALE</option>
+                  <option value="F">FEMALE</option>
                 </Select>
                 <Select label="Race" value={form.race ?? ''} onChange={set('race')}>
                   <option value="">—</option>
-                  <option value="M">Malay</option>
-                  <option value="C">Chinese</option>
-                  <option value="I">Indian</option>
-                  <option value="O">Other</option>
+                  <option value="M">MALAY</option>
+                  <option value="C">CHINESE</option>
+                  <option value="I">INDIAN</option>
+                  <option value="O">OTHER</option>
                 </Select>
                 <Select label="Marital status" value={form.maritalStatus ?? ''} onChange={set('maritalStatus')}>
                   <option value="">—</option>
-                  <option value="M">Married</option>
-                  <option value="S">Single</option>
-                  <option value="D">Divorced</option>
-                  <option value="W">Widowed</option>
+                  <option value="M">MARRIED</option>
+                  <option value="S">SINGLE</option>
+                  <option value="D">DIVORCED</option>
+                  <option value="W">WIDOWED</option>
                 </Select>
 
                 <SectionHeading>Contact</SectionHeading>
-                <Input label="Email"     type="email" value={form.email     ?? ''} onChange={setU('email')} />
+                <Input label="Email"     type="email" value={form.email     ?? ''} onChange={setEmail('email')} />
                 <Input label="Mobile"               value={form.telMobile  ?? ''} onChange={setU('telMobile')} />
                 <Input label="Home tel."            value={form.telHome     ?? ''} onChange={setU('telHome')} />
 
@@ -247,7 +256,7 @@ export function MemberForm() {
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
                   <textarea className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    rows={2} value={form.remarks ?? ''} onChange={setU('remarks')} />
+                    rows={2} value={form.remarks ?? ''} onChange={setPlain('remarks')} />
                 </div>
               </div>
             )}
@@ -288,8 +297,8 @@ export function MemberForm() {
                 <Input label="Designation"     value={form.designation ?? ''} onChange={setU('designation')} />
                 <Select label="Nature of work" value={form.workNature ?? ''} onChange={set('workNature')}>
                   <option value="">—</option>
-                  <option value="E">Employed</option>
-                  <option value="O">Own business</option>
+                  <option value="E">EMPLOYED</option>
+                  <option value="O">OWN BUSINESS</option>
                 </Select>
                 <Input label="Office tel. 1" value={form.telOffice  ?? ''} onChange={setU('telOffice')} />
                 <Input label="Office tel. 2" value={form.telOffice2 ?? ''} onChange={setU('telOffice2')} />
@@ -316,7 +325,7 @@ export function MemberForm() {
               <div className="grid grid-cols-2 gap-4">
                 <Select label="Salutation" value={form.jaSalutation ?? ''} onChange={set('jaSalutation')}>
                   <option value="">—</option>
-                  {['Mr', 'Mrs', 'Ms', 'Dr', 'Dato', "Dato'", 'Tan Sri', 'Puan Sri', 'Encik', 'Puan', 'Cik'].map(s =>
+                  {['MR', 'MRS', 'MS', 'DR', 'DATO', "DATO'", 'TAN SRI', 'PUAN SRI', 'ENCIK', 'PUAN', 'CIK'].map(s =>
                     <option key={s}>{s}</option>)}
                 </Select>
                 <Input label="Full name"   value={form.jaName        ?? ''} onChange={setU('jaName')} />
@@ -326,7 +335,7 @@ export function MemberForm() {
                 <Input label="Name card"   value={form.jaNameCard    ?? ''} onChange={setU('jaNameCard')} />
 
                 <SectionHeading>Contact</SectionHeading>
-                <Input label="Email"       type="email" value={form.jaEmail    ?? ''} onChange={setU('jaEmail')} />
+                <Input label="Email"       type="email" value={form.jaEmail    ?? ''} onChange={setEmail('jaEmail')} />
                 <Input label="Mobile"               value={form.jaMobile    ?? ''} onChange={setU('jaMobile')} />
                 <Input label="Home tel."            value={form.jaTelHome   ?? ''} onChange={setU('jaTelHome')} />
                 <Input label="Office tel."          value={form.jaTelOffice ?? ''} onChange={setU('jaTelOffice')} />
@@ -361,7 +370,7 @@ export function MemberForm() {
                 </div>
 
                 <SectionHeading>Contact</SectionHeading>
-                <Input label="Email"  type="email" value={form.email    ?? ''} onChange={setU('email')} />
+                <Input label="Email"  type="email" value={form.email    ?? ''} onChange={setEmail('email')} />
                 <Input label="Tel. 1"              value={form.telHome   ?? ''} onChange={setU('telHome')} />
                 <Input label="Tel. 2"              value={form.telMobile ?? ''} onChange={setU('telMobile')} />
                 <Input label="Fax"                 value={form.faxNo     ?? ''} onChange={setU('faxNo')} />

@@ -209,6 +209,7 @@ export interface Agreement {
   outstdDoc: boolean;
   docDescription?: string;
   canCode?: string;
+  transferFlag?: string;
   cancellationReason?: CancellationReason;
   statusChangeDate?: string;
   statusChangeUser?: string;

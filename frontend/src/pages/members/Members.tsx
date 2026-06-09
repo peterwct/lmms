@@ -182,9 +182,13 @@ export function Members() {
                     <td className="px-4 py-3 text-gray-800">{a.member?.fullName || '—'}</td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">{a.member?.icNew || '—'}</td>
                     <td className="px-4 py-3">
-                      <Link to={`/agreements/${a.id}`} className="font-mono text-blue-600 hover:underline">
-                        {a.agreementNo}
-                      </Link>
+                      {a.transferFlag === 'TT' ? (
+                        <span className="font-mono text-gray-400 line-through" title="Transferred">{a.agreementNo}</span>
+                      ) : (
+                        <Link to={`/agreements/${a.id}`} className="font-mono text-blue-600 hover:underline">
+                          {a.agreementNo}
+                        </Link>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                       {format(new Date(a.agreementDate), 'dd/MM/yyyy')}
