@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ReportKey" ADD VALUE 'REMAINING_VALUE_REPORT';

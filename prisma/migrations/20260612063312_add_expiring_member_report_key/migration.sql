@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ReportKey" ADD VALUE 'EXPIRING_MEMBER_REPORT';

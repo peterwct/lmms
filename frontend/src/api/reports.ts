@@ -60,6 +60,42 @@ export interface AgreementDetailPreviewResponse<T> {
   meta: { total: number; shown: number };
 }
 
+export interface RemainingValuePreviewRow {
+  no: number;
+  membershipNo: string;
+  fullName: string;
+  agreementNo: string;
+  agreementDate: string;
+  expiryDate: string;
+  purchasePrice: number;
+  remainingYear: number;
+  valuePerYear: number;
+  remainingValue: number;
+}
+
+export interface RemainingValuePreviewResponse {
+  data: RemainingValuePreviewRow[];
+  meta: { total: number; shown: number; startYear: number; endYear: number };
+}
+
+export interface ExpiringMemberPreviewRow {
+  no: number;
+  coCode: string;
+  fullName: string;
+  membershipNo: string;
+  agreementNo: string;
+  agreementDate: string;
+  expiryDate: string;
+  amcBilled: number;
+  totalAmc: number;
+  acctClassify: string;
+}
+
+export interface ExpiringMemberPreviewResponse {
+  data: ExpiringMemberPreviewRow[];
+  meta: { total: number; shown: number };
+}
+
 export const reportsApi = {
   membersReport: (params: { coCode?: string; acctClassify?: string; format: 'pdf' | 'excel' }) =>
     api.get('/reports/members', { params, responseType: 'blob' }),
@@ -85,6 +121,18 @@ export const reportsApi = {
 
   expiryReport: (format: 'pdf' | 'excel') =>
     api.get('/reports/expiry', { params: { format }, responseType: 'blob' }),
+
+  expiringMembersPreview: (params: { month: number; year: number }) =>
+    api.get<ExpiringMemberPreviewResponse>('/reports/expiring-members/preview', { params }),
+
+  expiringMembersReport: (params: { month: number; year: number; format: 'pdf' | 'excel' }) =>
+    api.get('/reports/expiring-members', { params, responseType: 'blob' }),
+
+  remainingValuePreview: (params: { coCode: 'LHC' | 'CP' }) =>
+    api.get<RemainingValuePreviewResponse>('/reports/remaining-value/preview', { params }),
+
+  remainingValueReport: (params: { coCode: 'LHC' | 'CP' }) =>
+    api.get('/reports/remaining-value', { params, responseType: 'blob' }),
 
   getReportAccess: (userId: number) =>
     api.get<{ data: UserReportAccessEntry[] }>(`/reports/access/${userId}`),

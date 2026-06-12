@@ -33,6 +33,20 @@ const REPORT_LIST: ReportItem[] = [
     to: '/reports/expiry',
     icon: <CalendarDays className="h-4 w-4" />,
   },
+  {
+    key: 'EXPIRING_MEMBER_REPORT',
+    label: 'List of Expiring Members',
+    description: 'Agreements expiring in a selected month and year, grouped by company code. Excludes terminated agreements.',
+    to: '/reports/expiring-members',
+    icon: <CalendarDays className="h-4 w-4" />,
+  },
+  {
+    key: 'REMAINING_VALUE_REPORT',
+    label: 'Remaining Value Report',
+    description: 'Year-by-year projected remaining book value of active agreements by company code (LHC or CP). Excel output with dynamic yearly columns.',
+    to: '/reports/remaining-value',
+    icon: <FileBarChart2 className="h-4 w-4" />,
+  },
 ];
 
 export function Reports() {

@@ -64,7 +64,7 @@ export function Sidebar() {
   if (canView('AGREEMENTS')) memberItems.push({ to: '/agreements', label: 'Agreements', icon: <FileText className="h-4 w-4" /> });
 
   const reportItems: NavItem[] = [];
-  if (hasReport('MEMBER_REPORT') || hasReport('AGREEMENT_REPORT') || hasReport('EXPIRY_REPORT')) {
+  if (hasReport('MEMBER_REPORT') || hasReport('AGREEMENT_REPORT') || hasReport('EXPIRY_REPORT') || hasReport('EXPIRING_MEMBER_REPORT') || hasReport('REMAINING_VALUE_REPORT')) {
     reportItems.push({ to: '/reports', label: 'Reports', icon: <FileBarChart2 className="h-4 w-4" /> });
   }
 
