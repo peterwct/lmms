@@ -6,8 +6,6 @@ import { Select } from '../../components/ui/Select';
 import { Card } from '../../components/ui/Card';
 import { Pagination } from '../../components/ui/Pagination';
 import { PageSpinner } from '../../components/ui/Spinner';
-import { AgreementStatusBadge } from '../../components/AgreementStatusBadge';
-import { ProductBadge } from '../../components/ProductBadge';
 import { RecordCount } from '../../components/ui/RecordCount';
 import { format } from 'date-fns';
 
@@ -133,15 +131,14 @@ export function Agreements() {
                   <th className="px-4 py-3 text-left">Agreement No.</th>
                   <th className="px-4 py-3 text-left cursor-pointer select-none hover:bg-gray-100"
                       onClick={() => handleSort('fullName')}>
-                    Member{sortIcon('fullName')}
+                    Membership No / Name{sortIcon('fullName')}
                   </th>
-                  <th className="px-4 py-3 text-left">Product</th>
                   <th className="px-4 py-3 text-left cursor-pointer select-none hover:bg-gray-100"
                       onClick={() => handleSort('agreementDate')}>
-                    Date{sortIcon('agreementDate')}
+                    Agreement Date{sortIcon('agreementDate')}
                   </th>
+                  <th className="px-4 py-3 text-left">Expiry Date</th>
                   <th className="px-4 py-3 text-left">Term</th>
-                  <th className="px-4 py-3 text-left">Status</th>
                   <th className="px-4 py-3 text-left">AMC</th>
                 </tr>
               </thead>
@@ -157,10 +154,9 @@ export function Agreements() {
                       </Link>
                       <div className="text-gray-700 text-xs">{a.member?.fullName}</div>
                     </td>
-                    <td className="px-4 py-3"><ProductBadge coCode={a.coCode} /></td>
                     <td className="px-4 py-3 text-gray-500">{format(new Date(a.agreementDate), 'dd/MM/yyyy')}</td>
+                    <td className="px-4 py-3 text-gray-500">{a.endDate ? format(new Date(a.endDate), 'dd/MM/yyyy') : '—'}</td>
                     <td className="px-4 py-3 text-gray-500">{a.termYears} yrs</td>
-                    <td className="px-4 py-3"><AgreementStatusBadge status={a.acctClassify} /></td>
                     <td className="px-4 py-3 text-xs text-gray-500">
                       {a.amcSchedule ? (
                         <span>{a.amcSchedule.invoicesIssued}/{a.amcSchedule.totalInvoices}</span>
@@ -169,7 +165,7 @@ export function Agreements() {
                   </tr>
                 ))}
                 {data?.data.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No agreements found</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No agreements found</td></tr>
                 )}
               </tbody>
             </table>
