@@ -47,6 +47,13 @@ const REPORT_LIST: ReportItem[] = [
     to: '/reports/remaining-value',
     icon: <FileBarChart2 className="h-4 w-4" />,
   },
+  {
+    key: 'EXPIRY_SUMMARY_REPORT',
+    label: 'Summary of Expiring Members by Years',
+    description: 'Agreements grouped by expiry year with counts by status category (NA, SU <=3yr, SU >3yr, PT <=3yr, PT >3yr) for LHC or CP.',
+    to: '/reports/expiry-summary',
+    icon: <CalendarDays className="h-4 w-4" />,
+  },
 ];
 
 export function Reports() {

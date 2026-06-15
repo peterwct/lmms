@@ -342,13 +342,21 @@ POST /api/amc/rates/cp                      Add CP tier
 PUT  /api/amc/rates/cp/:id                  Edit CP tier
 PATCH /api/amc/rates/cp/:id/toggle          Activate/deactivate CP tier
 DELETE /api/amc/rates/cp/:id               Delete CP tier
-GET  /api/reports/members/preview           Member report preview (requireReportAccess)
-GET  /api/reports/members                   Generate member report PDF/Excel (requireReportAccess)
-GET  /api/reports/agreements/preview        Agreement report preview (requireReportAccess)
-GET  /api/reports/agreements                Generate agreement report PDF/Excel (requireReportAccess)
-GET  /api/reports/access/:userId            Get user's report access list (IT only)
-POST /api/reports/access/:userId/:reportKey Grant report access (IT only)
-DELETE /api/reports/access/:userId/:reportKey Revoke report access (IT only)
+GET  /api/reports/members/preview                   Member report preview (requireReportAccess)
+GET  /api/reports/members                           Generate member report PDF/Excel (requireReportAccess)
+GET  /api/reports/agreements/preview                Agreement report preview (requireReportAccess)
+GET  /api/reports/agreements                        Generate agreement report PDF/Excel (requireReportAccess)
+GET  /api/reports/expiry/preview                    Expiry analysis preview (requireReportAccess)
+GET  /api/reports/expiry                            Generate expiry analysis PDF/Excel (requireReportAccess)
+GET  /api/reports/expiring-members/preview          List of expiring members preview (requireReportAccess)
+GET  /api/reports/expiring-members                  Generate expiring members PDF/Excel (requireReportAccess)
+GET  /api/reports/remaining-value/preview           Remaining value preview (requireReportAccess)
+GET  /api/reports/remaining-value                   Generate remaining value Excel (requireReportAccess)
+GET  /api/reports/expiry-summary/preview            Expiry summary by years preview (requireReportAccess)
+GET  /api/reports/expiry-summary                    Generate expiry summary PDF/Excel (requireReportAccess)
+GET  /api/reports/access/:userId                    Get user's report access list (IT only)
+POST /api/reports/access/:userId/:reportKey         Grant report access (IT only)
+DELETE /api/reports/access/:userId/:reportKey       Revoke report access (IT only)
 ```
 
 ## Modules
@@ -364,7 +372,7 @@ DELETE /api/reports/access/:userId/:reportKey Revoke report access (IT only)
 | AMC Billing — Invoices | ✅ Done | Invoices, InvoiceDetail |
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
-| Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports` |
+| Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
 
 ## Navigation / permissions
 
@@ -378,7 +386,7 @@ DELETE /api/reports/access/:userId/:reportKey Revoke report access (IT only)
 Reports use a separate per-user access model — independent of department permissions.
 
 - **`UserReportAccess`** table: `userId`, `reportKey` (enum), `grantedById`, `grantedAt`. Unique on `[userId, reportKey]`.
-- **`ReportKey` enum**: `MEMBER_REPORT`, `AGREEMENT_REPORT` — add new values here when adding reports.
+- **`ReportKey` enum**: `MEMBER_REPORT`, `AGREEMENT_REPORT`, `EXPIRY_REPORT`, `EXPIRING_MEMBER_REPORT`, `REMAINING_VALUE_REPORT`, `EXPIRY_SUMMARY_REPORT` — add new values here when adding reports.
 - IT department bypasses all report access checks (same as module permissions).
 - IT grants/revokes access via the "Report Access" card on the User Detail page (`/admin/users/:id`).
 - Sidebar shows a single **Reports** link only when `hasReport()` returns true for at least one key. Clicking it goes to `/reports`, which renders a card grid of accessible reports.
@@ -389,7 +397,7 @@ Reports use a separate per-user access model — independent of department permi
 1. Add the new key to `ReportKey` enum in `prisma/schema.prisma` → `npx prisma migrate dev`
 2. Add to `ALL_REPORT_KEYS` + `REPORT_LABELS` in `backend/src/controllers/reports/access.controller.ts`
 3. Add route in `backend/src/routes/reports.ts` with `requireReportAccess('NEW_KEY')`
-4. Add a `ReportCard` entry to `REPORT_CARDS` in `frontend/src/pages/reports/Reports.tsx`
+4. Add an entry to `REPORT_LIST` in `frontend/src/pages/reports/Reports.tsx`
 5. Add `hasReport('NEW_KEY')` to the OR condition in the `reportItems` block in `frontend/src/components/Sidebar.tsx`
 
 ## Agreement Detail card order

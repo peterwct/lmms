@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ReportKey" ADD VALUE 'EXPIRY_SUMMARY_REPORT';

@@ -60,6 +60,16 @@ export interface AgreementDetailPreviewResponse<T> {
   meta: { total: number; shown: number };
 }
 
+export interface ExpirySummaryRow {
+  year:  number;
+  naRa:  number;
+  suLe3: number;
+  suGt3: number;
+  ptLe3: number;
+  ptGt3: number;
+  total: number;
+}
+
 export interface RemainingValuePreviewRow {
   no: number;
   membershipNo: string;
@@ -127,6 +137,14 @@ export const reportsApi = {
 
   expiringMembersReport: (params: { month: number; year: number; format: 'pdf' | 'excel' }) =>
     api.get('/reports/expiring-members', { params, responseType: 'blob' }),
+
+  expirySummaryPreview: (params: { coCode: 'LHC' | 'CP' }) =>
+    api.get<{ data: ExpirySummaryRow[]; meta: { totalAgreements: number; coCode: string } }>(
+      '/reports/expiry-summary/preview', { params }
+    ),
+
+  expirySummaryReport: (params: { coCode: 'LHC' | 'CP'; format: 'pdf' | 'excel' }) =>
+    api.get('/reports/expiry-summary', { params, responseType: 'blob' }),
 
   remainingValuePreview: (params: { coCode: 'LHC' | 'CP' }) =>
     api.get<RemainingValuePreviewResponse>('/reports/remaining-value/preview', { params }),

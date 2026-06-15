@@ -21,6 +21,7 @@ import { Reports } from './pages/reports/Reports';
 import { ExpiryReport } from './pages/reports/ExpiryReport';
 import { ExpiringMembersReport } from './pages/reports/ExpiringMembersReport';
 import { RemainingValueReport } from './pages/reports/RemainingValueReport';
+import { ExpirySummaryReport } from './pages/reports/ExpirySummaryReport';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -55,6 +56,7 @@ export default function App() {
               <Route path="reports/expiry"             element={<ExpiryReport />} />
               <Route path="reports/expiring-members" element={<ExpiringMembersReport />} />
               <Route path="reports/remaining-value"   element={<RemainingValueReport />} />
+              <Route path="reports/expiry-summary"    element={<ExpirySummaryReport />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />
