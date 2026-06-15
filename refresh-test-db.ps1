@@ -26,7 +26,7 @@
            i_salutation, i_name_card, i_ic_pass_no, i_new_ic, i_nationality, i_birthdate,
            i_sex, i_race, i_marital_status, i_email, i_tel_res, i_handphone,
            i_add1, i_add2, i_add3, i_city_state, i_postcode, i_statecode,
-           i_mailadd1, i_mailadd2, i_mailadd3, i_mail_city_state, i_mail_postcode, i_mail_state,
+           i_mailadd1, i_mailadd2, i_mailadd3, i_mail_city_state, i_mail_postcode, i_mail_statecode,
            i_work_nature, i_company1, i_comp_add1, i_comp_add2, i_comp_add3,
            i_telno_off, i_designation, i_spouse, i_spouse_ic, i_spouse_new_ic,
            i_ja_name, i_ja_ic, i_ja_new_ic, i_ja_salutation, i_ja_designation, i_ja_name_card,
