@@ -19,6 +19,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
         lockedAt: true,
         mustChangePwd: true,
         departmentId: true,
+        sessionToken: true,
         department: { select: { id: true, name: true, isLocked: true } },
       },
     });
@@ -28,6 +29,10 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     }
     if (user.lockedAt) {
       res.status(401).json({ error: 'Account locked. Contact IT to unlock.' });
+      return;
+    }
+    if (user.sessionToken !== payload.sessionToken) {
+      res.status(401).json({ error: 'Session ended. Please log in again.' });
       return;
     }
     req.user = {

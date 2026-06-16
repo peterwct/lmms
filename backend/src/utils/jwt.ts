@@ -3,6 +3,7 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 export interface JwtPayload {
   userId: number;
   username: string;
+  sessionToken: string;
   iat?: number;
   exp?: number;
 }

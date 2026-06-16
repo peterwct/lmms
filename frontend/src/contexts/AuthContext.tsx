@@ -5,7 +5,7 @@ import type { User, AppModule, Permission, ReportKey } from '../types';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<User>;
+  login: (username: string, password: string, force?: boolean) => Promise<User>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   canView: (module: AppModule) => boolean;
@@ -39,8 +39,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh().finally(() => setLoading(false));
   }, [refresh]);
 
-  const login = async (username: string, password: string): Promise<User> => {
-    const { data } = await authApi.login(username, password);
+  const login = async (username: string, password: string, force?: boolean): Promise<User> => {
+    const { data } = await authApi.login(username, password, force);
     setUser(data.user);
     return data.user;
   };

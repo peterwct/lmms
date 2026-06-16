@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 import { prisma } from '../utils/prisma';
 import { signToken } from '../utils/jwt';
 import { writeAudit } from '../utils/audit';
@@ -8,6 +9,7 @@ import { writeAudit } from '../utils/audit';
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
+  force: z.boolean().optional(),
 });
 
 const pwdSchema = z
@@ -40,7 +42,7 @@ const COOKIE_OPTS = {
 export async function login(req: Request, res: Response): Promise<void> {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() }); return; }
-  const { username, password } = parsed.data;
+  const { username, password, force } = parsed.data;
 
   const user = await prisma.user.findUnique({
     where: { username },
@@ -73,13 +75,20 @@ export async function login(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  if (user.sessionToken && !force) {
+    res.status(409).json({ error: 'SESSION_ACTIVE' });
+    return;
+  }
+
+  const newSessionToken = randomUUID();
+
   await prisma.user.update({
     where: { id: user.id },
-    data: { failedAttempts: 0, lockedAt: null, lastLoginAt: new Date(), updatedAt: new Date() },
+    data: { failedAttempts: 0, lockedAt: null, lastLoginAt: new Date(), sessionToken: newSessionToken, updatedAt: new Date() },
   });
   await writeAudit({ userId: user.id, action: `Login: ${username}`, actionType: 'LOGIN' });
 
-  const token = signToken({ userId: user.id, username: user.username });
+  const token = signToken({ userId: user.id, username: user.username, sessionToken: newSessionToken });
   res.cookie('token', token, COOKIE_OPTS);
   res.json({
     user: {
@@ -91,7 +100,13 @@ export async function login(req: Request, res: Response): Promise<void> {
   });
 }
 
-export function logout(_req: Request, res: Response): void {
+export async function logout(req: Request, res: Response): Promise<void> {
+  if (req.user?.id) {
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { sessionToken: null, updatedAt: new Date() },
+    });
+  }
   res.clearCookie('token');
   res.json({ message: 'Logged out' });
 }

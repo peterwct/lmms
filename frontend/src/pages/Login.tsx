@@ -1,9 +1,11 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { apiError } from '../api/client';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { Modal } from '../components/ui/Modal';
 
 export function Login() {
   const { login } = useAuth();
@@ -13,6 +15,10 @@ export function Login() {
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
 
+  const [sessionConflict, setSessionConflict] = useState(false);
+  const [pendingCreds, setPendingCreds]       = useState<{ username: string; password: string } | null>(null);
+  const [forceLoading, setForceLoading]       = useState(false);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
@@ -21,10 +27,36 @@ export function Login() {
       const user = await login(username, password);
       navigate(user.mustChangePwd ? '/change-password' : '/members', { replace: true });
     } catch (err) {
-      setError(apiError(err));
+      if (axios.isAxiosError(err) && err.response?.status === 409 &&
+          err.response.data?.error === 'SESSION_ACTIVE') {
+        setPendingCreds({ username, password });
+        setSessionConflict(true);
+      } else {
+        setError(apiError(err));
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleForceLogin = async () => {
+    if (!pendingCreds) return;
+    setForceLoading(true);
+    try {
+      const user = await login(pendingCreds.username, pendingCreds.password, true);
+      navigate(user.mustChangePwd ? '/change-password' : '/members', { replace: true });
+    } catch (err) {
+      setSessionConflict(false);
+      setPendingCreds(null);
+      setError(apiError(err));
+    } finally {
+      setForceLoading(false);
+    }
+  };
+
+  const handleCancelForce = () => {
+    setSessionConflict(false);
+    setPendingCreds(null);
   };
 
   return (
@@ -98,6 +130,26 @@ export function Login() {
           </p>
         </div>
       </div>
+
+      <Modal
+        open={sessionConflict}
+        title="Active Session Detected"
+        onClose={handleCancelForce}
+        size="sm"
+      >
+        <p className="text-sm text-gray-600 mb-5">
+          You are already logged in from another browser or device.
+          Do you want to end that session and log in here?
+        </p>
+        <div className="flex justify-end gap-3">
+          <Button variant="secondary" onClick={handleCancelForce} disabled={forceLoading}>
+            No, stay on login
+          </Button>
+          <Button variant="danger" loading={forceLoading} onClick={handleForceLogin}>
+            Yes, end other session
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
