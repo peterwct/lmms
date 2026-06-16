@@ -28,7 +28,7 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
 
 export function MemberDetail() {
   const { id } = useParams<{ id: string }>();
-  const { canEdit } = useAuth();
+  const { canEdit, canView } = useAuth();
   const navigate = useNavigate();
   const [expandedAgmt, setExpandedAgmt] = useState<string | null>(null);
 
@@ -203,8 +203,10 @@ export function MemberDetail() {
                 <div className="flex items-center gap-3">
                   {agmt.transferFlag === 'TT' ? (
                     <span className="font-mono font-medium text-sm text-gray-400 line-through" title="Transferred">{agmt.agreementNo}</span>
-                  ) : (
+                  ) : canView('AGREEMENTS') ? (
                     <Link to={`/agreements/${agmt.id}`} className="font-mono font-medium text-sm text-blue-600 hover:underline" onClick={e => e.stopPropagation()}>{agmt.agreementNo}</Link>
+                  ) : (
+                    <span className="font-mono font-medium text-sm text-gray-700">{agmt.agreementNo}</span>
                   )}
                   <ProductBadge coCode={agmt.coCode} />
                   <AgreementStatusBadge status={agmt.acctClassify} />

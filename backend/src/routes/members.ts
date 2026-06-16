@@ -2,10 +2,12 @@ import { Router } from 'express';
 import { authenticate, requirePasswordChanged } from '../middleware/auth';
 import { requirePermission } from '../middleware/permissions';
 import * as ctrl from '../controllers/members.controller';
+import { listAgreements } from '../controllers/agreements.controller';
 
 const router = Router();
 router.use(authenticate, requirePasswordChanged);
 
+router.get('/enquiry',       requirePermission('MEMBERS', 'view'),   listAgreements);
 router.get('/',              requirePermission('MEMBERS', 'view'),   ctrl.listMembers);
 router.post('/',             requirePermission('MEMBERS', 'create'), ctrl.createMember);
 router.get('/:id',           requirePermission('MEMBERS', 'view'),   ctrl.getMember);

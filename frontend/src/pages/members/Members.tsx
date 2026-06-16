@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { agreementsApi } from '../../api/agreements';
+import { membersApi } from '../../api/members';
+import { useAuth } from '../../contexts/AuthContext';
 import { Card, CardBody } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
@@ -34,6 +35,7 @@ function SortHeader({ label, field, sortBy, sortDir, onSort }: {
 }
 
 export function Members() {
+  const { canView } = useAuth();
   const [sp, setSp] = useSearchParams();
 
   // All search/sort/page state lives in the URL so Back restores it
@@ -97,7 +99,7 @@ export function Members() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['member-enquiry', applied, sortBy, sortDir, page],
-    queryFn: () => agreementsApi.list({
+    queryFn: () => membersApi.enquiry({
       coCode:       applied.coCode       || undefined,
       membershipNo: applied.membershipNo || undefined,
       agreementNo:  applied.agreementNo  || undefined,
@@ -184,10 +186,12 @@ export function Members() {
                     <td className="px-4 py-3">
                       {a.transferFlag === 'TT' ? (
                         <span className="font-mono text-gray-400 line-through" title="Transferred">{a.agreementNo}</span>
-                      ) : (
+                      ) : canView('AGREEMENTS') ? (
                         <Link to={`/agreements/${a.id}`} className="font-mono text-blue-600 hover:underline">
                           {a.agreementNo}
                         </Link>
+                      ) : (
+                        <span className="font-mono text-gray-700">{a.agreementNo}</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">

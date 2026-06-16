@@ -5,6 +5,9 @@ export const membersApi = {
   list: (params?: Record<string, unknown>) =>
     api.get<PaginatedResponse<Member>>('/members', { params }),
 
+  enquiry: (params?: Record<string, unknown>) =>
+    api.get<PaginatedResponse<Agreement>>('/members/enquiry', { params }),
+
   get: (id: string) => api.get<{ data: Member }>(`/members/${id}`),
 
   create: (data: Record<string, unknown>) =>
