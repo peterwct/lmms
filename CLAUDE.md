@@ -202,6 +202,7 @@ The script: truncates Member CASCADE → migrates members/agreements/nominees �
 - `req.user` is augmented via `backend/src/types/express.d.ts`
 - Login response includes full department permissions so sidebar renders correctly on first login
 - Login response also includes `reportAccess: ReportKey[]` — list of report keys the user has been explicitly granted
+- **Single-session enforcement:** `sessionToken String?` on User model. A UUID is generated on each login, stored in DB and embedded in the JWT. Auth middleware compares the two on every request — mismatch returns 401 "Session ended." Login returns `409 SESSION_ACTIVE` if `user.sessionToken` is non-null and `force` is not true in the request body. Frontend shows a confirmation modal; user clicks "Yes" to re-POST with `force: true`. Logout requires `authenticate` middleware and clears `sessionToken` to null in DB.
 
 ## Key conventions
 
@@ -325,6 +326,7 @@ Key endpoints:
 POST /api/auth/login                        Login → JWT cookie
 GET  /api/states                            List all state codes
 GET  /api/members?search=&memberType=&...   Search members
+GET  /api/members/enquiry?...               Member Enquiry search (same params as /api/agreements; uses MEMBERS permission)
 GET  /api/members/:id                       Member + agreements + nominees
 PUT  /api/members/:id                       Update member
 GET  /api/agreements?q=&coCode=&...         List/search agreements
@@ -366,8 +368,8 @@ DELETE /api/reports/access/:userId/:reportKey       Revoke report access (IT onl
 | Admin — Users | ✅ Done | Users, UserDetail, UserForm. No accessLevel field (removed). |
 | Admin — Departments | ✅ Done | Departments, permissions matrix |
 | Admin — Audit Log | ✅ Done | AuditLog (IT only) |
-| Members | ✅ Done | Member Enquiry (search+sort, URL state), MemberDetail, MemberForm. Agreement links with `transferFlag='TT'` are disabled (strikethrough) on both the list and MemberDetail accordion. Change Status removed from MemberDetail — agreements only. |
-| Agreements | ✅ Done | Agreements list (search+sort, URL state, defaults LHC-03/Active), AgreementDetail. AMC and PBS cards fetched by `coCode + agreementNo` (not FK) to handle duplicate agreementNo across members. |
+| Members | ✅ Done | Member Enquiry (search+sort, URL state), MemberDetail, MemberForm. Agreement links with `transferFlag='TT'` are disabled (strikethrough) on both the list and MemberDetail accordion. Change Status removed from MemberDetail — agreements only. Enquiry uses `GET /api/members/enquiry` (MEMBERS permission) not `/api/agreements`. Agreement number links check `canView('AGREEMENTS')` — plain text when disabled. |
+| Agreements | ✅ Done | Agreements list (search+sort, URL state, defaults LHC-03/Active), AgreementDetail. Columns: Agreement No, Membership No/Name, Agreement Date, Expiry Date, Term, AMC (Product + Status columns removed). AMC and PBS cards fetched by `coCode + agreementNo` (not FK) to handle duplicate agreementNo across members. |
 | AMC Billing — Schedules | ✅ Done | Schedules (search+sort, URL state, defaults LHC-03/Active) |
 | AMC Billing — Invoices | ✅ Done | Invoices, InvoiceDetail |
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
