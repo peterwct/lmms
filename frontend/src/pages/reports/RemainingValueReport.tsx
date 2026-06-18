@@ -23,7 +23,7 @@ function PreviewTable({ rows }: { rows: RemainingValuePreviewRow[] }) {
         <thead>
           <tr>
             {['#', 'Membership No.', 'Name', 'Agreement No.', 'Agreement Date', 'Expiry Date',
-              'Purchase Price', 'Remaining Year', 'Value / Year', 'Remaining Value'].map(h => (
+              'Net Purchase Price', 'Remaining Year', 'Value / Year', 'Remaining Value'].map(h => (
               <th
                 key={h}
                 className="px-3 py-2 text-left font-bold bg-blue-900 text-white border border-blue-700 whitespace-nowrap"

@@ -62,6 +62,9 @@ async function fetchRows(coCode: string): Promise<RemainingValueRow[]> {
       endDate: true,
       termYears: true,
       purchasePrice: true,
+      subFees: true,
+      sinkFund: true,
+      govtTax: true,
       member: { select: { fullName: true, membershipNo: true } },
     },
     orderBy: { agreementDate: 'asc' },
@@ -72,7 +75,11 @@ async function fetchRows(coCode: string): Promise<RemainingValueRow[]> {
   return agreements.map(a => {
     const expiry       = a.endDate ? new Date(a.endDate) : addYears(new Date(a.agreementDate), a.termYears);
     const expiryYear   = expiry.getFullYear();
-    const price        = Number(a.purchasePrice ?? 0);
+    const gross        = Number(a.purchasePrice ?? 0);
+    const sub          = Number(a.subFees ?? 0);
+    const sink         = Number(a.sinkFund ?? 0);
+    const tax          = Number(a.govtTax ?? 0);
+    const price        = gross - sub - sink - tax;
     const vpyr         = a.termYears > 0 ? price / a.termYears : 0;
     const remainingYear = expiryYear - currentYear;
     const remainingValue = round2(Math.max(0, remainingYear * vpyr));
@@ -181,7 +188,7 @@ async function renderExcel(res: Response, rows: RemainingValueRow[], coCode: str
     { width: 16 }, // Agreement No.
     { width: 16 }, // Agreement Date
     { width: 16 }, // Expiry Date
-    { width: 18 }, // Purchase Price
+    { width: 20 }, // Net Purchase Price
     { width: 16 }, // Remaining Year
     { width: 18 }, // Value Per Year
     { width: 18 }, // Remaining Value
@@ -215,7 +222,7 @@ async function renderExcel(res: Response, rows: RemainingValueRow[], coCode: str
   // Row 5: Column headers
   const headers = [
     '#', 'Membership No.', 'Name', 'Agreement No.',
-    'Agreement Date', 'Expiry Date', 'Purchase Price',
+    'Agreement Date', 'Expiry Date', 'Net Purchase Price',
     'Remaining Year', 'Value Per Year', 'Remaining Value',
     ...yearCols.map(y => String(y)),
   ];
