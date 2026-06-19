@@ -13,6 +13,7 @@
  *  [7..10] unused
  *  [11] pbs_indc        (Y/N)
  *  [12] claim_indc      (Y/N)
+ *  [13] remark
  *
  * Run: npx ts-node prisma/migrate-maa-mem.ts
  *      npx ts-node prisma/migrate-maa-mem.ts --dry-run
@@ -132,6 +133,7 @@ async function main() {
       topUp:       bool(c[6]),
       pbsIndc:     bool(c[11]),
       claimIndc:   bool(c[12]),
+      remark:      nullify(t(c[13])),
     });
     imported++;
 

@@ -304,9 +304,36 @@ model PbsScheme {
   topUp       Boolean   @default(false)
   pbsIndc     Boolean   @default(false)
   claimIndc   Boolean   @default(false)
+  remark      String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime
   agreement   Agreement @relation(fields: [agreementId], references: [id])
+  claims      PbsClaim[]
+}
+
+model PbsClaim {
+  id            String    @id
+  pbsSchemeId   String
+  agreementNo   String
+  certNo        String?
+  refNo         Int
+  claimant      String?
+  claimantIc    String?
+  accNo         String?
+  bankCode      String?
+  relationCode  String?
+  remark        String?
+  lossDate      DateTime?
+  claimAmt      Decimal   @db.Decimal(12, 2)
+  payMode       String?
+  docNo         String?
+  docDate       DateTime?
+  claimType     String?
+  claimRemark   String?
+  trustPaidDate DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime
+  pbsScheme     PbsScheme @relation(fields: [pbsSchemeId], references: [id])
 }
 
 model State {
@@ -363,6 +390,7 @@ enum AppModule {
   AMC_BILLING
   RESORT_BOOKING
   ENTITLEMENTS
+  PBS_SCHEME
 }
 
 enum AuditActionType {

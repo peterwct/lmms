@@ -16,6 +16,7 @@ import amcRateRoutes     from './routes/amc/rates';
 import amcDayendRoutes   from './routes/amc/dayend';
 import stateRoutes       from './routes/states';
 import reportsRoutes     from './routes/reports';
+import pbsRoutes         from './routes/pbs';
 
 // Member-scoped sub-routes
 import { authenticate, requirePasswordChanged } from './middleware/auth';
@@ -45,6 +46,7 @@ app.use('/api/amc/rates',         amcRateRoutes);
 app.use('/api/amc/dayend',        amcDayendRoutes);
 app.use('/api/states',            stateRoutes);
 app.use('/api/reports',           reportsRoutes);
+app.use('/api/pbs',              pbsRoutes);
 
 // ─── Member-scoped agreement + AMC routes ─────────────────────────────────────
 app.get(

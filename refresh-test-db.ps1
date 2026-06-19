@@ -76,6 +76,9 @@
     UNLOAD TO 'maa_mem.txt' DELIMITER '|'
     SELECT * FROM maa_mem WHERE cocode IN ('03', '15');
 
+    UNLOAD TO 'maa_claim.txt' DELIMITER '|'
+    SELECT * FROM maa_claim;
+
     Copy all output files into:  E:\Websites\lmms\migrate\
 #>
 
@@ -127,7 +130,8 @@ $requiredFiles = @(
     'si_entitlement.txt',
     'amc_mem.txt',
     'ps_amc_mem.txt',
-    'maa_mem.txt'
+    'maa_mem.txt',
+    'maa_claim.txt'
 )
 
 $missing = $requiredFiles | Where-Object { -not (Test-Path (Join-Path $migrateDir $_)) }
@@ -153,7 +157,7 @@ Write-Host ""
 Write-Host "  Will CLEAR and RELOAD:"
 Write-Host "    Member, Agreement, Nominee"
 Write-Host "    AmcSchedule, AmcInvoice"
-Write-Host "    PbsScheme (Zurich Payback)"
+Write-Host "    PbsScheme, PbsClaim (Zurich Payback)"
 Write-Host ""
 Write-Host "  Will PRESERVE:"
 Write-Host "    User, Department, DeptModulePermission"
@@ -212,11 +216,11 @@ function Invoke-Migration {
 Write-Host ""
 Write-Host ("[1/5] Clearing Informix data tables...") -ForegroundColor Yellow
 
-# CASCADE removes dependent rows in AmcInvoice, AmcSchedule, PbsScheme,
-# Nominee, and Agreement automatically.
-# ── TO ADD A NEW TABLE that depends on Member or Agreement: no change needed
-#    here — CASCADE handles it. For independent new tables, add a TRUNCATE line.
+# Truncate in dependency order: leaf tables first, then parent.
+# Explicit truncates avoid relying on CASCADE chain depth.
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
+TRUNCATE "PbsClaim";
+TRUNCATE "PbsScheme";
 TRUNCATE "Member" CASCADE;
 "@
 
@@ -238,8 +242,7 @@ Write-Host ""
 Write-Host ("[4/5] Importing AMC schedules and Zurich PBS...") -ForegroundColor Yellow
 Invoke-Migration "prisma/migrate-amc-schedules.ts" "migrate-amc-schedules.ts"
 Invoke-Migration "prisma/migrate-maa-mem.ts"       "migrate-maa-mem.ts"
-
-# ── TO ADD A NEW TABLE: add its Invoke-Migration call here ───────────────────
+Invoke-Migration "prisma/migrate-maa-claim.ts"     "migrate-maa-claim.ts"
 
 # ── Step 5: Re-grant schema permissions to lhb_app ───────────────────────────
 # Required whenever tables are dropped/recreated (e.g. prisma migrate reset).
@@ -264,6 +267,7 @@ SELECT
   (SELECT COUNT(*) FROM "Nominee")            AS nominees,
   (SELECT COUNT(*) FROM "AmcSchedule")        AS amc_schedules,
   (SELECT COUNT(*) FROM "PbsScheme")          AS pbs_schemes,
+  (SELECT COUNT(*) FROM "PbsClaim")           AS pbs_claims,
   (SELECT COUNT(*) FROM "AmcInvoice")         AS amc_invoices,
   (SELECT COUNT(*) FROM "State")              AS states,
   (SELECT COUNT(*) FROM "CancellationReason") AS can_reasons,

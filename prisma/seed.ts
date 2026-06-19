@@ -28,6 +28,7 @@ const PERMISSION_MATRIX: Record<string, DeptPermMatrix> = {
     AMC_BILLING:    FULL,
     RESORT_BOOKING: FULL,
     ENTITLEMENTS:   FULL,
+    PBS_SCHEME:     FULL,
   },
   Finance: {
     ADMIN:          NONE,
@@ -36,6 +37,7 @@ const PERMISSION_MATRIX: Record<string, DeptPermMatrix> = {
     AMC_BILLING:    FULL,
     RESORT_BOOKING: NONE,
     ENTITLEMENTS:   VIEW,
+    PBS_SCHEME:     VIEW,
   },
   Credit: {
     ADMIN:          NONE,
@@ -44,6 +46,7 @@ const PERMISSION_MATRIX: Record<string, DeptPermMatrix> = {
     AMC_BILLING:    FULL,
     RESORT_BOOKING: NONE,
     ENTITLEMENTS:   VIEW,
+    PBS_SCHEME:     VIEW,
   },
   'Member Services': {
     ADMIN:          NONE,
@@ -52,6 +55,7 @@ const PERMISSION_MATRIX: Record<string, DeptPermMatrix> = {
     AMC_BILLING:    VIEW,
     RESORT_BOOKING: FULL,
     ENTITLEMENTS:   FULL,
+    PBS_SCHEME:     VIEW,
   },
   'Resort Operations': {
     ADMIN:          NONE,
@@ -60,6 +64,7 @@ const PERMISSION_MATRIX: Record<string, DeptPermMatrix> = {
     AMC_BILLING:    NONE,
     RESORT_BOOKING: FULL,
     ENTITLEMENTS:   VIEW_EDIT,
+    PBS_SCHEME:     VIEW,
   },
 };
 

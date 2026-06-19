@@ -78,9 +78,11 @@ export function Sidebar() {
     );
   }
 
+  const pbsItems: NavItem[] = [];
+  if (canView('PBS_SCHEME')) pbsItems.push({ to: '/pbs', label: 'Payback Scheme', icon: <Award className="h-4 w-4" /> });
+
   const comingSoon: NavItem[] = [];
   if (canView('RESORT_BOOKING')) comingSoon.push({ to: '/resort-booking', label: 'Resort Booking', icon: <Hotel className="h-4 w-4" />, soon: true });
-  if (canView('ENTITLEMENTS'))  comingSoon.push({ to: '/entitlements',   label: 'Entitlements',   icon: <Award className="h-4 w-4" />, soon: true });
 
   return (
     <aside className="flex h-screen w-60 flex-col bg-slate-900 text-white">
@@ -95,6 +97,7 @@ export function Sidebar() {
         {adminItems.length > 0    && <NavGroup title="Admin"        items={adminItems} />}
         {memberItems.length > 0   && <NavGroup title="Members"      items={memberItems} />}
         {amcItems.length > 0      && <NavGroup title="AMC Billing"  items={amcItems} />}
+        {pbsItems.length > 0      && <NavGroup title="Zurich PBS"    items={pbsItems} />}
         {reportItems.length > 0   && <NavGroup title="Reports"      items={reportItems} />}
         {comingSoon.length > 0    && <NavGroup title="Coming Soon"  items={comingSoon} />}
       </nav>

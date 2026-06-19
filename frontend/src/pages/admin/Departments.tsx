@@ -15,6 +15,7 @@ const MODULES: AppModule[] = ['ADMIN', 'MEMBERS', 'AGREEMENTS', 'AMC_BILLING', '
 const MODULE_LABELS: Record<AppModule, string> = {
   ADMIN: 'Admin', MEMBERS: 'Members', AGREEMENTS: 'Agreements',
   AMC_BILLING: 'AMC Billing', RESORT_BOOKING: 'Resort Booking', ENTITLEMENTS: 'Entitlements',
+  PBS_SCHEME: 'Zurich PBS',
 };
 
 type PermMap = Record<AppModule, Omit<Permission, 'module'>>;

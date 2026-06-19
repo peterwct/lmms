@@ -14,17 +14,20 @@ lmms/
 │   ├── seed-cancellation-reasons.ts  # 46 cancellation codes from migrate/agmt_can_cate.txt
 │   ├── migrate-informix.ts  # Full Informix → PostgreSQL migration (run once)
 │   ├── migrate-maa-mem.ts   # PBS (Zurich Payback Scheme) migration from maa_mem.txt
+│   ├── migrate-maa-claim.ts # PBS Claims migration from maa_claim.txt
 │   ├── migrate-amc-schedules.ts  # AMC schedules from amc_mem.txt + ps_amc_mem.txt
 │   ├── migrate-amc-price.ts      # LHC AMC price master from amc_price.txt
 │   ├── migrate-amc-price-points.ts  # CP points tiers from ps_ctrltab.txt
 │   ├── patch-*.ts           # Incremental data patch scripts (run once each)
 │   └── migrations/          # Applied migration history
 ├── refresh-test-db.ps1      # Clears + re-imports all Informix data; use for UAT refreshes and live cutover
+├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule)
 ├── migrate/                 # Informix UNLOAD export files (not committed)
 │   ├── si_ind_mast.txt
 │   ├── si_cor_mast.txt
 │   ├── si_entitlement.txt
 │   ├── maa_mem.txt
+│   ├── maa_claim.txt
 │   ├── amc_mem.txt
 │   ├── ps_amc_mem.txt
 │   ├── amc_price.txt
@@ -42,7 +45,7 @@ lmms/
         ├── api/             # Axios API clients (members.ts, agreements.ts, amc.ts, states.ts, etc.)
         ├── components/      # Shared UI (ui/, AgreementStatusBadge, ProductBadge, etc.)
         ├── contexts/        # AuthContext.tsx
-        ├── pages/           # admin/, members/, agreements/, amc/
+        ├── pages/           # admin/, members/, agreements/, amc/, pbs/
         └── types/           # index.ts — all TypeScript interfaces
 ```
 
@@ -191,7 +194,19 @@ $env:DATABASE_URL = "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 .\refresh-test-db.ps1 -DryRun
 ```
 
-The script: truncates Member CASCADE → migrates members/agreements/nominees → runs 4 patches → migrates AMC schedules + PBS schemes → re-grants lhb_app permissions → prints final row counts.
+The script: truncates PbsClaim + PbsScheme + Member CASCADE → migrates members/agreements/nominees → runs 4 patches → migrates AMC schedules + PBS schemes + PBS claims → re-grants lhb_app permissions → prints final row counts.
+
+### Migrating a single table
+
+Use `migrate-table.ps1` to re-import a single table without a full refresh:
+
+```powershell
+.\migrate-table.ps1 -Table PbsClaim                  # Just PBS claims
+.\migrate-table.ps1 -Table PbsScheme                  # PBS schemes (also truncates PbsClaim)
+.\migrate-table.ps1 -Table AmcSchedule                # AMC schedules
+.\migrate-table.ps1 -Table Member                     # Full member+agreement reimport
+.\migrate-table.ps1 -Table PbsClaim -DryRun           # Preview without writing
+```
 
 ## Authentication
 
@@ -278,7 +293,22 @@ Category: `CC`=Cancellation, `TM`=Termination. Status: `A`=Active, `U`=Inactive,
 
 ### PbsScheme (Zurich Payback Scheme)
 5,009 records from `maa_mem.txt`. 1-to-1 with Agreement (LHC coCode 03/15 only).
-Fields: `certNo`, `schemeType` (19K/21K), `paybackDate`, `topUp`, `pbsIndc`, `claimIndc`.
+Fields: `certNo`, `schemeType` (19K/21K), `paybackDate`, `topUp`, `pbsIndc`, `claimIndc`, `remark`.
+
+### PbsClaim (PBS Claims)
+Claims linked to PbsScheme (1-to-many). Source: `maa_claim.txt`.
+Fields: `refNo` (sequential int), `claimant`, `claimantIc`, `accNo`, `bankCode`, `relationCode`, `remark`, `lossDate`, `claimAmt` (Decimal 12,2), `payMode`, `docNo`, `docDate`, `claimType`, `claimRemark`, `trustPaidDate`.
+
+**Claim type codes:** `AD`=Accidental Death, `TPD`=Total Permanent Disability, `ND`=Natural Death, `PBS`=Group Payback Scheme Rider.
+**Relation codes:** `00`=Self, `01`=Spouse, `02`=Children, `03`=Siblings, `99`=Others.
+**Pay modes:** `CSH`=Cash, `CHQ`=Cheque, `CC`=Credit Card, `ONLINE`=Online Transfer.
+
+**Business rules:**
+- Add claim button shows only when `pbsIndc=Y` AND `claimIndc=N`
+- Creating a claim with type AD/TPD/PBS sets `PbsScheme.claimIndc=Y`; ND does not
+- Deleting a claim with type AD/TPD/PBS resets `PbsScheme.claimIndc=N`
+- Claim amount for AD/TPD/PBS is fixed by scheme type: 19K=19,000, 21K=21,000 (read-only); ND defaults to 500 (editable)
+- `claimRemark` is auto-populated from claim type description (read-only)
 
 ### AmcSchedule
 32,583 records from `amc_mem.txt` (LHC) + `ps_amc_mem.txt` (CP).
@@ -308,7 +338,8 @@ Source tables and their column counts (verified from actual export files):
 | `si_ind_mast.txt` | Individual members | 67 | [61] compCityState, [62] compPostcode, [63] compStateCode, [64] telOffice2, [65] faxOffice |
 | `si_cor_mast.txt` | Corporate members | 29 | faxNo at [22] |
 | `si_entitlement.txt` | Agreements + nominees | 63 (fresh export) | nom1: c[25..36] (12 fields, no icOld/icNew); nom2: c[37..51] (15 fields, base=37); rciRefNo=c[52]; canCode=c[59]; legacyCreatedAt=c[60]; legacyModifiedAt=c[61] |
-| `maa_mem.txt` | PBS schemes | pipe-delimited | coCode[0], agmt_no[1], certNo[3], schemeType[4], paybackDate[5] (dd-mm-yyyy), topUp[6], pbsIndc[11], claimIndc[12] |
+| `maa_mem.txt` | PBS schemes | pipe-delimited | coCode[0], agmt_no[1], certNo[3], schemeType[4], paybackDate[5] (dd-mm-yyyy), topUp[6], pbsIndc[11], claimIndc[12], remark[13] |
+| `maa_claim.txt` | PBS claims | pipe-delimited | agmt_no[0], cert_no[1], ref_no[2], claimant[3], claimant_ic[4], acc_no[5], bank_code[6], relation_code[7], remark[8], loss_date[9], claim_amt[10], pay_mode[11], doc_no[12], doc_date[13], claim_type[14], claim_remark[15], trust_paid_date[16] |
 | `amc_mem.txt` | LHC AMC schedules | 11 cols pipe-delimited | mem_no[0], agmt_no[1], cocode[2], first_due[3], next_due[4], last_invdate[5], no_of_inv[6], ttl_inv[7], price_code[8] |
 | `ps_amc_mem.txt` | CP AMC schedules | 10 cols pipe-delimited | same pattern, no price_code |
 | `amc_price.txt` | LHC AMC price master | pipe-delimited | coCode[0], effectiveDate[1], priceCode[2], currencyCode[3], amcAmount[4], sinkFund[5], serviceTax[6], totalAmount[7], amountInWords[9], rate[10] |
@@ -359,6 +390,12 @@ GET  /api/reports/expiry-summary                    Generate expiry summary PDF/
 GET  /api/reports/access/:userId                    Get user's report access list (IT only)
 POST /api/reports/access/:userId/:reportKey         Grant report access (IT only)
 DELETE /api/reports/access/:userId/:reportKey       Revoke report access (IT only)
+GET  /api/pbs?q=&coCode=&acctClassify=&schemeType=&claimIndc=  PBS scheme list (search+filters)
+GET  /api/pbs/:id                                  PBS scheme detail + claims
+PUT  /api/pbs/:id                                  Update PBS scheme (certNo, schemeType, remark)
+POST /api/pbs/:id/claims                           Create claim (auto-sets claimIndc for AD/TPD/PBS)
+PUT  /api/pbs/:id/claims/:claimId                  Update claim
+DELETE /api/pbs/:id/claims/:claimId                Delete claim (resets claimIndc for AD/TPD/PBS)
 ```
 
 ## Modules
@@ -375,6 +412,7 @@ DELETE /api/reports/access/:userId/:reportKey       Revoke report access (IT onl
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
+| Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done: search/list with filters (product, status, scheme type, claim), detail page with PBS scheme edit + claims CRUD. Remaining: Proforma, Certificate Tracking, Auto Transfer, 5 reports. |
 
 ## Navigation / permissions
 

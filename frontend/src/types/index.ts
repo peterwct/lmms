@@ -1,4 +1,4 @@
-export type AppModule = 'ADMIN' | 'MEMBERS' | 'AGREEMENTS' | 'AMC_BILLING' | 'RESORT_BOOKING' | 'ENTITLEMENTS';
+export type AppModule = 'ADMIN' | 'MEMBERS' | 'AGREEMENTS' | 'AMC_BILLING' | 'RESORT_BOOKING' | 'ENTITLEMENTS' | 'PBS_SCHEME';
 export type ReportKey = 'MEMBER_REPORT' | 'AGREEMENT_REPORT' | 'EXPIRY_REPORT' | 'EXPIRING_MEMBER_REPORT' | 'REMAINING_VALUE_REPORT' | 'EXPIRY_SUMMARY_REPORT';
 export type UserStatus = 'ACTIVE' | 'SUSPENDED';
 export type MemberStatus = 'ACTIVE' | 'SUSPENDED' | 'CLOSED' | 'DECEASED' | 'TRANSFERRED';
@@ -113,12 +113,44 @@ export interface State {
 
 export interface PbsScheme {
   id: string;
+  agreementId: string;
+  coCode: string;
+  agreementNo: string;
   certNo?: string;
   schemeType?: string;
   paybackDate?: string;
   topUp: boolean;
   pbsIndc: boolean;
   claimIndc: boolean;
+  remark?: string;
+  createdAt: string;
+  updatedAt: string;
+  agreement?: Partial<Agreement> & { member?: Partial<Member> };
+  claims?: PbsClaim[];
+}
+
+export interface PbsClaim {
+  id: string;
+  pbsSchemeId: string;
+  agreementNo: string;
+  certNo?: string;
+  refNo: number;
+  claimant?: string;
+  claimantIc?: string;
+  accNo?: string;
+  bankCode?: string;
+  relationCode?: string;
+  remark?: string;
+  lossDate?: string;
+  claimAmt: string;
+  payMode?: string;
+  docNo?: string;
+  docDate?: string;
+  claimType?: string;
+  claimRemark?: string;
+  trustPaidDate?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Nominee {

@@ -22,6 +22,10 @@ import { ExpiryReport } from './pages/reports/ExpiryReport';
 import { ExpiringMembersReport } from './pages/reports/ExpiringMembersReport';
 import { RemainingValueReport } from './pages/reports/RemainingValueReport';
 import { ExpirySummaryReport } from './pages/reports/ExpirySummaryReport';
+import { Pbs } from './pages/pbs/Pbs';
+import { PbsEnquiry } from './pages/pbs/PbsEnquiry';
+import { PbsEnquiryDetail } from './pages/pbs/PbsEnquiryDetail';
+import { PbsPlaceholder } from './pages/pbs/PbsPlaceholder';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -57,6 +61,17 @@ export default function App() {
               <Route path="reports/expiring-members" element={<ExpiringMembersReport />} />
               <Route path="reports/remaining-value"   element={<RemainingValueReport />} />
               <Route path="reports/expiry-summary"    element={<ExpirySummaryReport />} />
+              <Route path="pbs"                  element={<Pbs />} />
+              <Route path="pbs/enquiry"          element={<PbsEnquiry />} />
+              <Route path="pbs/enquiry/:id"     element={<PbsEnquiryDetail />} />
+              <Route path="pbs/proforma"         element={<PbsPlaceholder />} />
+              <Route path="pbs/tracking"         element={<PbsPlaceholder />} />
+              <Route path="pbs/transfer"         element={<PbsPlaceholder />} />
+              <Route path="pbs/report"           element={<PbsPlaceholder />} />
+              <Route path="pbs/variance"         element={<PbsPlaceholder />} />
+              <Route path="pbs/claim-report"     element={<PbsPlaceholder />} />
+              <Route path="pbs/not-in-pbs"       element={<PbsPlaceholder />} />
+              <Route path="pbs/pay-by-month"     element={<PbsPlaceholder />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />
