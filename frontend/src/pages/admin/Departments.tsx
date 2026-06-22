@@ -11,7 +11,7 @@ import { Modal } from '../../components/ui/Modal';
 import { PageSpinner } from '../../components/ui/Spinner';
 import type { AppModule, Permission, Department } from '../../types';
 
-const MODULES: AppModule[] = ['ADMIN', 'MEMBERS', 'AGREEMENTS', 'AMC_BILLING', 'RESORT_BOOKING', 'ENTITLEMENTS'];
+const MODULES: AppModule[] = ['ADMIN', 'MEMBERS', 'AGREEMENTS', 'AMC_BILLING', 'RESORT_BOOKING', 'ENTITLEMENTS', 'PBS_SCHEME'];
 const MODULE_LABELS: Record<AppModule, string> = {
   ADMIN: 'Admin', MEMBERS: 'Members', AGREEMENTS: 'Agreements',
   AMC_BILLING: 'AMC Billing', RESORT_BOOKING: 'Resort Booking', ENTITLEMENTS: 'Entitlements',
