@@ -77,8 +77,7 @@ $TableConfig = @{
     }
     PbsScheme = @{
         TruncateSql = @(
-            'TRUNCATE "PbsClaim";',
-            'TRUNCATE "PbsScheme";'
+            'TRUNCATE "PbsScheme" CASCADE;'
         )
         RequiredFiles = @('maa_mem.txt')
         Scripts = @('prisma/migrate-maa-mem.ts')

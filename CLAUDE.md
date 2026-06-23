@@ -412,7 +412,7 @@ DELETE /api/pbs/:id/claims/:claimId                Delete claim (resets claimInd
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
-| Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done: search/list with filters (product, status, scheme type, claim), detail page with PBS scheme edit + claims CRUD. Remaining: Proforma, Certificate Tracking, Auto Transfer, 5 reports. |
+| Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done: search/list with filters (product, status, scheme type, claim), detail page with PBS scheme edit + claims CRUD. PBS Pay By Month/Year (`/pbs/pay-by-month`) done: text report with raw SQL aggregation, client-side download. Remaining: Proforma, Certificate Tracking, Auto Transfer, 4 reports. |
 
 ## Navigation / permissions
 

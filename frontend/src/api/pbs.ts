@@ -19,4 +19,10 @@ export const pbsApi = {
 
   deleteClaim: (pbsId: string, claimId: string) =>
     api.delete(`/pbs/${pbsId}/claims/${claimId}`),
+
+  previewPayByMonth: () =>
+    api.get('/pbs/reports/pay-by-month/preview'),
+
+  downloadPayByMonth: () =>
+    api.get('/pbs/reports/pay-by-month', { responseType: 'blob' }),
 };

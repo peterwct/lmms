@@ -2,7 +2,6 @@ import { useLocation, Link } from 'react-router-dom';
 import { ArrowLeft, Construction } from 'lucide-react';
 
 const LABELS: Record<string, string> = {
-  '/pbs/enquiry':      'PBS Enquiry & Maintenance',
   '/pbs/proforma':     'Proforma Enquiry & Generation',
   '/pbs/tracking':     'PBS Certificate Tracking',
   '/pbs/transfer':     'Auto Transfer to Claim',
@@ -10,7 +9,6 @@ const LABELS: Record<string, string> = {
   '/pbs/variance':     'Variance Report',
   '/pbs/claim-report': 'Claim Report',
   '/pbs/not-in-pbs':   'Not in PBS Report',
-  '/pbs/pay-by-month': 'PBS Pay By Month/Year',
 };
 
 export function PbsPlaceholder() {

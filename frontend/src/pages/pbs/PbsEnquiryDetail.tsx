@@ -313,7 +313,7 @@ export function PbsEnquiryDetail() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Remark</label>
             <textarea rows={2} value={editForm.remark}
-              onChange={e => setEditForm(f => ({ ...f, remark: e.target.value.toUpperCase() }))}
+              onChange={e => setEditForm(f => ({ ...f, remark: e.target.value }))}
               className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div className="flex gap-3">
@@ -370,7 +370,7 @@ export function PbsEnquiryDetail() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Remark</label>
-            <textarea rows={2} value={claimForm.remark} onChange={setU('remark')}
+            <textarea rows={2} value={claimForm.remark} onChange={setV('remark')}
               className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>

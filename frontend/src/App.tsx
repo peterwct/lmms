@@ -25,6 +25,7 @@ import { ExpirySummaryReport } from './pages/reports/ExpirySummaryReport';
 import { Pbs } from './pages/pbs/Pbs';
 import { PbsEnquiry } from './pages/pbs/PbsEnquiry';
 import { PbsEnquiryDetail } from './pages/pbs/PbsEnquiryDetail';
+import { PbsPayByMonthReport } from './pages/pbs/PbsPayByMonthReport';
 import { PbsPlaceholder } from './pages/pbs/PbsPlaceholder';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
@@ -71,7 +72,7 @@ export default function App() {
               <Route path="pbs/variance"         element={<PbsPlaceholder />} />
               <Route path="pbs/claim-report"     element={<PbsPlaceholder />} />
               <Route path="pbs/not-in-pbs"       element={<PbsPlaceholder />} />
-              <Route path="pbs/pay-by-month"     element={<PbsPlaceholder />} />
+              <Route path="pbs/pay-by-month"     element={<PbsPayByMonthReport />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />
