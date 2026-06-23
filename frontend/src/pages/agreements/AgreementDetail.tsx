@@ -213,6 +213,14 @@ export function AgreementDetail() {
                     <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Full Name</dt><dd className="mt-0.5 font-medium">{n.fullName || '—'}</dd></div>
                     <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Name Card</dt><dd className="mt-0.5 font-medium">{n.nameCard || '—'}</dd></div>
                     <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Designation</dt><dd className="mt-0.5 font-medium">{n.designation || '—'}</dd></div>
+                    <div><dt className="text-xs text-gray-500 uppercase tracking-wide">IC (New)</dt><dd className="mt-0.5 font-medium">{n.icNew || '—'}</dd></div>
+                    <div><dt className="text-xs text-gray-500 uppercase tracking-wide">IC (Old)</dt><dd className="mt-0.5 font-medium">{n.icOld || '—'}</dd></div>
+                    <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Home Tel.</dt><dd className="mt-0.5 font-medium">{n.telHome || '—'}</dd></div>
+                    <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Mobile</dt><dd className="mt-0.5 font-medium">{n.telMobile || '—'}</dd></div>
+                    <div className="sm:col-span-2"><dt className="text-xs text-gray-500 uppercase tracking-wide">Email</dt><dd className="mt-0.5 font-medium">{n.email || '—'}</dd></div>
+                    {(n.add1 || n.add2 || n.add3) && (
+                      <div className="sm:col-span-4"><dt className="text-xs text-gray-500 uppercase tracking-wide">Address</dt><dd className="mt-0.5 font-medium">{[n.add1, n.add2, n.add3, n.cityState, n.postcode].filter(Boolean).join(', ')}</dd></div>
+                    )}
                   </dl>
                 </div>
               ))}
@@ -316,22 +324,39 @@ export function AgreementDetail() {
         </div>
       </Modal>
 
-      <Modal open={nomModal} title="Edit Nominees" onClose={() => { setNomModal(false); setNomError(''); }}>
-        <div className="space-y-5">
-          {[0, 1].map(i => (
-            <div key={i} className="space-y-3">
-              <p className="text-sm font-semibold text-gray-600">Nominee {i + 1}</p>
-              <div className="grid grid-cols-2 gap-3">
-                <Select label="Salutation" value={nominees[i]?.salutation ?? ''} onChange={e => setNominees(n => n.map((r, idx) => idx === i ? { ...r, salutation: e.target.value.toUpperCase() } : r))}>
-                  <option value="">—</option>
-                  {['MR', 'MRS', 'MS', 'DR', 'DATO', "DATO'", 'TAN SRI', 'PUAN SRI', 'ENCIK', 'PUAN', 'CIK'].map(s => <option key={s}>{s}</option>)}
-                </Select>
-                <Input label="Full name" value={nominees[i]?.fullName ?? ''} onChange={e => setNominees(n => n.map((r, idx) => idx === i ? { ...r, fullName: e.target.value.toUpperCase() } : r))} />
-                <Input label="Name card" value={nominees[i]?.nameCard ?? ''} onChange={e => setNominees(n => n.map((r, idx) => idx === i ? { ...r, nameCard: e.target.value.toUpperCase() } : r))} />
-                <Input label="Designation" value={nominees[i]?.designation ?? ''} onChange={e => setNominees(n => n.map((r, idx) => idx === i ? { ...r, designation: e.target.value.toUpperCase() } : r))} />
-              </div>
-            </div>
-          ))}
+      <Modal open={nomModal} title="Edit Nominees" size="xl" onClose={() => { setNomModal(false); setNomError(''); }}>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-6">
+            {[0, 1].map(i => {
+              const setField = (field: string, upper = true) =>
+                (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+                  setNominees(n => n.map((r, idx) => idx === i ? { ...r, [field]: upper ? e.target.value.toUpperCase() : e.target.value } : r));
+              return (
+                <div key={i} className="space-y-3">
+                  <p className="text-sm font-semibold text-gray-600">Nominee {i + 1}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Select label="Salutation" value={nominees[i]?.salutation ?? ''} onChange={setField('salutation')}>
+                      <option value="">—</option>
+                      {['MR', 'MRS', 'MS', 'DR', 'DATO', "DATO'", 'TAN SRI', 'PUAN SRI', 'ENCIK', 'PUAN', 'CIK'].map(s => <option key={s}>{s}</option>)}
+                    </Select>
+                    <Input label="Full name" value={nominees[i]?.fullName ?? ''} onChange={setField('fullName')} />
+                    <Input label="Name card" value={nominees[i]?.nameCard ?? ''} onChange={setField('nameCard')} />
+                    <Input label="Designation" value={nominees[i]?.designation ?? ''} onChange={setField('designation')} />
+                    <Input label="IC (New)" value={nominees[i]?.icNew ?? ''} onChange={setField('icNew')} />
+                    <Input label="IC (Old)" value={nominees[i]?.icOld ?? ''} onChange={setField('icOld')} />
+                    <Input label="Home tel." value={nominees[i]?.telHome ?? ''} onChange={setField('telHome')} />
+                    <Input label="Mobile" value={nominees[i]?.telMobile ?? ''} onChange={setField('telMobile')} />
+                    <Input label="Email" value={nominees[i]?.email ?? ''} onChange={setField('email', false)} />
+                    <Input label="Address 1" value={nominees[i]?.add1 ?? ''} onChange={setField('add1')} />
+                    <Input label="Address 2" value={nominees[i]?.add2 ?? ''} onChange={setField('add2')} />
+                    <Input label="Address 3" value={nominees[i]?.add3 ?? ''} onChange={setField('add3')} />
+                    <Input label="City / State" value={nominees[i]?.cityState ?? ''} onChange={setField('cityState')} />
+                    <Input label="Postcode" value={nominees[i]?.postcode ?? ''} onChange={setField('postcode')} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           {nomError && <p className="text-sm text-red-600">{nomError}</p>}
           <div className="flex gap-3">
             <Button onClick={() => nomMut.mutate()} loading={nomMut.isPending}>Save nominees</Button>

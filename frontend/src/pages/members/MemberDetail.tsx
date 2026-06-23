@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Pencil, ChevronDown, ChevronUp } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import { membersApi } from '../../api/members';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -30,7 +29,6 @@ export function MemberDetail() {
   const { id } = useParams<{ id: string }>();
   const { canEdit, canView } = useAuth();
   const navigate = useNavigate();
-  const [expandedAgmt, setExpandedAgmt] = useState<string | null>(null);
 
   const { data: member, isLoading } = useQuery<Member>({
     queryKey: ['member', id],
@@ -84,7 +82,6 @@ export function MemberDetail() {
               <InfoRow label="Mobile"        value={member.telMobile} />
               <InfoRow label="Home tel."     value={member.telHome} />
               <InfoRow label="Spouse name"   value={member.spouseName} />
-              <InfoRow label="Branch"        value={member.branchCode} />
               <InfoRow label="TIN"           value={member.tinNumber} />
             </dl>
           </CardBody>
@@ -108,6 +105,43 @@ export function MemberDetail() {
           </CardBody>
         </Card>
       )}
+
+      {/* ── Agreements ─────────────────────────────────────────── */}
+      <Card>
+        <CardHeader><p className="font-semibold text-gray-700">Agreements</p></CardHeader>
+        <div className="divide-y">
+          {member.agreements?.length === 0 && <p className="px-5 py-4 text-sm text-gray-400">No agreements.</p>}
+          {member.agreements?.map(agmt => (
+            <div key={agmt.id} className="px-5 py-3">
+              <div className="flex items-center gap-3">
+                {agmt.transferFlag === 'TT' ? (
+                  <span className="font-mono font-medium text-sm text-gray-400 line-through" title="Transferred">{agmt.agreementNo}</span>
+                ) : canView('AGREEMENTS') ? (
+                  <Link to={`/agreements/${agmt.id}`} className="font-mono font-medium text-sm text-blue-600 hover:underline">{agmt.agreementNo}</Link>
+                ) : (
+                  <span className="font-mono font-medium text-sm text-gray-700">{agmt.agreementNo}</span>
+                )}
+                <ProductBadge coCode={agmt.coCode} />
+                <AgreementStatusBadge status={agmt.acctClassify} />
+                {(agmt.totalPoints ?? 0) > 0 && <span className="text-xs text-gray-500">{agmt.totalPoints} pts</span>}
+              </div>
+              {agmt.nominees && agmt.nominees.length > 0 && (
+                <div className="mt-2 ml-1">
+                  <p className="text-xs font-semibold uppercase text-gray-400 mb-1">Nominees</p>
+                  {agmt.nominees.map(n => (
+                    <div key={n.id} className="text-sm text-gray-700">
+                      {n.nomineeSeq}. {n.fullName || '—'}
+                      {n.icNew && <span className="ml-2 text-xs text-gray-500">IC: {n.icNew}</span>}
+                      {n.telHome && <span className="ml-2 text-xs text-gray-500">H: {n.telHome}</span>}
+                      {n.telMobile && <span className="ml-2 text-xs text-gray-500">M: {n.telMobile}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
 
       {/* ── Address ──────────────────────────────────────────────── */}
       <Card>
@@ -189,47 +223,6 @@ export function MemberDetail() {
           </CardBody>
         </Card>
       )}
-
-      <Card>
-        <CardHeader><p className="font-semibold text-gray-700">Agreements</p></CardHeader>
-        <div className="divide-y">
-          {member.agreements?.length === 0 && <p className="px-5 py-4 text-sm text-gray-400">No agreements.</p>}
-          {member.agreements?.map(agmt => (
-            <div key={agmt.id}>
-              <div
-                className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 cursor-pointer"
-                onClick={() => setExpandedAgmt(expandedAgmt === agmt.id ? null : agmt.id)}
-              >
-                <div className="flex items-center gap-3">
-                  {agmt.transferFlag === 'TT' ? (
-                    <span className="font-mono font-medium text-sm text-gray-400 line-through" title="Transferred">{agmt.agreementNo}</span>
-                  ) : canView('AGREEMENTS') ? (
-                    <Link to={`/agreements/${agmt.id}`} className="font-mono font-medium text-sm text-blue-600 hover:underline" onClick={e => e.stopPropagation()}>{agmt.agreementNo}</Link>
-                  ) : (
-                    <span className="font-mono font-medium text-sm text-gray-700">{agmt.agreementNo}</span>
-                  )}
-                  <ProductBadge coCode={agmt.coCode} />
-                  <AgreementStatusBadge status={agmt.acctClassify} />
-                  {(agmt.totalPoints ?? 0) > 0 && <span className="text-xs text-gray-500">{agmt.totalPoints} pts</span>}
-                </div>
-                <div className="flex items-center text-gray-500">
-                  {expandedAgmt === agmt.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </div>
-              </div>
-              {expandedAgmt === agmt.id && agmt.nominees && agmt.nominees.length > 0 && (
-                <div className="px-5 pb-3 bg-gray-50">
-                  <p className="text-xs font-semibold uppercase text-gray-400 mb-2">Nominees</p>
-                  {agmt.nominees.map(n => (
-                    <div key={n.id} className="text-sm text-gray-700">
-                      {n.nomineeSeq}. {n.fullName || '—'} {n.icNew && `(${n.icNew})`}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </Card>
 
     </div>
   );

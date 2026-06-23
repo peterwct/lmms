@@ -201,12 +201,17 @@ The script: truncates PbsClaim + PbsScheme + Member CASCADE → migrates members
 Use `migrate-table.ps1` to re-import a single table without a full refresh:
 
 ```powershell
-.\migrate-table.ps1 -Table PbsClaim                  # Just PBS claims
-.\migrate-table.ps1 -Table PbsScheme                  # PBS schemes (also truncates PbsClaim)
-.\migrate-table.ps1 -Table AmcSchedule                # AMC schedules
-.\migrate-table.ps1 -Table Member                     # Full member+agreement reimport
-.\migrate-table.ps1 -Table PbsClaim -DryRun           # Preview without writing
+.\migrate-table.ps1 -Table Member                     # Full member+agreement reimport (truncates all)
+.\migrate-table.ps1 -Table IndividualMember            # si_ind_mast.txt only (inserts new, keeps existing)
+.\migrate-table.ps1 -Table CorporateMember             # si_cor_mast.txt only (inserts new, keeps existing)
+.\migrate-table.ps1 -Table Agreement                   # si_entitlement.txt only (truncates agreements+nominees+AMC+PBS)
+.\migrate-table.ps1 -Table AmcSchedule                 # AMC schedules
+.\migrate-table.ps1 -Table PbsScheme                   # PBS schemes (also truncates PbsClaim)
+.\migrate-table.ps1 -Table PbsClaim                    # Just PBS claims
+.\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
+
+**Note:** After `-Table Agreement`, you must re-import dependent tables: `AmcSchedule`, `PbsScheme`, `PbsClaim`.
 
 ## Authentication
 
@@ -337,7 +342,7 @@ Source tables and their column counts (verified from actual export files):
 |---|---|---|---|
 | `si_ind_mast.txt` | Individual members | 67 | [61] compCityState, [62] compPostcode, [63] compStateCode, [64] telOffice2, [65] faxOffice |
 | `si_cor_mast.txt` | Corporate members | 29 | faxNo at [22] |
-| `si_entitlement.txt` | Agreements + nominees | 63 (fresh export) | nom1: c[25..36] (12 fields, no icOld/icNew); nom2: c[37..51] (15 fields, base=37); rciRefNo=c[52]; canCode=c[59]; legacyCreatedAt=c[60]; legacyModifiedAt=c[61] |
+| `si_entitlement.txt` | Agreements + nominees | 65 (fresh export) | nom1: c[25..38] (14 fields, incl icOld/icNew); nom2: c[39..53] (15 fields, base=39); rciRefNo=c[54]; canCode=c[61]; legacyCreatedAt=c[62]; legacyModifiedAt=c[63] |
 | `maa_mem.txt` | PBS schemes | pipe-delimited | coCode[0], agmt_no[1], certNo[3], schemeType[4], paybackDate[5] (dd-mm-yyyy), topUp[6], pbsIndc[11], claimIndc[12], remark[13] |
 | `maa_claim.txt` | PBS claims | pipe-delimited | agmt_no[0], cert_no[1], ref_no[2], claimant[3], claimant_ic[4], acc_no[5], bank_code[6], relation_code[7], remark[8], loss_date[9], claim_amt[10], pay_mode[11], doc_no[12], doc_date[13], claim_type[14], claim_remark[15], trust_paid_date[16] |
 | `amc_mem.txt` | LHC AMC schedules | 11 cols pipe-delimited | mem_no[0], agmt_no[1], cocode[2], first_due[3], next_due[4], last_invdate[5], no_of_inv[6], ttl_inv[7], price_code[8] |

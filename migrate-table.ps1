@@ -4,10 +4,13 @@
 
 .PARAMETER Table
     The table name to migrate. Supported values:
-      Member        - Members, agreements, nominees (migrate-informix.ts + patches)
-      PbsScheme     - Zurich Payback Scheme (migrate-maa-mem.ts)
-      PbsClaim      - PBS Claims (migrate-maa-claim.ts)
-      AmcSchedule   - AMC Schedules (migrate-amc-schedules.ts)
+      Member            - All members + agreements + nominees (full reimport + patches)
+      IndividualMember  - Individual members only (si_ind_mast.txt)
+      CorporateMember   - Corporate members only (si_cor_mast.txt)
+      Agreement         - Agreements + nominees only (si_entitlement.txt + patches)
+      PbsScheme         - Zurich Payback Scheme (migrate-maa-mem.ts)
+      PbsClaim          - PBS Claims (migrate-maa-claim.ts)
+      AmcSchedule       - AMC Schedules (migrate-amc-schedules.ts)
 
 .PARAMETER DatabaseUrl
     PostgreSQL connection string. Defaults to $env:DATABASE_URL or .env file.
@@ -17,13 +20,15 @@
 
 .EXAMPLE
     .\migrate-table.ps1 -Table PbsClaim
+    .\migrate-table.ps1 -Table IndividualMember
+    .\migrate-table.ps1 -Table Agreement
     .\migrate-table.ps1 -Table PbsScheme -DryRun
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'PbsScheme', 'PbsClaim', 'AmcSchedule')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -62,17 +67,49 @@ $env:DATABASE_URL = $DatabaseUrl
 $TableConfig = @{
     Member = @{
         TruncateSql = @(
-            'TRUNCATE "PbsClaim";',
-            'TRUNCATE "PbsScheme";',
-            'TRUNCATE "Member" CASCADE;'
+            'TRUNCATE "PbsClaim", "PbsScheme", "Member" CASCADE;'
         )
-        RequiredFiles = @('si_ind_mast.txt', 'si_cor_mast.txt', 'si_entitlement.txt')
+        RequiredFiles = @('si_ind_mast.txt', 'si_cor_mast.txt', 'si_entitlement.txt', 'amc_mem.txt', 'ps_amc_mem.txt', 'maa_mem.txt', 'maa_claim.txt')
         Scripts = @(
             'prisma/migrate-informix.ts',
             'prisma/patch-acct-classify.ts',
             'prisma/patch-entitlement-financials.ts',
             'prisma/patch-ind-mast-new-fields.ts',
+            'prisma/populate-fax.ts',
+            'prisma/migrate-amc-schedules.ts',
+            'prisma/migrate-maa-mem.ts',
+            'prisma/migrate-maa-claim.ts'
+        )
+    }
+    IndividualMember = @{
+        TruncateSql = @(
+            'DELETE FROM "Member" WHERE "memberType" = ''INDIVIDUAL'' AND "id" NOT IN (SELECT DISTINCT "memberId" FROM "Agreement");'
+        )
+        RequiredFiles = @('si_ind_mast.txt')
+        Scripts = @(
+            'prisma/migrate-informix.ts --only individuals',
+            'prisma/patch-ind-mast-new-fields.ts',
             'prisma/populate-fax.ts'
+        )
+    }
+    CorporateMember = @{
+        TruncateSql = @(
+            'DELETE FROM "Member" WHERE "memberType" = ''CORPORATE'' AND "id" NOT IN (SELECT DISTINCT "memberId" FROM "Agreement");'
+        )
+        RequiredFiles = @('si_cor_mast.txt')
+        Scripts = @(
+            'prisma/migrate-informix.ts --only corporates'
+        )
+    }
+    Agreement = @{
+        TruncateSql = @(
+            'TRUNCATE "PbsClaim", "PbsScheme", "AmcSchedule", "Nominee", "AmcInvoice", "Agreement" CASCADE;'
+        )
+        RequiredFiles = @('si_entitlement.txt')
+        Scripts = @(
+            'prisma/migrate-informix.ts --only agreements',
+            'prisma/patch-acct-classify.ts',
+            'prisma/patch-entitlement-financials.ts'
         )
     }
     PbsScheme = @{
@@ -146,18 +183,19 @@ function Invoke-Sql {
     }
 }
 
-# -- Helper: run a ts-node migration script
+# -- Helper: run a ts-node migration script (supports extra args, e.g. "prisma/migrate-informix.ts --only individuals")
 function Invoke-Migration {
     param([string]$Script)
-    $label = Split-Path $Script -Leaf
+    $parts = $Script -split '\s+', 2
+    $scriptPath = $parts[0]
+    $extraArgs = if ($parts.Length -gt 1) { $parts[1] } else { '' }
+    $label = (Split-Path $scriptPath -Leaf) + $(if ($extraArgs) { " $extraArgs" } else { '' })
     Write-Host ""
     Write-Host "  [RUN] $label" -ForegroundColor Cyan
-    if ($DryRun) {
-        npx ts-node --transpile-only $Script --dry-run
-    }
-    else {
-        npx ts-node --transpile-only $Script
-    }
+    $allArgs = @('--transpile-only', $scriptPath)
+    if ($extraArgs) { $allArgs += $extraArgs -split '\s+' }
+    if ($DryRun) { $allArgs += '--dry-run' }
+    & npx ts-node @allArgs
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
         Write-Host "FAILED: $label" -ForegroundColor Red

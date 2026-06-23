@@ -6,10 +6,10 @@ interface Props {
   title: string;
   onClose: () => void;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
-const sizeCls = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl' };
+const sizeCls = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl', xl: 'max-w-6xl' };
 
 export function Modal({ open, title, onClose, children, size = 'md' }: Props) {
   useEffect(() => {
@@ -30,7 +30,7 @@ export function Modal({ open, title, onClose, children, size = 'md' }: Props) {
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="px-5 py-4 max-h-[calc(100vh-10rem)] overflow-y-auto">{children}</div>
       </div>
     </div>
   );

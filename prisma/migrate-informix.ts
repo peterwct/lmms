@@ -8,8 +8,11 @@
  *     migrate/si_entitlement.txt
  *
  * Run:
- *   npx ts-node prisma/migrate-informix.ts
- *   npx ts-node prisma/migrate-informix.ts --dry-run   (count rows, no writes)
+ *   npx ts-node prisma/migrate-informix.ts                          (all tables)
+ *   npx ts-node prisma/migrate-informix.ts --dry-run                (count rows, no writes)
+ *   npx ts-node prisma/migrate-informix.ts --only individuals       (si_ind_mast only)
+ *   npx ts-node prisma/migrate-informix.ts --only corporates        (si_cor_mast only)
+ *   npx ts-node prisma/migrate-informix.ts --only agreements        (si_entitlement only)
  */
 
 import {
@@ -29,6 +32,11 @@ const MIGRATE_DIR = path.join(__dirname, '..', 'migrate');
 const DELIM = '|';
 const BATCH = 500;
 const DRY_RUN = process.argv.includes('--dry-run');
+const ONLY_FLAG = process.argv.find(a => a.startsWith('--only='))?.split('=')[1]
+  ?? (process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : undefined);
+const RUN_INDIVIDUALS = !ONLY_FLAG || ONLY_FLAG === 'individuals';
+const RUN_CORPORATES  = !ONLY_FLAG || ONLY_FLAG === 'corporates';
+const RUN_AGREEMENTS  = !ONLY_FLAG || ONLY_FLAG === 'agreements';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -232,28 +240,28 @@ function mapCorporate(c: string[]) {
 
 // ─── Agreements + Nominees (si_entitlement) ───────────────────────────────────
 //
-// Fresh-export column indices (63 tokens per row incl. trailing):
-//  0  e_membership_no    13 e_sub_fees      25 e_nom1_name     37 e_nom2_name     52 e_rci_refno
-//  1  e_agreement_no     14 e_sink_fund     26 e_nom1_salut    38 e_nom2_ic       53 e_rci_enrol_date
-//  2  e_agreement_date   15 e_govt_tax      27 e_nom1_desig    39 e_nom2_new_ic   54 e_rci_expiry
-//  3  e_enddate          16 e_loan_amt      28 e_nom1_namecard 40 e_nom2_salut    55 e_rci_fee_paid
-//  4  e_rtu_years        17 e_loan_type     29 e_nom1_tel_h    41 e_nom2_desig    56 e_outstd_doc
-//  5  e_cocode           18 e_sls_br        30 e_nom1_tel_hp   42 e_nom2_namecard 57 e_doc_desc
-//  6  e_enttype          19 e_sls_mth       31 e_nom1_add1     43 e_nom2_tel_h    58 e_locality
-//  7  e_agreement_type   20 e_sls_source    32 e_nom1_add2     44 e_nom2_tel_hp   59 e_can_code
-//  8  e_member_type      21 e_certificate   33 e_nom1_add3     45 e_nom2_add1     60 e_sysdate
-//  9  e_total_pts        22 e_transfer_flg  34 e_nom1_city     46 e_nom2_add2     61 e_mod_date
-// 10  e_acct_classify    23 e_ttmembno      35 e_nom1_postcode 47 e_nom2_add3     62 e_term_user
-//                                                                                63 e_aterm_date
-//                                                                                64 (trailing)
-// 11  e_purchase_price   24 e_tfmembno      36 e_nom1_email    48 e_nom2_city
-// 12  e_down                                                   49 e_nom2_postcode
-//                                                              50 e_nom2_email
-//                                                              51 e_nom2_email (dup — ignored)
+// Fresh-export column indices (65 tokens per row incl. trailing):
+//  0  e_membership_no    13 e_sub_fees      25 e_nom1_name     39 e_nom2_name     54 e_rci_refno
+//  1  e_agreement_no     14 e_sink_fund     26 e_nom1_ic       40 e_nom2_ic       55 e_rci_enrol_date
+//  2  e_agreement_date   15 e_govt_tax      27 e_nom1_new_ic   41 e_nom2_new_ic   56 e_rci_expiry
+//  3  e_enddate          16 e_loan_amt      28 e_nom1_salut    42 e_nom2_salut    57 e_rci_fee_paid
+//  4  e_rtu_years        17 e_loan_type     29 e_nom1_desig    43 e_nom2_desig    58 e_outstd_doc
+//  5  e_cocode           18 e_sls_br        30 e_nom1_namecard 44 e_nom2_namecard 59 e_doc_desc
+//  6  e_enttype          19 e_sls_mth       31 e_nom1_tel_h    45 e_nom2_tel_h    60 e_locality
+//  7  e_agreement_type   20 e_sls_source    32 e_nom1_tel_hp   46 e_nom2_tel_hp   61 e_can_code
+//  8  e_member_type      21 e_certificate   33 e_nom1_add1     47 e_nom2_add1     62 e_sysdate
+//  9  e_total_pts        22 e_transfer_flg  34 e_nom1_add2     48 e_nom2_add2     63 e_mod_date
+// 10  e_acct_classify    23 e_ttmembno      35 e_nom1_add3     49 e_nom2_add3     64 e_term_user
+//                                                                                65 e_aterm_date
+//                                                                                66 (trailing)
+// 11  e_purchase_price   24 e_tfmembno      36 e_nom1_city     50 e_nom2_city
+// 12  e_down                                37 e_nom1_postcode 51 e_nom2_postcode
+//                                           38 e_nom1_email    52 e_nom2_email
+//                                                              53 e_nom2_email (dup)
 //
-// nom1 (c[25..36]): 12 fields — name, salut, desig, nameCard, telH, telMobile,
-//                               add1, add2, add3, city, postcode, email (NO icOld/icNew)
-// nom2 (c[37..51]): 15 fields — name, icOld, icNew, salut, desig, nameCard,
+// nom1 (c[25..38]): 14 fields — name, icOld, icNew, salut, desig, nameCard, telH, telMobile,
+//                               add1, add2, add3, city, postcode, email
+// nom2 (c[39..53]): 15 fields — name, icOld, icNew, salut, desig, nameCard,
 //                               telH, telMobile, add1, add2, add3, city, postcode, email, email(dup)
 
 function mapAgreement(c: string[], memberId: string) {
@@ -295,21 +303,21 @@ function mapAgreement(c: string[], memberId: string) {
     transferFlag:            t(c[22]),
     transferToMembership:    t(c[23]),
     transferFromMembership:  t(c[24]),
-    rciRefNo:                t(c[52]),
-    rciEnrolDate:            d(c[53]),
-    rciExpiryDate:           d(c[54]),
-    rciFeePaid:              n(c[55]),
-    outstdDoc:               b(c[56]),
-    docDescription:          t(c[57]),
-    canCode:                 t(c[59]),
-    legacyCreatedAt:         d(c[60]),
-    legacyModifiedAt:        d(c[61]),
-    statusChangeUser:        t(c[62]),
-    statusChangeDate:        d(c[63]),
+    rciRefNo:                t(c[54]),
+    rciEnrolDate:            d(c[55]),
+    rciExpiryDate:           d(c[56]),
+    rciFeePaid:              n(c[57]),
+    outstdDoc:               b(c[58]),
+    docDescription:          t(c[59]),
+    canCode:                 t(c[61]),
+    legacyCreatedAt:         d(c[62]),
+    legacyModifiedAt:        d(c[63]),
+    statusChangeUser:        t(c[64]),
+    statusChangeDate:        d(c[65]),
   };
 }
 
-// nom1: c[25..36], 12 fields — Informix stores no IC fields for nom1
+// nom1: c[25..38], 14 fields
 function mapNom1(c: string[], agreementId: string) {
   const name = t(c[25]);
   if (!name) return null;
@@ -318,44 +326,44 @@ function mapNom1(c: string[], agreementId: string) {
     agreementId,
     nomineeSeq:  1,
     fullName:    name,
-    icOld:       null,
-    icNew:       null,
-    salutation:  t(c[26]),
-    designation: t(c[27]),
-    nameCard:    t(c[28]),
-    telHome:     t(c[29]),
-    telMobile:   t(c[30]),
-    add1:        t(c[31]),
-    add2:        t(c[32]),
-    add3:        t(c[33]),
-    cityState:   t(c[34]),
-    postcode:    t(c[35]),
-    email:       t(c[36]),
+    icOld:       t(c[26]),
+    icNew:       t(c[27]),
+    salutation:  t(c[28]),
+    designation: t(c[29]),
+    nameCard:    t(c[30]),
+    telHome:     t(c[31]),
+    telMobile:   t(c[32]),
+    add1:        t(c[33]),
+    add2:        t(c[34]),
+    add3:        t(c[35]),
+    cityState:   t(c[36]),
+    postcode:    t(c[37]),
+    email:       t(c[38]),
   };
 }
 
-// nom2: c[37..51], 15 fields (c[51] is duplicate email — ignored)
+// nom2: c[39..53], 15 fields (c[53] is duplicate email — ignored)
 function mapNom2(c: string[], agreementId: string) {
-  const name = t(c[37]);
+  const name = t(c[39]);
   if (!name) return null;
   return {
     id:          randomUUID(),
     agreementId,
     nomineeSeq:  2,
     fullName:    name,
-    icOld:       t(c[38]),
-    icNew:       t(c[39]),
-    salutation:  t(c[40]),
-    designation: t(c[41]),
-    nameCard:    t(c[42]),
-    telHome:     t(c[43]),
-    telMobile:   t(c[44]),
-    add1:        t(c[45]),
-    add2:        t(c[46]),
-    add3:        t(c[47]),
-    cityState:   t(c[48]),
-    postcode:    t(c[49]),
-    email:       t(c[50]),
+    icOld:       t(c[40]),
+    icNew:       t(c[41]),
+    salutation:  t(c[42]),
+    designation: t(c[43]),
+    nameCard:    t(c[44]),
+    telHome:     t(c[45]),
+    telMobile:   t(c[46]),
+    add1:        t(c[47]),
+    add2:        t(c[48]),
+    add3:        t(c[49]),
+    cityState:   t(c[50]),
+    postcode:    t(c[51]),
+    email:       t(c[52]),
   };
 }
 
@@ -365,123 +373,138 @@ async function main() {
   console.log(`\n${'='.repeat(60)}`);
   console.log('LHB MMS — Informix Migration');
   console.log(DRY_RUN ? '  MODE: DRY RUN (no writes)' : '  MODE: LIVE');
+  console.log(ONLY_FLAG ? `  ONLY: ${ONLY_FLAG}` : '  SCOPE: all tables');
   console.log('='.repeat(60));
 
-  // ── 1. Individual Members ──────────────────────────────────────────────────
-  console.log('\n[1/5] Reading si_ind_mast.txt ...');
-  const indBatch: ReturnType<typeof mapIndividual>[] = [];
   let indTotal = 0, indSkipped = 0;
+  let corTotal = 0, corSkipped = 0;
+  let agmtTotal = 0, agmtSkipped = 0, nomTotal = 0;
 
-  for await (const cols of readLines('si_ind_mast.txt')) {
-    if (!t(cols[0])) { indSkipped++; continue; }
-    indBatch.push(mapIndividual(cols));
-    indTotal++;
+  // ── 1. Individual Members ──────────────────────────────────────────────────
+  if (RUN_INDIVIDUALS) {
+    console.log('\n[1/5] Reading si_ind_mast.txt ...');
+    const indBatch: ReturnType<typeof mapIndividual>[] = [];
 
-    if (!DRY_RUN && indBatch.length >= BATCH) {
-      await prisma.member.createMany({ data: indBatch as any, skipDuplicates: true });
-      process.stdout.write(`\r  inserted ${indTotal} individual members...`);
-      indBatch.length = 0;
+    for await (const cols of readLines('si_ind_mast.txt')) {
+      if (!t(cols[0])) { indSkipped++; continue; }
+      indBatch.push(mapIndividual(cols));
+      indTotal++;
+
+      if (!DRY_RUN && indBatch.length >= BATCH) {
+        await prisma.member.createMany({ data: indBatch as any, skipDuplicates: true });
+        process.stdout.write(`\r  inserted ${indTotal} individual members...`);
+        indBatch.length = 0;
+      }
     }
+    if (!DRY_RUN && indBatch.length) {
+      await prisma.member.createMany({ data: indBatch as any, skipDuplicates: true });
+    }
+    console.log(`\n  OK Individual members: ${indTotal} processed, ${indSkipped} skipped`);
+  } else {
+    console.log('\n[1/5] Skipping si_ind_mast.txt (--only)');
   }
-  if (!DRY_RUN && indBatch.length) {
-    await prisma.member.createMany({ data: indBatch as any, skipDuplicates: true });
-  }
-  console.log(`\n  ✔ Individual members: ${indTotal} processed, ${indSkipped} skipped`);
 
   // ── 2. Corporate Members ───────────────────────────────────────────────────
-  console.log('\n[2/5] Reading si_cor_mast.txt ...');
-  const corBatch: ReturnType<typeof mapCorporate>[] = [];
-  let corTotal = 0, corSkipped = 0;
+  if (RUN_CORPORATES) {
+    console.log('\n[2/5] Reading si_cor_mast.txt ...');
+    const corBatch: ReturnType<typeof mapCorporate>[] = [];
 
-  for await (const cols of readLines('si_cor_mast.txt')) {
-    if (!t(cols[0])) { corSkipped++; continue; }
-    corBatch.push(mapCorporate(cols));
-    corTotal++;
+    for await (const cols of readLines('si_cor_mast.txt')) {
+      if (!t(cols[0])) { corSkipped++; continue; }
+      corBatch.push(mapCorporate(cols));
+      corTotal++;
 
-    if (!DRY_RUN && corBatch.length >= BATCH) {
-      await prisma.member.createMany({ data: corBatch as any, skipDuplicates: true });
-      process.stdout.write(`\r  inserted ${corTotal} corporate members...`);
-      corBatch.length = 0;
-    }
-  }
-  if (!DRY_RUN && corBatch.length) {
-    await prisma.member.createMany({ data: corBatch as any, skipDuplicates: true });
-  }
-  console.log(`\n  ✔ Corporate members: ${corTotal} processed, ${corSkipped} skipped`);
-
-  // ── 3. Build membership_no → UUID lookup ──────────────────────────────────
-  console.log('\n[3/5] Building member lookup map ...');
-  const memberMap = new Map<string, string>();
-  if (!DRY_RUN) {
-    let offset = 0;
-    while (true) {
-      const rows = await prisma.member.findMany({
-        select: { id: true, membershipNo: true },
-        skip: offset,
-        take: 5000,
-      });
-      if (!rows.length) break;
-      rows.forEach(r => memberMap.set(r.membershipNo, r.id));
-      offset += rows.length;
-    }
-    console.log(`  ✔ ${memberMap.size} members indexed`);
-  }
-
-  // ── 4. Agreements + Nominees ───────────────────────────────────────────────
-  // Uses client-side UUIDs so agreements and nominees can be batch-inserted together.
-  console.log('\n[4/5] Reading si_entitlement.txt ...');
-  let agmtTotal = 0, agmtSkipped = 0, nomTotal = 0;
-  const agmtBatch: any[] = [];
-  const nomBatch:  any[] = [];
-
-  const flush = async () => {
-    if (DRY_RUN) return;
-    if (agmtBatch.length) {
-      await prisma.agreement.createMany({ data: agmtBatch, skipDuplicates: true });
-      agmtBatch.length = 0;
-    }
-    if (nomBatch.length) {
-      await prisma.nominee.createMany({ data: nomBatch, skipDuplicates: true });
-      nomBatch.length = 0;
-    }
-  };
-
-  for await (const cols of readLines('si_entitlement.txt')) {
-    const membershipNo = t(cols[0]);
-    if (!membershipNo) { agmtSkipped++; continue; }
-
-    let memberId: string;
-    if (DRY_RUN) {
-      memberId = 'dry-run-uuid';
-    } else {
-      const found = memberMap.get(membershipNo);
-      if (!found) {
-        console.warn(`\n  ⚠ Agreement skipped — member not found: ${membershipNo}`);
-        agmtSkipped++;
-        continue;
+      if (!DRY_RUN && corBatch.length >= BATCH) {
+        await prisma.member.createMany({ data: corBatch as any, skipDuplicates: true });
+        process.stdout.write(`\r  inserted ${corTotal} corporate members...`);
+        corBatch.length = 0;
       }
-      memberId = found;
     }
-
-    // Generate UUID client-side so nominees can reference it without a round-trip
-    const agmtId = randomUUID();
-    agmtBatch.push({ id: agmtId, ...mapAgreement(cols, memberId) });
-
-    const nom1 = mapNom1(cols, agmtId);
-    const nom2 = mapNom2(cols, agmtId);
-    if (nom1) { nomBatch.push(nom1); nomTotal++; }
-    if (nom2) { nomBatch.push(nom2); nomTotal++; }
-
-    agmtTotal++;
-
-    if (agmtBatch.length >= BATCH) {
-      await flush();
-      process.stdout.write(`\r  processed ${agmtTotal} agreements, ${nomTotal} nominees...`);
+    if (!DRY_RUN && corBatch.length) {
+      await prisma.member.createMany({ data: corBatch as any, skipDuplicates: true });
     }
+    console.log(`\n  OK Corporate members: ${corTotal} processed, ${corSkipped} skipped`);
+  } else {
+    console.log('\n[2/5] Skipping si_cor_mast.txt (--only)');
   }
-  await flush();
-  console.log(`\n  ✔ Agreements: ${agmtTotal} inserted, ${agmtSkipped} skipped`);
-  console.log(`  ✔ Nominees:   ${nomTotal} inserted`);
+
+  // ── 3/4. Agreements + Nominees ─────────────────────────────────────────────
+  if (RUN_AGREEMENTS) {
+    // Build membership_no -> UUID lookup
+    console.log('\n[3/5] Building member lookup map ...');
+    const memberMap = new Map<string, string>();
+    if (!DRY_RUN) {
+      let offset = 0;
+      while (true) {
+        const rows = await prisma.member.findMany({
+          select: { id: true, membershipNo: true },
+          skip: offset,
+          take: 5000,
+        });
+        if (!rows.length) break;
+        rows.forEach(r => memberMap.set(r.membershipNo, r.id));
+        offset += rows.length;
+      }
+      console.log(`  OK ${memberMap.size} members indexed`);
+    }
+
+    // Uses client-side UUIDs so agreements and nominees can be batch-inserted together.
+    console.log('\n[4/5] Reading si_entitlement.txt ...');
+    const agmtBatch: any[] = [];
+    const nomBatch:  any[] = [];
+
+    const flush = async () => {
+      if (DRY_RUN) return;
+      if (agmtBatch.length) {
+        await prisma.agreement.createMany({ data: agmtBatch, skipDuplicates: true });
+        agmtBatch.length = 0;
+      }
+      if (nomBatch.length) {
+        await prisma.nominee.createMany({ data: nomBatch, skipDuplicates: true });
+        nomBatch.length = 0;
+      }
+    };
+
+    for await (const cols of readLines('si_entitlement.txt')) {
+      const membershipNo = t(cols[0]);
+      if (!membershipNo) { agmtSkipped++; continue; }
+
+      let memberId: string;
+      if (DRY_RUN) {
+        memberId = 'dry-run-uuid';
+      } else {
+        const found = memberMap.get(membershipNo);
+        if (!found) {
+          console.warn(`\n  WARNING Agreement skipped -- member not found: ${membershipNo}`);
+          agmtSkipped++;
+          continue;
+        }
+        memberId = found;
+      }
+
+      // Generate UUID client-side so nominees can reference it without a round-trip
+      const agmtId = randomUUID();
+      agmtBatch.push({ id: agmtId, ...mapAgreement(cols, memberId) });
+
+      const nom1 = mapNom1(cols, agmtId);
+      const nom2 = mapNom2(cols, agmtId);
+      if (nom1) { nomBatch.push(nom1); nomTotal++; }
+      if (nom2) { nomBatch.push(nom2); nomTotal++; }
+
+      agmtTotal++;
+
+      if (agmtBatch.length >= BATCH) {
+        await flush();
+        process.stdout.write(`\r  processed ${agmtTotal} agreements, ${nomTotal} nominees...`);
+      }
+    }
+    await flush();
+    console.log(`\n  OK Agreements: ${agmtTotal} inserted, ${agmtSkipped} skipped`);
+    console.log(`  OK Nominees:   ${nomTotal} inserted`);
+  } else {
+    console.log('\n[3/5] Skipping member lookup (--only)');
+    console.log('\n[4/5] Skipping si_entitlement.txt (--only)');
+  }
 
   // ── 5. Validation ──────────────────────────────────────────────────────────
   console.log('\n[5/5] Validation ...');
@@ -492,14 +515,14 @@ async function main() {
       prisma.agreement.count(),
       prisma.nominee.count(),
     ]);
-    console.log('\n  ┌──────────────────────────────────────────────┐');
-    console.log('  │  Table            Expected     Actual         │');
-    console.log('  ├──────────────────────────────────────────────┤');
-    console.log(`  │  Members (IND)      30,446   ${String(mInd).padStart(8)}         │`);
-    console.log(`  │  Members (COR)       1,527   ${String(mCor).padStart(8)}         │`);
-    console.log(`  │  Agreements         33,406   ${String(agmt).padStart(8)}         │`);
-    console.log(`  │  Nominees           27,469   ${String(nom).padStart(8)}         │`);
-    console.log('  └──────────────────────────────────────────────┘');
+    console.log('\n  +-------------------------------------------------+');
+    console.log('  |  Table            Expected     Actual            |');
+    console.log('  +-------------------------------------------------+');
+    console.log(`  |  Members (IND)      30,446   ${String(mInd).padStart(8)}            |`);
+    console.log(`  |  Members (COR)       1,527   ${String(mCor).padStart(8)}            |`);
+    console.log(`  |  Agreements         33,406   ${String(agmt).padStart(8)}            |`);
+    console.log(`  |  Nominees           27,469   ${String(nom).padStart(8)}            |`);
+    console.log('  +-------------------------------------------------+');
   } else {
     console.log(`\n  DRY RUN totals:`);
     console.log(`    Individual rows : ${indTotal}`);

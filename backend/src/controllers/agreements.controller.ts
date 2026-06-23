@@ -47,7 +47,7 @@ export async function listAgreements(req: Request, res: Response): Promise<void>
   const { skip, take, page, limit } = parsePagination(req.query as Record<string, unknown>);
   const {
     memberId, coCode, acctClassify, branchCode, q,
-    membershipNo, agreementNo, name, icNew,
+    membershipNo, agreementNo, name, icNew, icOld, jaName, spouseName,
     sortBy, sortDir,
   } = req.query as Record<string, string>;
 
@@ -72,6 +72,9 @@ export async function listAgreements(req: Request, res: Response): Promise<void>
   if (agreementNo?.trim())  and.push({ agreementNo:  { contains: agreementNo.trim(),  mode: 'insensitive' } });
   if (name?.trim())         and.push({ member: { fullName: { contains: name.trim(), mode: 'insensitive' } } });
   if (icNew?.trim())        and.push({ member: { icNew:    { contains: icNew.trim(), mode: 'insensitive' } } });
+  if (icOld?.trim())        and.push({ member: { icOld:    { contains: icOld.trim(), mode: 'insensitive' } } });
+  if (jaName?.trim())       and.push({ member: { jaName:   { contains: jaName.trim(), mode: 'insensitive' } } });
+  if (spouseName?.trim())   and.push({ member: { spouseName: { contains: spouseName.trim(), mode: 'insensitive' } } });
 
   const where = and.length ? { AND: and } : {};
 
@@ -91,7 +94,7 @@ export async function listAgreements(req: Request, res: Response): Promise<void>
     prisma.agreement.findMany({
       where,
       include: {
-        member:      { select: { id: true, membershipNo: true, fullName: true, icNew: true } },
+        member:      { select: { id: true, membershipNo: true, fullName: true, icNew: true, jaName: true, spouseName: true } },
         amcSchedule: { select: { id: true, nextDueDate: true, billingStatus: true, invoicesIssued: true, totalInvoices: true } },
         pbsScheme:   { select: { certNo: true, schemeType: true, paybackDate: true, topUp: true, pbsIndc: true, claimIndc: true } },
       },

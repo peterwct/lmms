@@ -17,8 +17,9 @@ type SortDir   = 'asc' | 'desc';
 
 interface SearchState {
   coCode: string; membershipNo: string; agreementNo: string; name: string; icNew: string;
+  icOld: string; jaName: string; spouseName: string;
 }
-const EMPTY: SearchState = { coCode: '', membershipNo: '', agreementNo: '', name: '', icNew: '' };
+const EMPTY: SearchState = { coCode: '', membershipNo: '', agreementNo: '', name: '', icNew: '', icOld: '', jaName: '', spouseName: '' };
 
 function SortHeader({ label, field, sortBy, sortDir, onSort }: {
   label: string; field: SortField;
@@ -49,6 +50,9 @@ export function Members() {
     agreementNo:  sp.get('agreementNo')  ?? '',
     name:         sp.get('name')         ?? '',
     icNew:        sp.get('icNew')        ?? '',
+    icOld:        sp.get('icOld')        ?? '',
+    jaName:       sp.get('jaName')       ?? '',
+    spouseName:   sp.get('spouseName')   ?? '',
   };
 
   // Draft is local — form inputs; initialised from URL so form matches on Back
@@ -58,6 +62,9 @@ export function Members() {
     agreementNo:  sp.get('agreementNo')  ?? '',
     name:         sp.get('name')         ?? '',
     icNew:        sp.get('icNew')        ?? '',
+    icOld:        sp.get('icOld')        ?? '',
+    jaName:       sp.get('jaName')       ?? '',
+    spouseName:   sp.get('spouseName')   ?? '',
   }));
 
   const set = (k: keyof SearchState) =>
@@ -72,6 +79,9 @@ export function Members() {
     if (draft.agreementNo)  p.agreementNo  = draft.agreementNo;
     if (draft.name)         p.name         = draft.name;
     if (draft.icNew)        p.icNew        = draft.icNew;
+    if (draft.icOld)        p.icOld        = draft.icOld;
+    if (draft.jaName)       p.jaName       = draft.jaName;
+    if (draft.spouseName)   p.spouseName   = draft.spouseName;
     setSp(p);
   };
 
@@ -105,6 +115,9 @@ export function Members() {
       agreementNo:  applied.agreementNo  || undefined,
       name:         applied.name         || undefined,
       icNew:        applied.icNew        || undefined,
+      icOld:        applied.icOld        || undefined,
+      jaName:       applied.jaName       || undefined,
+      spouseName:   applied.spouseName   || undefined,
       sortBy:       sortBy               || undefined,
       sortDir,
       page, limit: 20,
@@ -135,6 +148,9 @@ export function Members() {
               ['agreementNo',  'Agreement No.',   'e.g. 00253'],
               ['name',         'Member Name',     'Full name or partial'],
               ['icNew',        'IC Number (New)', '12-digit MyKad'],
+              ['icOld',        'Old IC / Passport','Old IC or passport no.'],
+              ['jaName',       'Joint Applicant',  'Joint applicant name'],
+              ['spouseName',   'Spouse Name',      'Spouse name'],
             ] as [keyof SearchState, string, string][]).map(([k, lbl, ph]) => (
               <div key={k}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{lbl}</label>
@@ -181,7 +197,15 @@ export function Members() {
                         {a.membershipNo}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-gray-800">{a.member?.fullName || '—'}</td>
+                    <td className="px-4 py-3 text-gray-800">
+                      <div>{a.member?.fullName || '—'}</div>
+                      {a.member?.jaName && (
+                        <div className="text-xs text-gray-500">JA: {a.member.jaName}</div>
+                      )}
+                      {a.member?.spouseName && (
+                        <div className="text-xs text-gray-500">Spouse: {a.member.spouseName}</div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">{a.member?.icNew || '—'}</td>
                     <td className="px-4 py-3">
                       {a.transferFlag === 'TT' ? (
