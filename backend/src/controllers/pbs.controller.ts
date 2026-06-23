@@ -17,7 +17,7 @@ export async function listPbsSchemes(req: Request, res: Response): Promise<void>
   const { skip, take, page, limit } = parsePagination(req.query as Record<string, unknown>);
   const { coCode, acctClassify, schemeType, claimIndc, q } = req.query as Record<string, string>;
 
-  const and: object[] = [];
+  const and: object[] = [{ pbsIndc: true }];
 
   if (coCode) and.push({ coCode });
   if (acctClassify) and.push({ agreement: { acctClassify } });
@@ -27,11 +27,24 @@ export async function listPbsSchemes(req: Request, res: Response): Promise<void>
   if (claimIndc === 'false') and.push({ claimIndc: false });
 
   if (q?.trim()) {
+    const term = q.trim();
+    // Find agreementNos where ANY agreement (including TF transfer counterparts) matches the search
+    const matchingAgmtNos = await prisma.agreement.findMany({
+      where: { OR: [
+        { membershipNo: { contains: term, mode: 'insensitive' } },
+        { member: { fullName: { contains: term, mode: 'insensitive' } } },
+      ]},
+      select: { agreementNo: true },
+      distinct: ['agreementNo'],
+    });
+    const agmtNos = matchingAgmtNos.map(a => a.agreementNo);
+
     and.push({ OR: [
-      { agreementNo: { contains: q.trim(), mode: 'insensitive' } },
-      { certNo:      { contains: q.trim(), mode: 'insensitive' } },
-      { agreement: { membershipNo: { contains: q.trim(), mode: 'insensitive' } } },
-      { agreement: { member: { fullName: { contains: q.trim(), mode: 'insensitive' } } } },
+      { agreementNo: { contains: term, mode: 'insensitive' } },
+      { certNo:      { contains: term, mode: 'insensitive' } },
+      { agreement: { membershipNo: { contains: term, mode: 'insensitive' } } },
+      { agreement: { member: { fullName: { contains: term, mode: 'insensitive' } } } },
+      ...(agmtNos.length ? [{ agreementNo: { in: agmtNos } }] : []),
     ]});
   }
 
@@ -56,6 +69,26 @@ export async function listPbsSchemes(req: Request, res: Response): Promise<void>
       skip, take,
     }),
   ]);
+
+  // Resolve TT transfer cases: show TF counterpart's member info
+  const ttItems = data.filter(s => s.agreement?.acctClassify === 'TM' && s.agreementNo);
+  if (ttItems.length > 0) {
+    const tfMap = new Map<string, { membershipNo: string; acctClassify: string; member: { id: string; fullName: string; membershipNo: string } }>();
+    const tfAgmts = await prisma.agreement.findMany({
+      where: { agreementNo: { in: ttItems.map(s => s.agreementNo) }, transferFlag: 'TF' },
+      select: { agreementNo: true, membershipNo: true, acctClassify: true, member: { select: { id: true, fullName: true, membershipNo: true } } },
+    });
+    for (const a of tfAgmts) tfMap.set(a.agreementNo, a);
+
+    for (const item of data) {
+      const tf = tfMap.get(item.agreementNo);
+      if (tf && item.agreement) {
+        (item as any).agreement.membershipNo = tf.membershipNo;
+        (item as any).agreement.acctClassify = tf.acctClassify;
+        (item as any).agreement.member = tf.member;
+      }
+    }
+  }
 
   res.json({ data, meta: { total, page, limit, pages: Math.ceil(total / limit) } });
 }
@@ -83,6 +116,22 @@ export async function getPbsScheme(req: Request, res: Response): Promise<void> {
   });
 
   if (!scheme) { res.status(404).json({ error: 'PBS scheme not found' }); return; }
+
+  // Resolve TT transfer: show TF counterpart's member info and status
+  if (scheme.agreement?.acctClassify === 'TM') {
+    const tf = await prisma.agreement.findFirst({
+      where: { agreementNo: scheme.agreementNo, transferFlag: 'TF' },
+      select: { membershipNo: true, acctClassify: true, agreementDate: true, memberId: true, member: { select: { id: true, fullName: true, membershipNo: true } } },
+    });
+    if (tf) {
+      (scheme as any).agreement.membershipNo = tf.membershipNo;
+      (scheme as any).agreement.acctClassify = tf.acctClassify;
+      (scheme as any).agreement.agreementDate = tf.agreementDate;
+      (scheme as any).agreement.memberId = tf.memberId;
+      (scheme as any).agreement.member = tf.member;
+    }
+  }
+
   res.json({ data: scheme });
 }
 
