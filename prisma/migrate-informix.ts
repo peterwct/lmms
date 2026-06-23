@@ -228,7 +228,7 @@ function mapCorporate(c: string[]) {
     mailStateCode:     t(c[19]),
     telHome:           t(c[20]), // c_telno1
     telMobile:         t(c[21]), // c_telno2
-    // c[22] = c_faxno (no field in schema — skipped)
+    faxNo:             t(c[22]),
     email:             t(c[23]),
     enrolRci:          b(c[24]),
     activeHcm:         b(c[25]),

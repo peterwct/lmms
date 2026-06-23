@@ -194,7 +194,7 @@ $env:DATABASE_URL = "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 .\refresh-test-db.ps1 -DryRun
 ```
 
-The script: truncates PbsClaim + PbsScheme + Member CASCADE → migrates members/agreements/nominees → runs 4 patches → migrates AMC schedules + PBS schemes + PBS claims → re-grants lhb_app permissions → prints final row counts.
+The script: truncates PbsClaim + PbsScheme + Member CASCADE → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims → re-grants lhb_app permissions → prints final row counts.
 
 ### Migrating a single table
 

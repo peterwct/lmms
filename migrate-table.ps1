@@ -72,10 +72,6 @@ $TableConfig = @{
         RequiredFiles = @('si_ind_mast.txt', 'si_cor_mast.txt', 'si_entitlement.txt', 'amc_mem.txt', 'ps_amc_mem.txt', 'maa_mem.txt', 'maa_claim.txt')
         Scripts = @(
             'prisma/migrate-informix.ts',
-            'prisma/patch-acct-classify.ts',
-            'prisma/patch-entitlement-financials.ts',
-            'prisma/patch-ind-mast-new-fields.ts',
-            'prisma/populate-fax.ts',
             'prisma/migrate-amc-schedules.ts',
             'prisma/migrate-maa-mem.ts',
             'prisma/migrate-maa-claim.ts'
@@ -87,9 +83,7 @@ $TableConfig = @{
         )
         RequiredFiles = @('si_ind_mast.txt')
         Scripts = @(
-            'prisma/migrate-informix.ts --only individuals',
-            'prisma/patch-ind-mast-new-fields.ts',
-            'prisma/populate-fax.ts'
+            'prisma/migrate-informix.ts --only individuals'
         )
     }
     CorporateMember = @{

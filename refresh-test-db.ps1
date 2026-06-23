@@ -217,12 +217,8 @@ function Invoke-Migration {
 Write-Host ""
 Write-Host ("[1/5] Clearing Informix data tables...") -ForegroundColor Yellow
 
-# Truncate in dependency order: leaf tables first, then parent.
-# Explicit truncates avoid relying on CASCADE chain depth.
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
-TRUNCATE "PbsClaim";
-TRUNCATE "PbsScheme";
-TRUNCATE "Member" CASCADE;
+TRUNCATE "PbsClaim", "PbsScheme", "Member" CASCADE;
 "@
 
 # ── Step 2: Core member + agreement import ────────────────────────────────────
@@ -230,17 +226,9 @@ Write-Host ""
 Write-Host ("[2/5] Importing members, agreements, nominees...") -ForegroundColor Yellow
 Invoke-Migration "prisma/migrate-informix.ts" "migrate-informix.ts"
 
-# ── Step 3: Post-migration patches ────────────────────────────────────────────
+# ── Step 3: AMC schedules + Zurich PBS ───────────────────────────────────────
 Write-Host ""
-Write-Host ("[3/5] Applying post-migration patches...") -ForegroundColor Yellow
-Invoke-Migration "prisma/patch-acct-classify.ts"         "patch-acct-classify.ts"
-Invoke-Migration "prisma/patch-entitlement-financials.ts" "patch-entitlement-financials.ts"
-Invoke-Migration "prisma/patch-ind-mast-new-fields.ts"   "patch-ind-mast-new-fields.ts"
-Invoke-Migration "prisma/populate-fax.ts"                "populate-fax.ts"
-
-# ── Step 4: AMC schedules + Zurich PBS ───────────────────────────────────────
-Write-Host ""
-Write-Host ("[4/5] Importing AMC schedules and Zurich PBS...") -ForegroundColor Yellow
+Write-Host ("[3/5] Importing AMC schedules and Zurich PBS...") -ForegroundColor Yellow
 Invoke-Migration "prisma/migrate-amc-schedules.ts" "migrate-amc-schedules.ts"
 Invoke-Migration "prisma/migrate-maa-mem.ts"       "migrate-maa-mem.ts"
 Invoke-Migration "prisma/migrate-maa-claim.ts"     "migrate-maa-claim.ts"
@@ -249,7 +237,7 @@ Invoke-Migration "prisma/migrate-maa-claim.ts"     "migrate-maa-claim.ts"
 # Required whenever tables are dropped/recreated (e.g. prisma migrate reset).
 # Safe to run after every refresh — GRANT is idempotent.
 Write-Host ""
-Write-Host ("[5/6] Re-granting schema permissions to lhb_app...") -ForegroundColor Yellow
+Write-Host ("[4/5] Re-granting schema permissions to lhb_app...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "GRANT lhb_app on public schema" -Sql @"
 GRANT USAGE ON SCHEMA public TO lhb_app;
@@ -259,7 +247,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lhb_app;
 
 # ── Step 6: Final counts ──────────────────────────────────────────────────────
 Write-Host ""
-Write-Host ("[6/6] Final record counts...") -ForegroundColor Yellow
+Write-Host ("[5/5] Final record counts...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "Row counts" -Sql @"
 SELECT
