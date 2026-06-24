@@ -126,7 +126,23 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
       where: { coCode: agreement.coCode, agreementNo: agreement.agreementNo },
     }),
   ]);
-  res.json({ data: { ...agreement, amcSchedule: amcSchedule ?? null, pbsScheme: pbsScheme ?? null } });
+
+  let transferToMemberName: string | null = null;
+  let transferFromMemberName: string | null = null;
+  let transferToMemberId: string | null = null;
+  let transferFromMemberId: string | null = null;
+  if (agreement.transferToMembership) {
+    const m = await prisma.member.findFirst({ where: { membershipNo: agreement.transferToMembership }, select: { id: true, fullName: true } });
+    transferToMemberName = m?.fullName ?? null;
+    transferToMemberId = m?.id ?? null;
+  }
+  if (agreement.transferFromMembership) {
+    const m = await prisma.member.findFirst({ where: { membershipNo: agreement.transferFromMembership }, select: { id: true, fullName: true } });
+    transferFromMemberName = m?.fullName ?? null;
+    transferFromMemberId = m?.id ?? null;
+  }
+
+  res.json({ data: { ...agreement, amcSchedule: amcSchedule ?? null, pbsScheme: pbsScheme ?? null, transferToMemberName, transferFromMemberName, transferToMemberId, transferFromMemberId } });
 }
 
 export async function updateAgreement(req: Request, res: Response): Promise<void> {

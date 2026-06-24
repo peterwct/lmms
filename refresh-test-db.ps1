@@ -61,7 +61,7 @@
            e_nom2_email,
            e_rci_refno, e_rci_enrol_date, e_rci_expiry_date, e_rci_fee_paid,
            e_outstd_doc, e_doc_desc, e_locality, e_can_code, e_sysdate, e_mod_date,
-           e_term_user, e_aterm_date
+           e_term_user, e_aterm_date, e_tfdate, e_ttdate, e_tfuser, e_ttuser
     FROM si_entitlement WHERE e_cocode IN ('03', '15', '02');
 
     UNLOAD TO 'amc_mem.txt' DELIMITER '|'

@@ -128,19 +128,57 @@ export function AgreementDetail() {
         <CardHeader><p className="font-semibold text-gray-700">Agreement Details</p></CardHeader>
         <CardBody>
           <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 text-sm">
-            {([
-              ['Agreement date', format(new Date(agmt.agreementDate), 'dd/MM/yyyy')],
-              ['End date', agmt.endDate ? format(new Date(agmt.endDate), 'dd/MM/yyyy') : '—'],
-              ['Term', `${agmt.termYears} years`],
-              ['Entitlement', agmt.entitlementType === 'W' ? 'Week-based' : 'Points-based'],
-              ['Total points', agmt.totalPoints ?? '—'],
-              ['Sales branch', agmt.salesBranch || '—'],
-              ['Certificate No.', agmt.certificateNo || '—'],
-              ['RCI Ref.', agmt.rciRefNo || '—'],
-              ['Outstanding doc.', agmt.outstdDoc ? 'Yes' : 'No'],
-            ] as [string, string | number | undefined][]).map(([k, v]) => (
-              <div key={k}><dt className="text-xs text-gray-500 uppercase tracking-wide">{k}</dt><dd className="mt-0.5 font-medium">{String(v ?? '—')}</dd></div>
-            ))}
+            {(() => {
+              const sellPrice = parseFloat(agmt.purchasePrice ?? '0') || 0;
+              const subFees   = parseFloat(agmt.subFees       ?? '0') || 0;
+              const sinkFund  = parseFloat(agmt.sinkFund      ?? '0') || 0;
+              const govtTax   = parseFloat(agmt.govtTax       ?? '0') || 0;
+              const netPrice  = sellPrice - subFees - sinkFund - govtTax;
+              return ([
+                ['Agreement date', format(new Date(agmt.agreementDate), 'dd/MM/yyyy')],
+                ['End date', agmt.endDate ? format(new Date(agmt.endDate), 'dd/MM/yyyy') : '—'],
+                ['Term', `${agmt.termYears} years`],
+                ['Entitlement', agmt.entitlementType === 'W' ? 'Week-based' : 'Points-based'],
+                ['Total points', agmt.totalPoints ?? '—'],
+                ['Sales branch', agmt.salesBranch || '—'],
+                ['Certificate No.', agmt.certificateNo || '—'],
+                ['Purchase Price', fmtRM(netPrice || null)],
+                ['Loan Type', agmt.loanType ? `${agmt.loanType} — ${LOAN_TYPE_LABEL[agmt.loanType] ?? agmt.loanType}` : '—'],
+                ['Loan Amount', fmtRM(agmt.loanAmount)],
+              ] as [string, string | number | undefined][]).map(([k, v]) => (
+                <div key={k}><dt className="text-xs text-gray-500 uppercase tracking-wide">{k}</dt><dd className="mt-0.5 font-medium">{String(v ?? '—')}</dd></div>
+              ));
+            })()}
+            {agmt.transferFlag === 'TT' && agmt.transferToMembership && (
+              <div className="col-span-full">
+                <dt className="text-xs text-gray-500 uppercase tracking-wide">Transferred To</dt>
+                <dd className="mt-0.5 font-medium">
+                  {agmt.transferToMemberId ? (
+                    <Link to={`/members/${agmt.transferToMemberId}`} className="text-blue-600 hover:underline">{agmt.transferToMembership}</Link>
+                  ) : (
+                    <span>{agmt.transferToMembership}</span>
+                  )}
+                  {agmt.transferToMemberName && ` — ${agmt.transferToMemberName}`}
+                  {agmt.transferToDate && <span className="ml-3 text-sm text-gray-500">on {format(new Date(agmt.transferToDate), 'dd/MM/yyyy')}</span>}
+                  {agmt.transferToUser && <span className="ml-2 text-sm text-gray-500">by {agmt.transferToUser}</span>}
+                </dd>
+              </div>
+            )}
+            {agmt.transferFromMembership && (
+              <div className="col-span-full">
+                <dt className="text-xs text-gray-500 uppercase tracking-wide">Transferred From</dt>
+                <dd className="mt-0.5 font-medium">
+                  {agmt.transferFromMemberId ? (
+                    <Link to={`/members/${agmt.transferFromMemberId}`} className="text-blue-600 hover:underline">{agmt.transferFromMembership}</Link>
+                  ) : (
+                    <span>{agmt.transferFromMembership}</span>
+                  )}
+                  {agmt.transferFromMemberName && ` — ${agmt.transferFromMemberName}`}
+                  {agmt.transferDate && <span className="ml-3 text-sm text-gray-500">on {format(new Date(agmt.transferDate), 'dd/MM/yyyy')}</span>}
+                  {agmt.transferUser && <span className="ml-2 text-sm text-gray-500">by {agmt.transferUser}</span>}
+                </dd>
+              </div>
+            )}
             {agmt.cancellationReason && (
               <div className="col-span-full">
                 <dt className="text-xs text-gray-500 uppercase tracking-wide">Termination / Cancellation reason</dt>
@@ -168,30 +206,6 @@ export function AgreementDetail() {
                 <dd className="mt-0.5 font-medium">{agmt.statusChangeUser}</dd>
               </div>
             )}
-            {/* ── Financial fields ── */}
-            {(() => {
-              const sellPrice = parseFloat(agmt.purchasePrice ?? '0') || 0;
-              const subFees   = parseFloat(agmt.subFees       ?? '0') || 0;
-              const sinkFund  = parseFloat(agmt.sinkFund      ?? '0') || 0;
-              const govtTax   = parseFloat(agmt.govtTax       ?? '0') || 0;
-              const netPrice  = sellPrice - subFees - sinkFund - govtTax;
-              return (<>
-                <div>
-                  <dt className="text-xs text-gray-500 uppercase tracking-wide">Purchase Price</dt>
-                  <dd className="mt-0.5 font-medium">{fmtRM(netPrice || null)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-gray-500 uppercase tracking-wide">Loan Type</dt>
-                  <dd className="mt-0.5 font-medium">
-                    {agmt.loanType ? `${agmt.loanType} — ${LOAN_TYPE_LABEL[agmt.loanType] ?? agmt.loanType}` : '—'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-gray-500 uppercase tracking-wide">Loan Amount</dt>
-                  <dd className="mt-0.5 font-medium">{fmtRM(agmt.loanAmount)}</dd>
-                </div>
-              </>);
-            })()}
           </dl>
         </CardBody>
       </Card>

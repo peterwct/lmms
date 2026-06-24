@@ -253,7 +253,11 @@ function mapCorporate(c: string[]) {
 //  9  e_total_pts        22 e_transfer_flg  34 e_nom1_add2     48 e_nom2_add2     63 e_mod_date
 // 10  e_acct_classify    23 e_ttmembno      35 e_nom1_add3     49 e_nom2_add3     64 e_term_user
 //                                                                                65 e_aterm_date
-//                                                                                66 (trailing)
+//                                                                                66 e_tfdate
+//                                                                                67 e_ttdate
+//                                                                                68 e_tfuser
+//                                                                                69 e_ttuser
+//                                                                                70 (trailing)
 // 11  e_purchase_price   24 e_tfmembno      36 e_nom1_city     50 e_nom2_city
 // 12  e_down                                37 e_nom1_postcode 51 e_nom2_postcode
 //                                           38 e_nom1_email    52 e_nom2_email
@@ -314,6 +318,10 @@ function mapAgreement(c: string[], memberId: string) {
     legacyModifiedAt:        d(c[63]),
     statusChangeUser:        t(c[64]),
     statusChangeDate:        d(c[65]),
+    transferDate:            d(c[66]),
+    transferToDate:          d(c[67]),
+    transferUser:            t(c[68]),
+    transferToUser:          t(c[69]),
   };
 }
 

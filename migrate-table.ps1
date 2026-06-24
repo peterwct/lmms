@@ -101,9 +101,7 @@ $TableConfig = @{
         )
         RequiredFiles = @('si_entitlement.txt')
         Scripts = @(
-            'prisma/migrate-informix.ts --only agreements',
-            'prisma/patch-acct-classify.ts',
-            'prisma/patch-entitlement-financials.ts'
+            'prisma/migrate-informix.ts --only agreements'
         )
     }
     PbsScheme = @{

@@ -53,7 +53,6 @@ export function MemberDetail() {
           <p className="font-mono text-sm text-gray-500">{member.membershipNo}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge color={statusColor[member.status]}>{member.status}</Badge>
           <Badge color={member.memberType === 'INDIVIDUAL' ? 'blue' : 'purple'}>{member.memberType}</Badge>
           {canEdit('MEMBERS') && (
             <Button size="sm" onClick={() => navigate(`/members/${id}/edit`, { replace: true })}>

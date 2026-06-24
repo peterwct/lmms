@@ -242,6 +242,16 @@ export interface Agreement {
   docDescription?: string;
   canCode?: string;
   transferFlag?: string;
+  transferToMembership?: string;
+  transferFromMembership?: string;
+  transferToMemberId?: string;
+  transferFromMemberId?: string;
+  transferToMemberName?: string;
+  transferFromMemberName?: string;
+  transferDate?: string;
+  transferToDate?: string;
+  transferUser?: string;
+  transferToUser?: string;
   cancellationReason?: CancellationReason;
   statusChangeDate?: string;
   statusChangeUser?: string;

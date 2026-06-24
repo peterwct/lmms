@@ -35,6 +35,10 @@ model Agreement {
   transferFlag           String?
   transferToMembership   String?
   transferFromMembership String?
+  transferDate           DateTime?
+  transferToDate         DateTime?
+  transferUser           String?
+  transferToUser         String?
   canCode                String?
   rciRefNo               String?
   rciEnrolDate           DateTime?
