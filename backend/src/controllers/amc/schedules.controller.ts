@@ -11,10 +11,23 @@ export async function listSchedules(req: Request, res: Response): Promise<void> 
   const { skip, take, page, limit } = parsePagination(req.query as Record<string, unknown>);
   const { coCode, billingStatus, dueBefore, dueAfter, q, acctClassify } = req.query as Record<string, string>;
 
+  // Resolve acctClassify filter via natural key — the FK can point to the wrong
+  // agreement for transferred cases, so we find matching membershipNos first.
+  let acctFilterMembershipNos: string[] | null = null;
+  if (acctClassify) {
+    const agmtHits = await prisma.agreement.findMany({
+      where: { acctClassify: acctClassify as any, ...(coCode ? { coCode } : {}) },
+      select: { membershipNo: true },
+    });
+    acctFilterMembershipNos = agmtHits.map(a => a.membershipNo);
+  }
+
   const and: object[] = [];
   if (coCode)        and.push({ coCode });
   if (billingStatus) and.push({ billingStatus });
-  if (acctClassify)  and.push({ agreement: { acctClassify } });
+  if (acctFilterMembershipNos !== null) {
+    and.push({ membershipNo: { in: acctFilterMembershipNos } });
+  }
   if (dueBefore || dueAfter) {
     and.push({ nextDueDate: {
       ...(dueAfter  ? { gte: new Date(dueAfter)  } : {}),
@@ -22,11 +35,20 @@ export async function listSchedules(req: Request, res: Response): Promise<void> 
     }});
   }
   if (q?.trim()) {
-    and.push({ OR: [
-      { agreementNo:  { contains: q.trim(), mode: 'insensitive' } },
-      { membershipNo: { contains: q.trim(), mode: 'insensitive' } },
-      { agreement: { member: { fullName: { contains: q.trim(), mode: 'insensitive' } } } },
-    ]});
+    const term = q.trim();
+    const memberHits = await prisma.member.findMany({
+      where: { fullName: { contains: term, mode: 'insensitive' } },
+      select: { membershipNo: true },
+    });
+    const membershipNos = memberHits.map(m => m.membershipNo);
+    const orClauses: object[] = [
+      { agreementNo:  { contains: term, mode: 'insensitive' } },
+      { membershipNo: { contains: term, mode: 'insensitive' } },
+    ];
+    if (membershipNos.length) {
+      orClauses.push({ membershipNo: { in: membershipNos } });
+    }
+    and.push({ OR: orClauses });
   }
   const where = and.length ? { AND: and } : {};
 
@@ -34,19 +56,24 @@ export async function listSchedules(req: Request, res: Response): Promise<void> 
     prisma.amcSchedule.count({ where }),
     prisma.amcSchedule.findMany({
       where,
-      include: {
-        agreement: {
-          select: {
-            id: true, agreementNo: true, coCode: true, acctClassify: true,
-            member: { select: { id: true, membershipNo: true, fullName: true } },
-          },
-        },
-      },
       orderBy: { nextDueDate: 'asc' },
       skip, take,
     }),
   ]);
-  res.json({ data: schedules, meta: { total, page, limit, pages: Math.ceil(total / limit) } });
+
+  // Resolve correct agreement + member by natural key (membershipNo on schedule)
+  // instead of relying on the FK, which can point to the wrong agreement
+  // when agreementNo is reused across members (transfer cases).
+  const enriched = await Promise.all(schedules.map(async (s) => {
+    const agmt = await prisma.agreement.findFirst({
+      where: { coCode: s.coCode, agreementNo: s.agreementNo, membershipNo: s.membershipNo },
+      select: { id: true, agreementNo: true, coCode: true, acctClassify: true,
+        member: { select: { id: true, membershipNo: true, fullName: true } } },
+    });
+    return { ...s, agreement: agmt };
+  }));
+
+  res.json({ data: enriched, meta: { total, page, limit, pages: Math.ceil(total / limit) } });
 }
 
 export async function getSchedule(req: Request, res: Response): Promise<void> {

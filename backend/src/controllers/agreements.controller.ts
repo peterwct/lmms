@@ -94,15 +94,29 @@ export async function listAgreements(req: Request, res: Response): Promise<void>
     prisma.agreement.findMany({
       where,
       include: {
-        member:      { select: { id: true, membershipNo: true, fullName: true, icNew: true, jaName: true, spouseName: true } },
-        amcSchedule: { select: { id: true, nextDueDate: true, billingStatus: true, invoicesIssued: true, totalInvoices: true } },
-        pbsScheme:   { select: { certNo: true, schemeType: true, paybackDate: true, topUp: true, pbsIndc: true, claimIndc: true } },
+        member: { select: { id: true, membershipNo: true, fullName: true, icNew: true, jaName: true, spouseName: true } },
       },
       orderBy,
       skip, take,
     }),
   ]);
-  res.json({ data: agreements, meta: { total, page, limit, pages: Math.ceil(total / limit) } });
+
+  // Resolve AMC + PBS by natural key instead of FK to handle transferred agreements
+  const enriched = await Promise.all(agreements.map(async (a) => {
+    const [amcSchedule, pbsScheme] = await Promise.all([
+      prisma.amcSchedule.findFirst({
+        where: { coCode: a.coCode, agreementNo: a.agreementNo, membershipNo: a.membershipNo },
+        select: { id: true, nextDueDate: true, billingStatus: true, invoicesIssued: true, totalInvoices: true },
+      }),
+      prisma.pbsScheme.findFirst({
+        where: { coCode: a.coCode, agreementNo: a.agreementNo },
+        select: { certNo: true, schemeType: true, paybackDate: true, topUp: true, pbsIndc: true, claimIndc: true },
+      }),
+    ]);
+    return { ...a, amcSchedule, pbsScheme };
+  }));
+
+  res.json({ data: enriched, meta: { total, page, limit, pages: Math.ceil(total / limit) } });
 }
 
 export async function getAgreement(req: Request, res: Response): Promise<void> {

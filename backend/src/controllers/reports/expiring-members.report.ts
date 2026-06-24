@@ -57,12 +57,12 @@ async function fetchRows(month: number, year: number): Promise<ExpiringMemberRow
     select: {
       coCode: true,
       agreementNo: true,
+      membershipNo: true,
       agreementDate: true,
       endDate: true,
       termYears: true,
       acctClassify: true,
       member: { select: { fullName: true, membershipNo: true } },
-      amcSchedule: { select: { invoicesIssued: true, totalInvoices: true } },
     },
   });
 
@@ -71,6 +71,11 @@ async function fetchRows(month: number, year: number): Promise<ExpiringMemberRow
   for (const a of agreements) {
     const expiry = computeExpiry(a.agreementDate, a.termYears, a.endDate);
     if (expiry.getMonth() + 1 !== month || expiry.getFullYear() !== year) continue;
+    // Resolve AMC schedule by natural key instead of FK to handle transferred agreements
+    const amc = await prisma.amcSchedule.findFirst({
+      where: { coCode: a.coCode, agreementNo: a.agreementNo, membershipNo: a.membershipNo },
+      select: { invoicesIssued: true, totalInvoices: true },
+    });
     rows.push({
       coCode:        a.coCode,
       fullName:      a.member?.fullName      ?? '',
@@ -78,8 +83,8 @@ async function fetchRows(month: number, year: number): Promise<ExpiringMemberRow
       agreementNo:   a.agreementNo,
       agreementDate: a.agreementDate,
       expiryDate:    expiry,
-      amcBilled:     a.amcSchedule?.invoicesIssued ?? 0,
-      totalAmc:      a.amcSchedule?.totalInvoices  ?? 0,
+      amcBilled:     amc?.invoicesIssued ?? 0,
+      totalAmc:      amc?.totalInvoices  ?? 0,
       acctClassify:  a.acctClassify,
     });
   }

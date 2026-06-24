@@ -14,12 +14,12 @@ import { format } from 'date-fns';
 export function Schedules() {
   const [sp, setSp] = useSearchParams();
 
-  // All filter/page state in URL — defaults: LHC-03, Active (NA)
-  const coCode       = sp.get('coCode')       ?? '03';
-  const acctClassify = sp.get('acctClassify') ?? 'NA';
+  const coCode       = sp.get('coCode')       ?? '';
+  const acctClassify = sp.get('acctClassify') ?? '';
   const billingStatus = sp.get('billingStatus') ?? '';
   const q            = sp.get('q')            ?? '';
   const page         = parseInt(sp.get('page') ?? '1', 10);
+  const hasFilters   = !!(q || coCode || acctClassify || billingStatus);
 
   // Local search input — debounced to URL
   const [searchInput, setSearchInput] = useState(() => sp.get('q') ?? '');
@@ -58,7 +58,13 @@ export function Schedules() {
       billingStatus: billingStatus || undefined,
       page, limit: 20,
     }).then(r => r.data),
+    enabled: hasFilters,
   });
+
+  const handleClear = () => {
+    setSearchInput('');
+    setSp({}, { replace: true });
+  };
 
   return (
     <div className="space-y-4">
@@ -87,22 +93,34 @@ export function Schedules() {
         </div>
 
         <Select value={coCode} onChange={e => setFilter('coCode', e.target.value)} className="w-36">
+          <option value="">All Products</option>
           <option value="03">LHC-03</option>
           <option value="15">LHC-15</option>
           <option value="02">CP</option>
         </Select>
 
         <Select value={acctClassify} onChange={e => setFilter('acctClassify', e.target.value)} className="w-44">
+          <option value="">All Status</option>
           <option value="NA">Active (NA)</option>
           <option value="SU">Suspended (SU)</option>
           <option value="PT">Pending Termination (PT)</option>
           <option value="TM">Terminated (TM)</option>
         </Select>
 
+        {hasFilters && (
+          <button onClick={handleClear} className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">
+            Clear
+          </button>
+        )}
       </div>
 
-      <RecordCount total={data?.meta?.total} loading={isLoading} />
+      {hasFilters && <RecordCount total={data?.meta?.total} loading={isLoading} />}
 
+      {!hasFilters ? (
+        <Card>
+          <p className="px-4 py-8 text-center text-gray-400">Enter a search term or select a filter to view AMC schedules.</p>
+        </Card>
+      ) : (
       <Card>
         {isLoading ? <PageSpinner /> : (
           <>
@@ -162,6 +180,7 @@ export function Schedules() {
           </>
         )}
       </Card>
+      )}
     </div>
   );
 }

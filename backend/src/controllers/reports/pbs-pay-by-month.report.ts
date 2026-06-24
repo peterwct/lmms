@@ -20,14 +20,13 @@ async function buildRows(): Promise<PbsPayRow[]> {
       EXTRACT(YEAR  FROM p."paybackDate")::int AS year,
       EXTRACT(MONTH FROM p."paybackDate")::int AS month,
       p."schemeType" AS scheme_type,
-      COALESCE(tf."acctClassify", a."acctClassify") AS status,
+      a."acctClassify" AS status,
       COUNT(*)::bigint AS cnt
     FROM "PbsScheme" p
-    JOIN "Agreement" a ON a.id = p."agreementId"
-    LEFT JOIN "Agreement" tf
-      ON a."transferFlag" = 'TT'
-      AND tf."agreementNo" = a."agreementNo"
-      AND tf."transferFlag" = 'TF'
+    JOIN "Agreement" a
+      ON a."agreementNo" = p."agreementNo"
+      AND a."coCode" = p."coCode"
+      AND a."transferFlag" IS DISTINCT FROM 'TT'
     WHERE p."paybackDate" IS NOT NULL
       AND p."schemeType" IN ('19K', '21K')
       AND p."pbsIndc" = true

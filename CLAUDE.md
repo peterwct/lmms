@@ -352,6 +352,31 @@ Source tables and their column counts (verified from actual export files):
 
 Informix date format is `dd-mm-yyyy` — the `d()` helper in migration scripts handles this.
 
+### FK vs natural key — transferred agreement pitfall
+
+Transferred agreements share the same `agreementNo + coCode` across two members (the original TT record and the new TF record). The Prisma FK (`agreementId`) on AmcSchedule/PbsScheme can point to the **wrong** Agreement — typically the old terminated one instead of the current active holder. This affects ~68 records.
+
+**Query direction rules:**
+- **Agreement -> Member** (`memberId` FK) — always safe, each agreement has one member
+- **AmcSchedule/PbsScheme -> Agreement** (`agreementId` FK) — **unsafe**, use natural key instead
+
+**How to query safely from AmcSchedule:**
+- Match by `coCode + agreementNo + membershipNo` (all 3 fields exist on AmcSchedule)
+- Example: `prisma.amcSchedule.findFirst({ where: { coCode, agreementNo, membershipNo } })`
+
+**How to query safely from PbsScheme:**
+- PbsScheme has no `membershipNo` — match by `coCode + agreementNo` and filter `transferFlag IS DISTINCT FROM 'TT'` on the Agreement side
+- Raw SQL: `JOIN "Agreement" a ON a."agreementNo" = p."agreementNo" AND a."coCode" = p."coCode" AND a."transferFlag" IS DISTINCT FROM 'TT'`
+
+**When migrating new Informix tables:**
+1. Always store `membershipNo`, `agreementNo`, and `coCode` directly on the new table if the source has them — `membershipNo` is the disambiguator for transfers
+2. Set the `agreementId` FK by matching all 3 fields (`membershipNo + agreementNo + coCode`), not just `agreementNo + coCode`
+3. If the source lacks `membershipNo`, document that FK is unreliable and use `coCode + agreementNo + NOT TT` in queries
+
+**When writing new features or reports:**
+- Any code starting from AmcSchedule or PbsScheme that needs Agreement/Member data must use natural key, not FK `include`
+- The FK `include` is fine for Prisma convenience (e.g. cascade delete) but not for data accuracy on transferred records
+
 ## API reference
 
 Full endpoint listing at `http://localhost:3001` (rendered HTML page).
