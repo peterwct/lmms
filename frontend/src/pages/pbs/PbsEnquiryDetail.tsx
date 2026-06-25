@@ -224,14 +224,12 @@ export function PbsEnquiryDetail() {
           </div>
         </CardHeader>
         <CardBody>
-          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 text-sm">
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
             {([
               ['Certificate No.', pbs.certNo || '—'],
               ['Scheme Type', pbs.schemeType || '—'],
               ['Payback Date', fmtDate(pbs.paybackDate)],
               ['Top Up', pbs.topUp ? 'Yes' : 'No'],
-              ['PBS Indicator', pbs.pbsIndc ? 'Yes' : 'No'],
-              ['Claim Indicator', pbs.claimIndc ? 'Yes' : 'No'],
             ] as [string, string][]).map(([k, v]) => (
               <div key={k}><dt className="text-xs text-gray-500 uppercase tracking-wide">{k}</dt><dd className="mt-0.5 font-medium">{v}</dd></div>
             ))}

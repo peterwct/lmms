@@ -67,7 +67,7 @@ export function MemberDetail() {
         <Card>
           <CardHeader><p className="font-semibold text-gray-700">Personal Information</p></CardHeader>
           <CardBody>
-            <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-4">
               <InfoRow label="Full name"     value={member.fullName} />
               <InfoRow label="Salutation"    value={member.salutation} />
               <InfoRow label="IC (New)"      value={member.icNew} />
@@ -89,7 +89,7 @@ export function MemberDetail() {
         <Card>
           <CardHeader><p className="font-semibold text-gray-700">Company Information</p></CardHeader>
           <CardBody>
-            <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-4">
               <InfoRow label="Company name"        value={member.fullName} />
               <InfoRow label="Registration no."    value={member.registrationNo} />
               <InfoRow label="Incorporation date"  value={member.incorporationDate ? format(new Date(member.incorporationDate), 'dd/MM/yyyy') : null} />

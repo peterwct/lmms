@@ -127,7 +127,7 @@ export function AgreementDetail() {
       <Card>
         <CardHeader><p className="font-semibold text-gray-700">Agreement Details</p></CardHeader>
         <CardBody>
-          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 text-sm">
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
             {(() => {
               const sellPrice = parseFloat(agmt.purchasePrice ?? '0') || 0;
               const subFees   = parseFloat(agmt.subFees       ?? '0') || 0;
@@ -138,13 +138,13 @@ export function AgreementDetail() {
                 ['Agreement date', format(new Date(agmt.agreementDate), 'dd/MM/yyyy')],
                 ['End date', agmt.endDate ? format(new Date(agmt.endDate), 'dd/MM/yyyy') : '—'],
                 ['Term', `${agmt.termYears} years`],
-                ['Entitlement', agmt.entitlementType === 'W' ? 'Week-based' : 'Points-based'],
                 ['Total points', agmt.totalPoints ?? '—'],
-                ['Sales branch', agmt.salesBranch || '—'],
                 ['Certificate No.', agmt.certificateNo || '—'],
                 ['Purchase Price', fmtRM(netPrice || null)],
                 ['Loan Type', agmt.loanType ? `${agmt.loanType} — ${LOAN_TYPE_LABEL[agmt.loanType] ?? agmt.loanType}` : '—'],
                 ['Loan Amount', fmtRM(agmt.loanAmount)],
+                ['Sales branch', agmt.salesBranch || '—'],
+                ['Salesperson', '—'],
               ] as [string, string | number | undefined][]).map(([k, v]) => (
                 <div key={k}><dt className="text-xs text-gray-500 uppercase tracking-wide">{k}</dt><dd className="mt-0.5 font-medium">{String(v ?? '—')}</dd></div>
               ));
@@ -292,14 +292,12 @@ export function AgreementDetail() {
             </p>
           </CardHeader>
           <CardBody>
-            <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 text-sm">
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
               {([
                 ['Certificate No.',  agmt.pbsScheme.certNo   || '—'],
                 ['Payback Scheme',   agmt.pbsScheme.schemeType || '—'],
                 ['Payback Date',     agmt.pbsScheme.paybackDate ? format(new Date(agmt.pbsScheme.paybackDate), 'dd/MM/yyyy') : '—'],
                 ['Top Up Case',      agmt.pbsScheme.topUp   ? 'Yes' : 'No'],
-                ['PBS Indicator',    agmt.pbsScheme.pbsIndc ? 'Yes' : 'No'],
-                ['Claimed',          agmt.pbsScheme.claimIndc ? 'Yes' : 'No'],
               ] as [string, string][]).map(([k, v]) => (
                 <div key={k}><dt className="text-xs text-gray-500 uppercase tracking-wide">{k}</dt><dd className="mt-0.5 font-medium">{v}</dd></div>
               ))}
