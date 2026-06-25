@@ -106,6 +106,7 @@ export async function logout(req: Request, res: Response): Promise<void> {
       where: { id: req.user.id },
       data: { sessionToken: null, updatedAt: new Date() },
     });
+    await writeAudit({ userId: req.user.id, action: `Logout: ${req.user.username}`, actionType: 'LOGOUT' });
   }
   res.clearCookie('token');
   res.json({ message: 'Logged out' });

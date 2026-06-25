@@ -240,7 +240,7 @@ function mapCorporate(c: string[]) {
 
 // ─── Agreements + Nominees (si_entitlement) ───────────────────────────────────
 //
-// Fresh-export column indices (65 tokens per row incl. trailing):
+// Fresh-export column indices (76 tokens per row incl. trailing):
 //  0  e_membership_no    13 e_sub_fees      25 e_nom1_name     39 e_nom2_name     54 e_rci_refno
 //  1  e_agreement_no     14 e_sink_fund     26 e_nom1_ic       40 e_nom2_ic       55 e_rci_enrol_date
 //  2  e_agreement_date   15 e_govt_tax      27 e_nom1_new_ic   41 e_nom2_new_ic   56 e_rci_expiry
@@ -257,7 +257,12 @@ function mapCorporate(c: string[]) {
 //                                                                                67 e_ttdate
 //                                                                                68 e_tfuser
 //                                                                                69 e_ttuser
-//                                                                                70 (trailing)
+//                                                                                70 e_loc_name (nom3)
+//                                                                                71 e_loc_salutation
+//                                                                                72 e_loc_designation
+//                                                                                73 e_loc_name_card
+//                                                                                74 e_cse_code
+//                                                                                75 (trailing)
 // 11  e_purchase_price   24 e_tfmembno      36 e_nom1_city     50 e_nom2_city
 // 12  e_down                                37 e_nom1_postcode 51 e_nom2_postcode
 //                                           38 e_nom1_email    52 e_nom2_email
@@ -267,6 +272,7 @@ function mapCorporate(c: string[]) {
 //                               add1, add2, add3, city, postcode, email
 // nom2 (c[39..53]): 15 fields — name, icOld, icNew, salut, desig, nameCard,
 //                               telH, telMobile, add1, add2, add3, city, postcode, email, email(dup)
+// nom3 (c[70..73]): 4 fields  — name, salutation, designation, nameCard
 
 function mapAgreement(c: string[], memberId: string) {
   const rawAgmtNo = c[1] ?? '';
@@ -322,6 +328,7 @@ function mapAgreement(c: string[], memberId: string) {
     transferToDate:          d(c[67]),
     transferUser:            t(c[68]),
     transferToUser:          t(c[69]),
+    salespersonCode:         t(c[74]),
   };
 }
 
@@ -372,6 +379,21 @@ function mapNom2(c: string[], agreementId: string) {
     cityState:   t(c[50]),
     postcode:    t(c[51]),
     email:       t(c[52]),
+  };
+}
+
+// nom3: c[70..73], 4 fields (name, salutation, designation, nameCard)
+function mapNom3(c: string[], agreementId: string) {
+  const name = t(c[70]);
+  if (!name) return null;
+  return {
+    id:          randomUUID(),
+    agreementId,
+    nomineeSeq:  3,
+    fullName:    name,
+    salutation:  t(c[71]),
+    designation: t(c[72]),
+    nameCard:    t(c[73]),
   };
 }
 
@@ -496,8 +518,10 @@ async function main() {
 
       const nom1 = mapNom1(cols, agmtId);
       const nom2 = mapNom2(cols, agmtId);
+      const nom3 = mapNom3(cols, agmtId);
       if (nom1) { nomBatch.push(nom1); nomTotal++; }
       if (nom2) { nomBatch.push(nom2); nomTotal++; }
+      if (nom3) { nomBatch.push(nom3); nomTotal++; }
 
       agmtTotal++;
 

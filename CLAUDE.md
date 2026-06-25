@@ -19,6 +19,7 @@ lmms/
 │   ├── migrate-amc-price.ts      # LHC AMC price master from amc_price.txt
 │   ├── migrate-amc-price-points.ts  # CP points tiers from ps_ctrltab.txt
 │   ├── migrate-rci-enrol.ts # RCI enrollment data from rci_enrol.txt (updates Agreement.rciRefNo/rciNominee/rciEnrolDate/rciExpiryDate)
+│   ├── migrate-salesperson.ts  # Salesperson master from csp_mast.txt
 │   └── migrations/          # Applied migration history
 ├── refresh-test-db.ps1      # Clears + re-imports all Informix data; use for UAT refreshes and live cutover
 ├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule, RciEnrol)
@@ -33,6 +34,7 @@ lmms/
 │   ├── amc_price.txt
 │   ├── ps_ctrltab.txt
 │   ├── rci_enrol.txt
+│   ├── csp_mast.txt
 │   ├── agmt_can_cate.txt
 │   └── state.txt
 ├── backend/                 # Node.js + Express + TypeScript API
@@ -210,6 +212,7 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table PbsScheme                   # PBS schemes (also truncates PbsClaim)
 .\migrate-table.ps1 -Table PbsClaim                    # Just PBS claims
 .\migrate-table.ps1 -Table RciEnrol                    # RCI enrollment (updates rciRefNo/rciNominee/dates on Agreement)
+.\migrate-table.ps1 -Table Salesperson                 # Salesperson master
 .\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
 
@@ -291,6 +294,7 @@ Sourced from Informix `si_entitlement`. Key fields:
 | `rciNominee` | Salutation + name from `rci_enrol.txt` (joined with si_entitlement) |
 | `rciEnrolDate` | RCI joint/activation date — populated from `rci_enrol.txt` `re_act_date` |
 | `rciExpiryDate` | RCI expiry date — populated from `rci_enrol.txt` `re_expiry_date` |
+| `salespersonCode` | Salesperson code from `e_cse_code` — looked up in `Salesperson.code` |
 | `canCode` | FK → `CancellationReason.code` (46 codes) |
 
 **Net Purchase Price formula:** `purchasePrice − subFees − sinkFund − govtTax`
@@ -337,6 +341,9 @@ Unique: `[coCode, minPoints, maxPoints, effectiveDate]`.
 Per-user report grants. Fields: `userId` (FK → User), `reportKey` (ReportKey enum), `grantedById` (FK → User), `grantedAt`, `updatedAt`.
 Unique on `[userId, reportKey]`. IT users bypass this table entirely — checked via `requireReportAccess` middleware.
 
+### Salesperson
+Reference table from `csp_mast.txt`. Fields: `code` (unique), `name`, `branch`, `status`.
+
 ### State
 39 records from `state.txt`. Fields: `code` (PK, 2-digit), `name`. Served via `GET /api/states`.
 
@@ -348,7 +355,7 @@ Source tables and their column counts (verified from actual export files):
 |---|---|---|---|
 | `si_ind_mast.txt` | Individual members | 67 | [61] compCityState, [62] compPostcode, [63] compStateCode, [64] telOffice2, [65] faxOffice |
 | `si_cor_mast.txt` | Corporate members | 29 | faxNo at [22] |
-| `si_entitlement.txt` | Agreements + nominees | 65 (fresh export) | nom1: c[25..38] (14 fields, incl icOld/icNew); nom2: c[39..53] (15 fields, base=39); rciRefNo=c[54]; canCode=c[61]; legacyCreatedAt=c[62]; legacyModifiedAt=c[63] |
+| `si_entitlement.txt` | Agreements + nominees | 76 (fresh export) | nom1: c[25..38] (14 fields, incl icOld/icNew); nom2: c[39..53] (15 fields, base=39); nom3: c[70..73] (4 fields: name/salut/desig/nameCard); e_cse_code=c[74] (salesperson); rciRefNo=c[54]; canCode=c[61]; legacyCreatedAt=c[62]; legacyModifiedAt=c[63] |
 | `maa_mem.txt` | PBS schemes | pipe-delimited | coCode[0], agmt_no[1], certNo[3], schemeType[4], paybackDate[5] (dd-mm-yyyy), topUp[6], pbsIndc[11], claimIndc[12], remark[13] |
 | `maa_claim.txt` | PBS claims | pipe-delimited | agmt_no[0], cert_no[1], ref_no[2], claimant[3], claimant_ic[4], acc_no[5], bank_code[6], relation_code[7], remark[8], loss_date[9], claim_amt[10], pay_mode[11], doc_no[12], doc_date[13], claim_type[14], claim_remark[15], trust_paid_date[16] |
 | `amc_mem.txt` | LHC AMC schedules | 11 cols pipe-delimited | mem_no[0], agmt_no[1], cocode[2], first_due[3], next_due[4], last_invdate[5], no_of_inv[6], ttl_inv[7], price_code[8] |
@@ -356,6 +363,7 @@ Source tables and their column counts (verified from actual export files):
 | `amc_price.txt` | LHC AMC price master | pipe-delimited | coCode[0], effectiveDate[1], priceCode[2], currencyCode[3], amcAmount[4], sinkFund[5], serviceTax[6], totalAmount[7], amountInWords[9], rate[10] |
 | `ps_ctrltab.txt` | CP points tiers | pipe-delimited | coCode[0], effectiveDate[1], minPoints[2], maxPoints[3], unitPrice[6], amcRatePerPoint[7], sinkingFundPct[8], gstPct[9], rciPoints[12] |
 | `rci_enrol.txt` | RCI enrollment | 30 cols pipe-delimited | re_cocode[0], re_membership_no[1], re_agreement_no[2], re_rci_no[3], re_act_date[4], re_expiry_date[5], e_rci_salutation[27], e_rci_name[28]. Joined with si_entitlement for salutation/name. Updates existing Agreement records (no separate table). |
+| `csp_mast.txt` | Salesperson master | 4 cols pipe-delimited | csp_code[0], csp_name[1], csp_branch[2], csp_status[3] |
 
 Informix date format is `dd-mm-yyyy` — the `d()` helper in migration scripts handles this.
 

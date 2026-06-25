@@ -141,6 +141,12 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
     }),
   ]);
 
+  let salespersonName: string | null = null;
+  if (agreement.salespersonCode) {
+    const sp = await prisma.salesperson.findUnique({ where: { code: agreement.salespersonCode }, select: { name: true } });
+    salespersonName = sp?.name ?? null;
+  }
+
   let transferToMemberName: string | null = null;
   let transferFromMemberName: string | null = null;
   let transferToMemberId: string | null = null;
@@ -156,7 +162,7 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
     transferFromMemberId = m?.id ?? null;
   }
 
-  res.json({ data: { ...agreement, amcSchedule: amcSchedule ?? null, pbsScheme: pbsScheme ?? null, transferToMemberName, transferFromMemberName, transferToMemberId, transferFromMemberId } });
+  res.json({ data: { ...agreement, amcSchedule: amcSchedule ?? null, pbsScheme: pbsScheme ?? null, salespersonName, transferToMemberName, transferFromMemberName, transferToMemberId, transferFromMemberId } });
 }
 
 export async function updateAgreement(req: Request, res: Response): Promise<void> {

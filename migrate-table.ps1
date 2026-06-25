@@ -12,6 +12,7 @@
       PbsClaim          - PBS Claims (migrate-maa-claim.ts)
       AmcSchedule       - AMC Schedules (migrate-amc-schedules.ts)
       RciEnrol          - RCI enrollment / nominee (migrate-rci-enrol.ts)
+      Salesperson       - Salesperson master (migrate-salesperson.ts)
 
 .PARAMETER DatabaseUrl
     PostgreSQL connection string. Defaults to $env:DATABASE_URL or .env file.
@@ -29,7 +30,7 @@
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -68,15 +69,16 @@ $env:DATABASE_URL = $DatabaseUrl
 $TableConfig = @{
     Member = @{
         TruncateSql = @(
-            'TRUNCATE "PbsClaim", "PbsScheme", "Member" CASCADE;'
+            'TRUNCATE "PbsClaim", "PbsScheme", "Salesperson", "Member" CASCADE;'
         )
-        RequiredFiles = @('si_ind_mast.txt', 'si_cor_mast.txt', 'si_entitlement.txt', 'amc_mem.txt', 'ps_amc_mem.txt', 'maa_mem.txt', 'maa_claim.txt', 'rci_enrol.txt')
+        RequiredFiles = @('si_ind_mast.txt', 'si_cor_mast.txt', 'si_entitlement.txt', 'amc_mem.txt', 'ps_amc_mem.txt', 'maa_mem.txt', 'maa_claim.txt', 'rci_enrol.txt', 'csp_mast.txt')
         Scripts = @(
             'prisma/migrate-informix.ts',
             'prisma/migrate-amc-schedules.ts',
             'prisma/migrate-maa-mem.ts',
             'prisma/migrate-maa-claim.ts',
-            'prisma/migrate-rci-enrol.ts'
+            'prisma/migrate-rci-enrol.ts',
+            'prisma/migrate-salesperson.ts'
         )
     }
     IndividualMember = @{
@@ -128,6 +130,11 @@ $TableConfig = @{
         TruncateSql = @()
         RequiredFiles = @('rci_enrol.txt')
         Scripts = @('prisma/migrate-rci-enrol.ts')
+    }
+    Salesperson = @{
+        TruncateSql = @('TRUNCATE "Salesperson";')
+        RequiredFiles = @('csp_mast.txt')
+        Scripts = @('prisma/migrate-salesperson.ts')
     }
 }
 

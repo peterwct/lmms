@@ -61,8 +61,13 @@
            e_nom2_email,
            e_rci_refno, e_rci_enrol_date, e_rci_expiry_date, e_rci_fee_paid,
            e_outstd_doc, e_doc_desc, e_locality, e_can_code, e_sysdate, e_mod_date,
-           e_term_user, e_aterm_date, e_tfdate, e_ttdate, e_tfuser, e_ttuser
+           e_term_user, e_aterm_date, e_tfdate, e_ttdate, e_tfuser, e_ttuser,
+           e_loc_name, e_loc_salutation, e_loc_designation, e_loc_name_card, e_cse_code
     FROM si_entitlement WHERE e_cocode IN ('03', '15', '02');
+
+    UNLOAD TO 'csp_mast.txt' DELIMITER '|'
+    SELECT csp_code, csp_name, csp_branch, csp_status
+    FROM csp_mast;
 
     UNLOAD TO 'amc_mem.txt' DELIMITER '|'
     SELECT mem_no, agmt_no, cocode, first_due, next_due, last_invdate,
@@ -146,7 +151,8 @@ $requiredFiles = @(
     'ps_amc_mem.txt',
     'maa_mem.txt',
     'maa_claim.txt',
-    'rci_enrol.txt'
+    'rci_enrol.txt',
+    'csp_mast.txt'
 )
 
 $missing = $requiredFiles | Where-Object { -not (Test-Path (Join-Path $migrateDir $_)) }
@@ -173,6 +179,7 @@ Write-Host "  Will CLEAR and RELOAD:"
 Write-Host "    Member, Agreement, Nominee"
 Write-Host "    AmcSchedule, AmcInvoice"
 Write-Host "    PbsScheme, PbsClaim (Zurich Payback)"
+Write-Host "    Salesperson"
 Write-Host ""
 Write-Host "  Will PRESERVE:"
 Write-Host "    User, Department, DeptModulePermission"
@@ -229,30 +236,35 @@ function Invoke-Migration {
 
 # ── Step 1: Truncate Informix data tables ─────────────────────────────────────
 Write-Host ""
-Write-Host ("[1/5] Clearing Informix data tables...") -ForegroundColor Yellow
+Write-Host ("[1/6] Clearing Informix data tables...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
-TRUNCATE "PbsClaim", "PbsScheme", "Member" CASCADE;
+TRUNCATE "PbsClaim", "PbsScheme", "Salesperson", "Member" CASCADE;
 "@
 
 # ── Step 2: Core member + agreement import ────────────────────────────────────
 Write-Host ""
-Write-Host ("[2/5] Importing members, agreements, nominees...") -ForegroundColor Yellow
+Write-Host ("[2/6] Importing members, agreements, nominees...") -ForegroundColor Yellow
 Invoke-Migration "prisma/migrate-informix.ts" "migrate-informix.ts"
 
 # ── Step 3: AMC schedules + Zurich PBS ───────────────────────────────────────
 Write-Host ""
-Write-Host ("[3/5] Importing AMC schedules and Zurich PBS...") -ForegroundColor Yellow
+Write-Host ("[3/6] Importing AMC schedules and Zurich PBS...") -ForegroundColor Yellow
 Invoke-Migration "prisma/migrate-amc-schedules.ts" "migrate-amc-schedules.ts"
 Invoke-Migration "prisma/migrate-maa-mem.ts"       "migrate-maa-mem.ts"
 Invoke-Migration "prisma/migrate-maa-claim.ts"     "migrate-maa-claim.ts"
 Invoke-Migration "prisma/migrate-rci-enrol.ts"     "migrate-rci-enrol.ts"
 
+# ── Step 4: Salesperson ──────────────────────────────────────────────────────
+Write-Host ""
+Write-Host ("[4/6] Importing salespersons...") -ForegroundColor Yellow
+Invoke-Migration "prisma/migrate-salesperson.ts"   "migrate-salesperson.ts"
+
 # ── Step 5: Re-grant schema permissions to lhb_app ───────────────────────────
 # Required whenever tables are dropped/recreated (e.g. prisma migrate reset).
 # Safe to run after every refresh — GRANT is idempotent.
 Write-Host ""
-Write-Host ("[4/5] Re-granting schema permissions to lhb_app...") -ForegroundColor Yellow
+Write-Host ("[5/6] Re-granting schema permissions to lhb_app...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "GRANT lhb_app on public schema" -Sql @"
 GRANT USAGE ON SCHEMA public TO lhb_app;
@@ -262,7 +274,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lhb_app;
 
 # ── Step 6: Final counts ──────────────────────────────────────────────────────
 Write-Host ""
-Write-Host ("[5/5] Final record counts...") -ForegroundColor Yellow
+Write-Host ("[6/6] Final record counts...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "Row counts" -Sql @"
 SELECT
@@ -273,6 +285,7 @@ SELECT
   (SELECT COUNT(*) FROM "PbsScheme")          AS pbs_schemes,
   (SELECT COUNT(*) FROM "PbsClaim")           AS pbs_claims,
   (SELECT COUNT(*) FROM "AmcInvoice")         AS amc_invoices,
+  (SELECT COUNT(*) FROM "Salesperson")        AS salespersons,
   (SELECT COUNT(*) FROM "State")              AS states,
   (SELECT COUNT(*) FROM "CancellationReason") AS can_reasons,
   (SELECT COUNT(*) FROM "User")               AS users;

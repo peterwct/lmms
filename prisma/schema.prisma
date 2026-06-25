@@ -55,6 +55,7 @@ model Agreement {
   statusChangeDate       DateTime?
   statusChangeUser       String?
   sinkFund               Decimal?            @db.Decimal(12, 2)
+  salespersonCode        String?
   cancellationReason     CancellationReason? @relation(fields: [canCode], references: [code])
   member                 Member              @relation(fields: [memberId], references: [id])
   amcInvoices            AmcInvoice[]
@@ -341,6 +342,16 @@ model PbsClaim {
   pbsScheme     PbsScheme @relation(fields: [pbsSchemeId], references: [id])
 }
 
+model Salesperson {
+  id        String   @id
+  code      String   @unique
+  name      String
+  branch    String?
+  status    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+}
+
 model State {
   code String @id
   name String
@@ -403,6 +414,7 @@ enum AuditActionType {
   UPDATE
   DELETE
   LOGIN
+  LOGOUT
   SUSPEND
 }
 

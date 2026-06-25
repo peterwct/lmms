@@ -144,7 +144,7 @@ export function AgreementDetail() {
                 ['Loan Type', agmt.loanType ? `${agmt.loanType} — ${LOAN_TYPE_LABEL[agmt.loanType] ?? agmt.loanType}` : '—'],
                 ['Loan Amount', fmtRM(agmt.loanAmount)],
                 ['Sales branch', agmt.salesBranch || '—'],
-                ['Salesperson', '—'],
+                ['Salesperson', agmt.salespersonName || '—'],
               ] as [string, string | number | undefined][]).map(([k, v]) => (
                 <div key={k}><dt className="text-xs text-gray-500 uppercase tracking-wide">{k}</dt><dd className="mt-0.5 font-medium">{String(v ?? '—')}</dd></div>
               ));

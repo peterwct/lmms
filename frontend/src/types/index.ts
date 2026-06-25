@@ -234,6 +234,8 @@ export interface Agreement {
   loanAmount?: string;
   loanType?: string;
   salesBranch?: string;
+  salespersonCode?: string;
+  salespersonName?: string;
   certificateNo?: string;
   rciRefNo?: string;
   rciNominee?: string;
