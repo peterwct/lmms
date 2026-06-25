@@ -18,10 +18,10 @@ lmms/
 │   ├── migrate-amc-schedules.ts  # AMC schedules from amc_mem.txt + ps_amc_mem.txt
 │   ├── migrate-amc-price.ts      # LHC AMC price master from amc_price.txt
 │   ├── migrate-amc-price-points.ts  # CP points tiers from ps_ctrltab.txt
-│   ├── patch-*.ts           # Incremental data patch scripts (run once each)
+│   ├── migrate-rci-enrol.ts # RCI enrollment data from rci_enrol.txt (updates Agreement.rciRefNo/rciNominee/rciEnrolDate/rciExpiryDate)
 │   └── migrations/          # Applied migration history
 ├── refresh-test-db.ps1      # Clears + re-imports all Informix data; use for UAT refreshes and live cutover
-├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule)
+├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule, RciEnrol)
 ├── migrate/                 # Informix UNLOAD export files (not committed)
 │   ├── si_ind_mast.txt
 │   ├── si_cor_mast.txt
@@ -32,6 +32,7 @@ lmms/
 │   ├── ps_amc_mem.txt
 │   ├── amc_price.txt
 │   ├── ps_ctrltab.txt
+│   ├── rci_enrol.txt
 │   ├── agmt_can_cate.txt
 │   └── state.txt
 ├── backend/                 # Node.js + Express + TypeScript API
@@ -194,7 +195,7 @@ $env:DATABASE_URL = "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 .\refresh-test-db.ps1 -DryRun
 ```
 
-The script: truncates PbsClaim + PbsScheme + Member CASCADE → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims → re-grants lhb_app permissions → prints final row counts.
+The script: truncates PbsClaim + PbsScheme + Member CASCADE → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → re-grants lhb_app permissions → prints final row counts.
 
 ### Migrating a single table
 
@@ -208,10 +209,11 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table AmcSchedule                 # AMC schedules
 .\migrate-table.ps1 -Table PbsScheme                   # PBS schemes (also truncates PbsClaim)
 .\migrate-table.ps1 -Table PbsClaim                    # Just PBS claims
+.\migrate-table.ps1 -Table RciEnrol                    # RCI enrollment (updates rciRefNo/rciNominee/dates on Agreement)
 .\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
 
-**Note:** After `-Table Agreement`, you must re-import dependent tables: `AmcSchedule`, `PbsScheme`, `PbsClaim`.
+**Note:** After `-Table Agreement`, you must re-import dependent tables: `AmcSchedule`, `PbsScheme`, `PbsClaim`, `RciEnrol`.
 
 ## Authentication
 
@@ -285,6 +287,10 @@ Sourced from Informix `si_entitlement`. Key fields:
 | `purchasePrice` | Gross selling price from Informix |
 | `subFees`, `sinkFund`, `govtTax` | Deducted from `purchasePrice` to get net purchase price |
 | `loanType` | `I`=In-House, `L`=Loan, `C`=Contra, `F`=Full Settlement |
+| `rciRefNo` | RCI ID — populated from `rci_enrol.txt` (not si_entitlement) |
+| `rciNominee` | Salutation + name from `rci_enrol.txt` (joined with si_entitlement) |
+| `rciEnrolDate` | RCI joint/activation date — populated from `rci_enrol.txt` `re_act_date` |
+| `rciExpiryDate` | RCI expiry date — populated from `rci_enrol.txt` `re_expiry_date` |
 | `canCode` | FK → `CancellationReason.code` (46 codes) |
 
 **Net Purchase Price formula:** `purchasePrice − subFees − sinkFund − govtTax`
@@ -349,6 +355,7 @@ Source tables and their column counts (verified from actual export files):
 | `ps_amc_mem.txt` | CP AMC schedules | 10 cols pipe-delimited | same pattern, no price_code |
 | `amc_price.txt` | LHC AMC price master | pipe-delimited | coCode[0], effectiveDate[1], priceCode[2], currencyCode[3], amcAmount[4], sinkFund[5], serviceTax[6], totalAmount[7], amountInWords[9], rate[10] |
 | `ps_ctrltab.txt` | CP points tiers | pipe-delimited | coCode[0], effectiveDate[1], minPoints[2], maxPoints[3], unitPrice[6], amcRatePerPoint[7], sinkingFundPct[8], gstPct[9], rciPoints[12] |
+| `rci_enrol.txt` | RCI enrollment | 30 cols pipe-delimited | re_cocode[0], re_membership_no[1], re_agreement_no[2], re_rci_no[3], re_act_date[4], re_expiry_date[5], e_rci_salutation[27], e_rci_name[28]. Joined with si_entitlement for salutation/name. Updates existing Agreement records (no separate table). |
 
 Informix date format is `dd-mm-yyyy` — the `d()` helper in migration scripts handles this.
 
@@ -473,9 +480,10 @@ Reports use a separate per-user access model — independent of department permi
 ## Agreement Detail card order
 1. Agreement Details (net purchase price, loan type/amount, termination reason)
 2. Nominees (salutation, full name, name card, designation — 4-column grid per nominee; edit modal has same 4 fields with auto-uppercase)
-3. Annual Maintenance Charges (AMC Billed, Total AMC, AMC Next Due)
-4. Zurich Payback Scheme (if exists — cert no, scheme type, payback date, claimed badge)
-5. Invoice History
+3. RCI Information (if any RCI field exists — RCI ID, RCI Nominee, Joint Date, Expiry Date; data from `rci_enrol.txt` not si_entitlement)
+4. Annual Maintenance Charges (AMC Billed, Total AMC, AMC Next Due)
+5. Zurich Payback Scheme (if exists — cert no, scheme type, payback date, claimed badge)
+6. Invoice History
 
 > AMC and PBS are fetched by `coCode + agreementNo` in `getAgreement()` — NOT via the Prisma FK (`agreementId`). This is intentional: the Informix source data can have multiple agreements sharing the same `agreementNo + coCode` (different members), so matching by natural key ensures both agreements resolve to the same PBS/AMC record rather than relying on whichever UUID the migration happened to link.
 
