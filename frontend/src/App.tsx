@@ -27,6 +27,7 @@ import { PbsEnquiry } from './pages/pbs/PbsEnquiry';
 import { PbsEnquiryDetail } from './pages/pbs/PbsEnquiryDetail';
 import { PbsPayByMonthReport } from './pages/pbs/PbsPayByMonthReport';
 import { PbsPlaceholder } from './pages/pbs/PbsPlaceholder';
+import { PbsClaimReport } from './pages/pbs/PbsClaimReport';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -70,7 +71,7 @@ export default function App() {
               <Route path="pbs/transfer"         element={<PbsPlaceholder />} />
               <Route path="pbs/report"           element={<PbsPlaceholder />} />
               <Route path="pbs/variance"         element={<PbsPlaceholder />} />
-              <Route path="pbs/claim-report"     element={<PbsPlaceholder />} />
+              <Route path="pbs/claim-report"     element={<PbsClaimReport />} />
               <Route path="pbs/not-in-pbs"       element={<PbsPlaceholder />} />
               <Route path="pbs/pay-by-month"     element={<PbsPayByMonthReport />} />
               <Route path="amc/schedules"       element={<Schedules />} />

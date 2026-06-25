@@ -25,4 +25,10 @@ export const pbsApi = {
 
   downloadPayByMonth: () =>
     api.get('/pbs/reports/pay-by-month', { responseType: 'blob' }),
+
+  previewClaimReport: () =>
+    api.get('/pbs/reports/claim/preview'),
+
+  downloadClaimReport: () =>
+    api.get('/pbs/reports/claim', { responseType: 'blob' }),
 };

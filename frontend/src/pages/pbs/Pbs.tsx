@@ -4,6 +4,8 @@ import {
   FileBarChart2, GitCompare, ClipboardCheck, UserX, CalendarDays,
   ChevronRight,
 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import type { ReportKey } from '../../types';
 
 interface PbsMenuItem {
   num: number;
@@ -20,13 +22,15 @@ const MAINTENANCE: PbsMenuItem[] = [
   { num: 4,  label: 'Auto Transfer to Claim',          to: '/pbs/transfer',     icon: <ArrowRightLeft className="h-4 w-4" /> },
 ];
 
-const REPORTS: PbsMenuItem[] = [
-  { num: 11, label: 'PBS Report',                to: '/pbs/report',       icon: <FileBarChart2 className="h-4 w-4" /> },
-  { num: 12, label: 'Variance Report',           to: '/pbs/variance',     icon: <GitCompare className="h-4 w-4" /> },
-  { num: 13, label: 'Claim Report',              to: '/pbs/claim-report', icon: <ClipboardCheck className="h-4 w-4" /> },
-  { num: 14, label: 'Not in PBS Report',          to: '/pbs/not-in-pbs',   icon: <UserX className="h-4 w-4" /> },
-  { num: 15, label: 'PBS Pay By Month/Year',      to: '/pbs/pay-by-month', icon: <CalendarDays className="h-4 w-4" />, enabled: true },
-];
+function buildReports(hasReport: (key: ReportKey) => boolean): PbsMenuItem[] {
+  return [
+    { num: 11, label: 'PBS Report',                to: '/pbs/report',       icon: <FileBarChart2 className="h-4 w-4" /> },
+    { num: 12, label: 'Variance Report',           to: '/pbs/variance',     icon: <GitCompare className="h-4 w-4" /> },
+    ...(hasReport('PBS_CLAIM_REPORT') ? [{ num: 13, label: 'Claim Report', to: '/pbs/claim-report', icon: <ClipboardCheck className="h-4 w-4" />, enabled: true }] : []),
+    { num: 14, label: 'Not in PBS Report',          to: '/pbs/not-in-pbs',   icon: <UserX className="h-4 w-4" /> },
+    ...(hasReport('PBS_PAY_BY_MONTH_REPORT') ? [{ num: 15, label: 'PBS Pay By Month/Year', to: '/pbs/pay-by-month', icon: <CalendarDays className="h-4 w-4" />, enabled: true }] : []),
+  ];
+}
 
 function MenuSection({ title, items }: { title: string; items: PbsMenuItem[] }) {
   return (
@@ -68,6 +72,9 @@ function MenuSection({ title, items }: { title: string; items: PbsMenuItem[] }) 
 }
 
 export function Pbs() {
+  const { hasReport } = useAuth();
+  const reports = buildReports(hasReport);
+
   return (
     <div className="max-w-4xl space-y-6">
       <div>
@@ -77,7 +84,7 @@ export function Pbs() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
         <MenuSection title="Maintenance" items={MAINTENANCE} />
-        <MenuSection title="Reports" items={REPORTS} />
+        <MenuSection title="Reports" items={reports} />
       </div>
     </div>
   );
