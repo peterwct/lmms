@@ -441,6 +441,10 @@ PUT  /api/pbs/:id                                  Update PBS scheme (certNo, sc
 POST /api/pbs/:id/claims                           Create claim (auto-sets claimIndc for AD/TPD/PBS)
 PUT  /api/pbs/:id/claims/:claimId                  Update claim
 DELETE /api/pbs/:id/claims/:claimId                Delete claim (resets claimIndc for AD/TPD/PBS)
+GET  /api/pbs/reports/pay-by-month/preview         PBS Pay By Month/Year preview (requireReportAccess)
+GET  /api/pbs/reports/pay-by-month                 Generate PBS Pay By Month/Year Excel (requireReportAccess)
+GET  /api/pbs/reports/claim/preview                PBS Claim Report preview (requireReportAccess)
+GET  /api/pbs/reports/claim                        Generate PBS Claim Report Excel (requireReportAccess)
 ```
 
 ## Modules
@@ -457,7 +461,7 @@ DELETE /api/pbs/:id/claims/:claimId                Delete claim (resets claimInd
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
-| Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done: search/list with filters (product, status, scheme type, claim), detail page with PBS scheme edit + claims CRUD. PBS Pay By Month/Year (`/pbs/pay-by-month`) done: text report with raw SQL aggregation, client-side download. Remaining: Proforma, Certificate Tracking, Auto Transfer, 4 reports. |
+| Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done. PBS Pay By Month/Year (`/pbs/pay-by-month`) done: Excel with 2 worksheets (monthly + yearly summary), tabbed preview. PBS Claim Report (`/pbs/claim-report`) done: Excel with 2 worksheets (non-ND claims + ND claims), tabbed preview. Both PBS reports use per-user `requireReportAccess` (not department permission); menu items hidden when not granted. Remaining: Proforma, Certificate Tracking, Auto Transfer, 3 reports (PBS Report, Variance, Not in PBS). |
 
 ## Navigation / permissions
 
@@ -471,7 +475,7 @@ DELETE /api/pbs/:id/claims/:claimId                Delete claim (resets claimInd
 Reports use a separate per-user access model — independent of department permissions.
 
 - **`UserReportAccess`** table: `userId`, `reportKey` (enum), `grantedById`, `grantedAt`. Unique on `[userId, reportKey]`.
-- **`ReportKey` enum**: `MEMBER_REPORT`, `AGREEMENT_REPORT`, `EXPIRY_REPORT`, `EXPIRING_MEMBER_REPORT`, `REMAINING_VALUE_REPORT`, `EXPIRY_SUMMARY_REPORT` — add new values here when adding reports.
+- **`ReportKey` enum**: `MEMBER_REPORT`, `AGREEMENT_REPORT`, `EXPIRY_REPORT`, `EXPIRING_MEMBER_REPORT`, `REMAINING_VALUE_REPORT`, `EXPIRY_SUMMARY_REPORT`, `PBS_PAY_BY_MONTH_REPORT`, `PBS_CLAIM_REPORT` — add new values here when adding reports.
 - IT department bypasses all report access checks (same as module permissions).
 - IT grants/revokes access via the "Report Access" card on the User Detail page (`/admin/users/:id`).
 - Sidebar shows a single **Reports** link only when `hasReport()` returns true for at least one key. Clicking it goes to `/reports`, which renders a card grid of accessible reports.
@@ -481,9 +485,10 @@ Reports use a separate per-user access model — independent of department permi
 **Adding a new report — checklist:**
 1. Add the new key to `ReportKey` enum in `prisma/schema.prisma` → `npx prisma migrate dev`
 2. Add to `ALL_REPORT_KEYS` + `REPORT_LABELS` in `backend/src/controllers/reports/access.controller.ts`
-3. Add route in `backend/src/routes/reports.ts` with `requireReportAccess('NEW_KEY')`
-4. Add an entry to `REPORT_LIST` in `frontend/src/pages/reports/Reports.tsx`
-5. Add `hasReport('NEW_KEY')` to the OR condition in the `reportItems` block in `frontend/src/components/Sidebar.tsx`
+3. Add route with `requireReportAccess('NEW_KEY')` — in `backend/src/routes/reports.ts` for general reports, or in the module's own route file for module-specific reports (e.g. PBS reports in `backend/src/routes/pbs.ts`)
+4. For general reports: add entry to `REPORT_LIST` in `frontend/src/pages/reports/Reports.tsx` + add `hasReport('NEW_KEY')` to sidebar's `reportItems` condition
+5. For PBS reports: gate the menu item in `frontend/src/pages/pbs/Pbs.tsx` with `hasReport('NEW_KEY')` (hidden when not granted)
+6. Add the new key to the `ReportKey` type union in `frontend/src/types/index.ts`
 
 ## Agreement Detail card order
 1. Agreement Details (net purchase price, loan type/amount, termination reason)
@@ -500,3 +505,21 @@ Reports use a separate per-user access model — independent of department permi
 - **Change Status** is only on AgreementDetail, not MemberDetail.
 - **Agreements accordion**: agreement number is the hyperlink (no separate View button, no date shown). Agreements with `transferFlag='TT'` show the number as strikethrough grey — link disabled.
 - All text dropdowns (salutation, gender, race, marital status, nature of work) use uppercase option labels in MemberForm. Email fields do not auto-uppercase. Remarks field does not auto-uppercase.
+
+## Report preview page theme
+
+All PBS report preview tables (and future report previews) must use this consistent theme:
+
+| Element | Tailwind classes |
+|---|---|
+| Table | `min-w-full text-xs` |
+| Header row (single) | `bg-blue-600 text-white` |
+| Header row (multi — section) | `bg-blue-600 text-white` |
+| Header row (multi — columns) | `bg-slate-800 text-white` |
+| Header cells | `px-1.5 py-1.5 font-medium whitespace-nowrap` |
+| Data cells | `px-1.5 py-1` |
+| Alternating rows | `bg-white` / `bg-blue-50/40` |
+| Amount cells | `text-right font-mono` with `fmtRM()` |
+| Totals footer | `<tfoot>` with `bg-gray-100 font-bold border-t-2 border-gray-300` |
+
+Reference implementations: `PbsPayByMonthReport.tsx`, `PbsClaimReport.tsx`.
