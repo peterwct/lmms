@@ -243,6 +243,21 @@ export function AgreementDetail() {
         </CardBody>
       </Card>
 
+      {/* ── RCI Info ───────────────────────────────────────────── */}
+      {(agmt.rciRefNo || agmt.rciNominee || agmt.rciEnrolDate || agmt.rciExpiryDate) && (
+        <Card>
+          <CardHeader><p className="font-semibold text-gray-700">RCI Information</p></CardHeader>
+          <CardBody>
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
+              <div><dt className="text-xs text-gray-500 uppercase tracking-wide">RCI ID</dt><dd className="mt-0.5 font-medium">{agmt.rciRefNo || '—'}</dd></div>
+              <div><dt className="text-xs text-gray-500 uppercase tracking-wide">RCI Nominee</dt><dd className="mt-0.5 font-medium">{agmt.rciNominee || '—'}</dd></div>
+              <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Joint Date</dt><dd className="mt-0.5 font-medium">{agmt.rciEnrolDate ? format(new Date(agmt.rciEnrolDate), 'dd/MM/yyyy') : '—'}</dd></div>
+              <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Expiry Date</dt><dd className="mt-0.5 font-medium">{agmt.rciExpiryDate ? format(new Date(agmt.rciExpiryDate), 'dd/MM/yyyy') : '—'}</dd></div>
+            </dl>
+          </CardBody>
+        </Card>
+      )}
+
       {/* ── AMC Summary ─────────────────────────────────────────── */}
       {agmt.amcSchedule && (
         <Card>

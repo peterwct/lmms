@@ -80,6 +80,19 @@
     UNLOAD TO 'maa_claim.txt' DELIMITER '|'
     SELECT * FROM maa_claim;
 
+    UNLOAD TO 'rci_enrol.txt' DELIMITER '|'
+    SELECT re_cocode, re_membership_no, re_agreement_no, re_rci_no, re_act_date, re_expiry_date,
+           re_rci_fees, re_resort_code, re_first_name1, re_last_name1,
+           re_name1, re_name1_no, re_agmt_no, re_first_name2, re_last_name2, re_name2,
+           re_name2_no, re_mail_add1, re_mail_add2, re_mail_add3, re_mail_city_state,
+           re_mail_postcode, re_malaysia, re_telno1, re_telno2, re_co_owner, re_old_rci_no,
+           si_entitlement.e_rci_salutation, si_entitlement.e_rci_name
+    FROM rci_enrol, si_entitlement
+    WHERE re_cocode IN ('03', '15', '02')
+    AND re_cocode = e_cocode
+    AND re_membership_no = e_membership_no
+    AND re_agreement_no = e_agreement_no;
+
     Copy all output files into:  E:\Websites\lmms\migrate\
 #>
 
@@ -132,7 +145,8 @@ $requiredFiles = @(
     'amc_mem.txt',
     'ps_amc_mem.txt',
     'maa_mem.txt',
-    'maa_claim.txt'
+    'maa_claim.txt',
+    'rci_enrol.txt'
 )
 
 $missing = $requiredFiles | Where-Object { -not (Test-Path (Join-Path $migrateDir $_)) }
@@ -232,6 +246,7 @@ Write-Host ("[3/5] Importing AMC schedules and Zurich PBS...") -ForegroundColor 
 Invoke-Migration "prisma/migrate-amc-schedules.ts" "migrate-amc-schedules.ts"
 Invoke-Migration "prisma/migrate-maa-mem.ts"       "migrate-maa-mem.ts"
 Invoke-Migration "prisma/migrate-maa-claim.ts"     "migrate-maa-claim.ts"
+Invoke-Migration "prisma/migrate-rci-enrol.ts"     "migrate-rci-enrol.ts"
 
 # ── Step 5: Re-grant schema permissions to lhb_app ───────────────────────────
 # Required whenever tables are dropped/recreated (e.g. prisma migrate reset).

@@ -236,6 +236,7 @@ export interface Agreement {
   salesBranch?: string;
   certificateNo?: string;
   rciRefNo?: string;
+  rciNominee?: string;
   rciEnrolDate?: string;
   rciExpiryDate?: string;
   outstdDoc: boolean;

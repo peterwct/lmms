@@ -11,6 +11,7 @@
       PbsScheme         - Zurich Payback Scheme (migrate-maa-mem.ts)
       PbsClaim          - PBS Claims (migrate-maa-claim.ts)
       AmcSchedule       - AMC Schedules (migrate-amc-schedules.ts)
+      RciEnrol          - RCI enrollment / nominee (migrate-rci-enrol.ts)
 
 .PARAMETER DatabaseUrl
     PostgreSQL connection string. Defaults to $env:DATABASE_URL or .env file.
@@ -28,7 +29,7 @@
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -69,12 +70,13 @@ $TableConfig = @{
         TruncateSql = @(
             'TRUNCATE "PbsClaim", "PbsScheme", "Member" CASCADE;'
         )
-        RequiredFiles = @('si_ind_mast.txt', 'si_cor_mast.txt', 'si_entitlement.txt', 'amc_mem.txt', 'ps_amc_mem.txt', 'maa_mem.txt', 'maa_claim.txt')
+        RequiredFiles = @('si_ind_mast.txt', 'si_cor_mast.txt', 'si_entitlement.txt', 'amc_mem.txt', 'ps_amc_mem.txt', 'maa_mem.txt', 'maa_claim.txt', 'rci_enrol.txt')
         Scripts = @(
             'prisma/migrate-informix.ts',
             'prisma/migrate-amc-schedules.ts',
             'prisma/migrate-maa-mem.ts',
-            'prisma/migrate-maa-claim.ts'
+            'prisma/migrate-maa-claim.ts',
+            'prisma/migrate-rci-enrol.ts'
         )
     }
     IndividualMember = @{
@@ -99,9 +101,10 @@ $TableConfig = @{
         TruncateSql = @(
             'TRUNCATE "PbsClaim", "PbsScheme", "AmcSchedule", "Nominee", "AmcInvoice", "Agreement" CASCADE;'
         )
-        RequiredFiles = @('si_entitlement.txt')
+        RequiredFiles = @('si_entitlement.txt', 'rci_enrol.txt')
         Scripts = @(
-            'prisma/migrate-informix.ts --only agreements'
+            'prisma/migrate-informix.ts --only agreements',
+            'prisma/migrate-rci-enrol.ts'
         )
     }
     PbsScheme = @{
@@ -120,6 +123,11 @@ $TableConfig = @{
         TruncateSql = @('TRUNCATE "AmcSchedule" CASCADE;')
         RequiredFiles = @('amc_mem.txt', 'ps_amc_mem.txt')
         Scripts = @('prisma/migrate-amc-schedules.ts')
+    }
+    RciEnrol = @{
+        TruncateSql = @()
+        RequiredFiles = @('rci_enrol.txt')
+        Scripts = @('prisma/migrate-rci-enrol.ts')
     }
 }
 
