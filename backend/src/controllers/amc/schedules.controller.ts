@@ -9,26 +9,35 @@ function parsePagination(query: Record<string, unknown>) {
 
 export async function listSchedules(req: Request, res: Response): Promise<void> {
   const { skip, take, page, limit } = parsePagination(req.query as Record<string, unknown>);
-  const { coCode, billingStatus, dueBefore, dueAfter, q, acctClassify } = req.query as Record<string, string>;
+  const { coCode, billingStatus, dueBefore, dueAfter, dueDate, q, acctClassify } = req.query as Record<string, string>;
 
   // Resolve acctClassify filter via natural key — the FK can point to the wrong
-  // agreement for transferred cases, so we find matching membershipNos first.
-  let acctFilterMembershipNos: string[] | null = null;
+  // agreement for transferred cases, so we match by membershipNo+agreementNo pairs.
+  let acctFilterPairs: { membershipNo: string; agreementNo: string }[] | null = null;
   if (acctClassify) {
     const agmtHits = await prisma.agreement.findMany({
       where: { acctClassify: acctClassify as any, ...(coCode ? { coCode } : {}) },
-      select: { membershipNo: true },
+      select: { membershipNo: true, agreementNo: true },
     });
-    acctFilterMembershipNos = agmtHits.map(a => a.membershipNo);
+    acctFilterPairs = agmtHits.map(a => ({ membershipNo: a.membershipNo, agreementNo: a.agreementNo }));
   }
 
   const and: object[] = [];
   if (coCode)        and.push({ coCode });
   if (billingStatus) and.push({ billingStatus });
-  if (acctFilterMembershipNos !== null) {
-    and.push({ membershipNo: { in: acctFilterMembershipNos } });
+  if (acctFilterPairs !== null) {
+    if (acctFilterPairs.length === 0) {
+      and.push({ id: '__no_match__' });
+    } else {
+      and.push({ OR: acctFilterPairs.map(p => ({ membershipNo: p.membershipNo, agreementNo: p.agreementNo })) });
+    }
   }
-  if (dueBefore || dueAfter) {
+  if (dueDate) {
+    const d = new Date(dueDate);
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
+    and.push({ nextDueDate: { gte: d, lt: next } });
+  } else if (dueBefore || dueAfter) {
     and.push({ nextDueDate: {
       ...(dueAfter  ? { gte: new Date(dueAfter)  } : {}),
       ...(dueBefore ? { lte: new Date(dueBefore) } : {}),
@@ -56,7 +65,7 @@ export async function listSchedules(req: Request, res: Response): Promise<void> 
     prisma.amcSchedule.count({ where }),
     prisma.amcSchedule.findMany({
       where,
-      orderBy: { nextDueDate: 'asc' },
+      orderBy: [{ agreement: { acctClassify: 'asc' } }, { nextDueDate: 'asc' }],
       skip, take,
     }),
   ]);

@@ -455,8 +455,8 @@ GET  /api/pbs/reports/claim                        Generate PBS Claim Report Exc
 | Admin — Departments | ✅ Done | Departments, permissions matrix |
 | Admin — Audit Log | ✅ Done | AuditLog (IT only) |
 | Members | ✅ Done | Member Enquiry (search+sort, URL state), MemberDetail, MemberForm. Agreement links with `transferFlag='TT'` are disabled (strikethrough) on both the list and MemberDetail accordion. Change Status removed from MemberDetail — agreements only. Enquiry uses `GET /api/members/enquiry` (MEMBERS permission) not `/api/agreements`. Agreement number links check `canView('AGREEMENTS')` — plain text when disabled. |
-| Agreements | ✅ Done | Agreements list (search+sort, URL state, defaults LHC-03/Active), AgreementDetail. Columns: Agreement No, Membership No/Name, Agreement Date, Expiry Date, Term, AMC (Product + Status columns removed). AMC and PBS cards fetched by `coCode + agreementNo` (not FK) to handle duplicate agreementNo across members. |
-| AMC Billing — Schedules | ✅ Done | Schedules (search+sort, URL state, defaults LHC-03/Active) |
+| Agreements | ✅ Done | Agreements list (search+sort, URL state, defaults LHC-03/Active, default sort agreementDate asc), AgreementDetail. Columns: Agreement No, Membership No/Name, Agreement Date, Expiry Date, Term, AMC, Status. AMC and PBS cards fetched by `coCode + agreementNo` (not FK) to handle duplicate agreementNo across members. |
+| AMC Billing — Schedules | ✅ Done | Schedules (search+sort, URL state, defaults LHC-03/Active). Filters: product, acctClassify (by membershipNo+agreementNo pairs), AMC Next Due Date (exact date, current/future only). Default sort: acctClassify asc (NA first), then nextDueDate asc. |
 | AMC Billing — Invoices | ✅ Done | Invoices, InvoiceDetail |
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |

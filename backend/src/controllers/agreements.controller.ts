@@ -87,7 +87,7 @@ export async function listAgreements(req: Request, res: Response): Promise<void>
     ? sortBy === 'acctClassify'
       ? [{ acctClassify: dir }, { member: { fullName: 'asc' } }]
       : JSON.parse(JSON.stringify(base).replace(/"asc"/, `"${dir}"`))
-    : { agreementDate: 'desc' };
+    : { agreementDate: 'asc' };
 
   const [total, agreements] = await Promise.all([
     prisma.agreement.count({ where }),

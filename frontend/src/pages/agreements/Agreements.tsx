@@ -7,6 +7,7 @@ import { Card } from '../../components/ui/Card';
 import { Pagination } from '../../components/ui/Pagination';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { RecordCount } from '../../components/ui/RecordCount';
+import { AgreementStatusBadge } from '../../components/AgreementStatusBadge';
 import { format } from 'date-fns';
 
 type SortField = 'fullName' | 'agreementDate';
@@ -159,6 +160,7 @@ export function Agreements() {
                   <th className="px-4 py-3 text-left">Expiry Date</th>
                   <th className="px-4 py-3 text-left">Term</th>
                   <th className="px-4 py-3 text-left">AMC</th>
+                  <th className="px-4 py-3 text-left">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -181,10 +183,13 @@ export function Agreements() {
                         <span>{a.amcSchedule.invoicesIssued}/{a.amcSchedule.totalInvoices}</span>
                       ) : '—'}
                     </td>
+                    <td className="px-4 py-3">
+                      <AgreementStatusBadge status={a.acctClassify} />
+                    </td>
                   </tr>
                 ))}
                 {data?.data.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No agreements found</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No agreements found</td></tr>
                 )}
               </tbody>
             </table>

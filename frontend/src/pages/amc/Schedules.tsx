@@ -17,9 +17,11 @@ export function Schedules() {
   const coCode       = sp.get('coCode')       ?? '';
   const acctClassify = sp.get('acctClassify') ?? '';
   const billingStatus = sp.get('billingStatus') ?? '';
+  const dueDate      = sp.get('dueDate')      ?? '';
   const q            = sp.get('q')            ?? '';
   const page         = parseInt(sp.get('page') ?? '1', 10);
-  const hasFilters   = !!(q || coCode || acctClassify || billingStatus);
+  const hasFilters   = !!(q || coCode || acctClassify || billingStatus || dueDate);
+  const today        = format(new Date(), 'yyyy-MM-dd');
 
   // Local search input — debounced to URL
   const [searchInput, setSearchInput] = useState(() => sp.get('q') ?? '');
@@ -50,12 +52,13 @@ export function Schedules() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['amc-schedules', q, coCode, acctClassify, billingStatus, page],
+    queryKey: ['amc-schedules', q, coCode, acctClassify, billingStatus, dueDate, page],
     queryFn: () => amcApi.listSchedules({
       q:            q             || undefined,
       coCode:       coCode        || undefined,
       acctClassify: acctClassify  || undefined,
       billingStatus: billingStatus || undefined,
+      dueDate:      dueDate       || undefined,
       page, limit: 20,
     }).then(r => r.data),
     enabled: hasFilters,
@@ -112,6 +115,17 @@ export function Schedules() {
             Clear
           </button>
         )}
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <label className="text-sm text-gray-500 whitespace-nowrap">AMC Next Due Date</label>
+        <input
+          type="date"
+          value={dueDate}
+          min={today}
+          onChange={e => setFilter('dueDate', e.target.value)}
+          className="px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
       </div>
 
       {hasFilters && <RecordCount total={data?.meta?.total} loading={isLoading} />}
