@@ -25,9 +25,9 @@ const MAINTENANCE: PbsMenuItem[] = [
 function buildReports(hasReport: (key: ReportKey) => boolean): PbsMenuItem[] {
   return [
     { num: 11, label: 'PBS Report',                to: '/pbs/report',       icon: <FileBarChart2 className="h-4 w-4" /> },
-    { num: 12, label: 'Variance Report',           to: '/pbs/variance',     icon: <GitCompare className="h-4 w-4" /> },
+    ...(hasReport('PBS_VARIANCE_REPORT') ? [{ num: 12, label: 'Variance Report', to: '/pbs/variance', icon: <GitCompare className="h-4 w-4" />, enabled: true }] : []),
     ...(hasReport('PBS_CLAIM_REPORT') ? [{ num: 13, label: 'Claim Report', to: '/pbs/claim-report', icon: <ClipboardCheck className="h-4 w-4" />, enabled: true }] : []),
-    { num: 14, label: 'Not in PBS Report',          to: '/pbs/not-in-pbs',   icon: <UserX className="h-4 w-4" /> },
+    ...(hasReport('PBS_NOT_IN_PBS_REPORT') ? [{ num: 14, label: 'Not in PBS Report', to: '/pbs/not-in-pbs', icon: <UserX className="h-4 w-4" />, enabled: true }] : []),
     ...(hasReport('PBS_PAY_BY_MONTH_REPORT') ? [{ num: 15, label: 'PBS Pay By Month/Year', to: '/pbs/pay-by-month', icon: <CalendarDays className="h-4 w-4" />, enabled: true }] : []),
   ];
 }

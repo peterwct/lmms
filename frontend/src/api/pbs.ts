@@ -31,4 +31,16 @@ export const pbsApi = {
 
   downloadClaimReport: () =>
     api.get('/pbs/reports/claim', { responseType: 'blob' }),
+
+  previewNotInPbs: () =>
+    api.get('/pbs/reports/not-in-pbs/preview'),
+
+  downloadNotInPbs: () =>
+    api.get('/pbs/reports/not-in-pbs', { responseType: 'blob' }),
+
+  previewVariance: () =>
+    api.get('/pbs/reports/variance/preview'),
+
+  downloadVariance: () =>
+    api.get('/pbs/reports/variance', { responseType: 'blob' }),
 };

@@ -3,7 +3,7 @@ import { ReportKey } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { writeAudit } from '../../utils/audit';
 
-const ALL_REPORT_KEYS: ReportKey[] = ['MEMBER_REPORT', 'AGREEMENT_REPORT', 'EXPIRY_REPORT', 'EXPIRING_MEMBER_REPORT', 'REMAINING_VALUE_REPORT', 'EXPIRY_SUMMARY_REPORT', 'PBS_PAY_BY_MONTH_REPORT', 'PBS_CLAIM_REPORT'];
+const ALL_REPORT_KEYS: ReportKey[] = ['MEMBER_REPORT', 'AGREEMENT_REPORT', 'EXPIRY_REPORT', 'EXPIRING_MEMBER_REPORT', 'REMAINING_VALUE_REPORT', 'EXPIRY_SUMMARY_REPORT', 'PBS_PAY_BY_MONTH_REPORT', 'PBS_CLAIM_REPORT', 'PBS_NOT_IN_PBS_REPORT', 'PBS_VARIANCE_REPORT'];
 
 const REPORT_LABELS: Record<ReportKey, string> = {
   MEMBER_REPORT:           'Member Report',
@@ -14,6 +14,8 @@ const REPORT_LABELS: Record<ReportKey, string> = {
   EXPIRY_SUMMARY_REPORT:   'Summary of Expiring Members by Years',
   PBS_PAY_BY_MONTH_REPORT: 'PBS Pay By Month/Year Report',
   PBS_CLAIM_REPORT:        'PBS Claim Report',
+  PBS_NOT_IN_PBS_REPORT:   'Not In PBS Report',
+  PBS_VARIANCE_REPORT:     'PBS Variance Report',
 };
 
 export async function getReportAccess(req: Request, res: Response): Promise<void> {

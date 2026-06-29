@@ -6,7 +6,6 @@ const LABELS: Record<string, string> = {
   '/pbs/tracking':     'PBS Certificate Tracking',
   '/pbs/transfer':     'Auto Transfer to Claim',
   '/pbs/report':       'PBS Report',
-  '/pbs/variance':     'Variance Report',
   '/pbs/not-in-pbs':   'Not in PBS Report',
 };
 
