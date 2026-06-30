@@ -12,6 +12,7 @@ lmms/
 │   ├── seed.ts              # Departments, permissions, admin user, reference data
 │   ├── seed-states.ts       # 39 Malaysian state codes from migrate/state.txt
 │   ├── seed-cancellation-reasons.ts  # 46 cancellation codes from migrate/agmt_can_cate.txt
+│   ├── seed-su-reasons.ts   # 28 suspension reason codes from migrate/su_mast.txt
 │   ├── migrate-informix.ts  # Full Informix → PostgreSQL migration (run once)
 │   ├── migrate-maa-mem.ts   # PBS (Zurich Payback Scheme) migration from maa_mem.txt
 │   ├── migrate-maa-claim.ts # PBS Claims migration from maa_claim.txt
@@ -20,9 +21,10 @@ lmms/
 │   ├── migrate-amc-price-points.ts  # CP points tiers from ps_ctrltab.txt
 │   ├── migrate-rci-enrol.ts # RCI enrollment data from rci_enrol.txt (updates Agreement.rciRefNo/rciNominee/rciEnrolDate/rciExpiryDate)
 │   ├── migrate-salesperson.ts  # Salesperson master from csp_mast.txt
+│   ├── migrate-su-pt-reasons.ts  # SU/PT reason backfill from su_trans.txt + pt_trans.txt
 │   └── migrations/          # Applied migration history
 ├── refresh-test-db.ps1      # Clears + re-imports all Informix data; use for UAT refreshes and live cutover
-├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule, RciEnrol)
+├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule, RciEnrol, SuPtReason)
 ├── migrate/                 # Informix UNLOAD export files (not committed)
 │   ├── si_ind_mast.txt
 │   ├── si_cor_mast.txt
@@ -36,6 +38,9 @@ lmms/
 │   ├── rci_enrol.txt
 │   ├── csp_mast.txt
 │   ├── agmt_can_cate.txt
+│   ├── su_mast.txt
+│   ├── su_trans.txt
+│   ├── pt_trans.txt
 │   └── state.txt
 ├── backend/                 # Node.js + Express + TypeScript API
 │   └── src/
@@ -212,6 +217,7 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table PbsScheme                   # PBS schemes (also truncates PbsClaim)
 .\migrate-table.ps1 -Table PbsClaim                    # Just PBS claims
 .\migrate-table.ps1 -Table RciEnrol                    # RCI enrollment (updates rciRefNo/rciNominee/dates on Agreement)
+.\migrate-table.ps1 -Table SuPtReason                  # SU/PT reason backfill (suCode + canCode overwrite)
 .\migrate-table.ps1 -Table Salesperson                 # Salesperson master
 .\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
@@ -295,7 +301,8 @@ Sourced from Informix `si_entitlement`. Key fields:
 | `rciEnrolDate` | RCI joint/activation date — populated from `rci_enrol.txt` `re_act_date` |
 | `rciExpiryDate` | RCI expiry date — populated from `rci_enrol.txt` `re_expiry_date` |
 | `salespersonCode` | Salesperson code from `e_cse_code` — looked up in `Salesperson.code` |
-| `canCode` | FK → `CancellationReason.code` (46 codes) |
+| `canCode` | FK → `CancellationReason.code` (46 codes) — used for PT and TM; SU uses `suCode` instead |
+| `suCode` | FK → `SuReason.code` (28 codes) — only meaningful when `acctClassify='SU'` |
 
 **Net Purchase Price formula:** `purchasePrice − subFees − sinkFund − govtTax`
 
@@ -305,6 +312,13 @@ Sourced from Informix `si_entitlement`. Key fields:
 ### CancellationReason
 46 codes from `agmt_can_cate.txt`. Relation: `Agreement.canCode → CancellationReason.code`.
 Category: `CC`=Cancellation, `TM`=Termination. Status: `A`=Active, `U`=Inactive, `N`=Not displayed.
+Used for `PT` and `TM` agreements (`canCode` backfilled for PT from `pt_trans.txt` — see "Informix migration" below).
+
+### SuReason
+28 codes from `su_mast.txt`. Relation: `Agreement.suCode → SuReason.code`. Distinct code space from
+`CancellationReason` (2-letter codes e.g. `SA`, `SB` vs. numeric `01`-`46`) — used only for `SU`
+(Suspended) agreements. `pt_mast.txt` (a similarly-shaped file) was investigated but found unused:
+its codes don't match what `pt_trans.txt` actually references (see "Informix migration" below).
 
 ### PbsScheme (Zurich Payback Scheme)
 5,009 records from `maa_mem.txt`. 1-to-1 with Agreement (LHC coCode 03/15 only).
@@ -364,6 +378,8 @@ Source tables and their column counts (verified from actual export files):
 | `ps_ctrltab.txt` | CP points tiers | pipe-delimited | coCode[0], effectiveDate[1], minPoints[2], maxPoints[3], unitPrice[6], amcRatePerPoint[7], sinkingFundPct[8], gstPct[9], rciPoints[12] |
 | `rci_enrol.txt` | RCI enrollment | 30 cols pipe-delimited | re_cocode[0], re_membership_no[1], re_agreement_no[2], re_rci_no[3], re_act_date[4], re_expiry_date[5], e_rci_salutation[27], e_rci_name[28]. Joined with si_entitlement for salutation/name. Updates existing Agreement records (no separate table). |
 | `csp_mast.txt` | Salesperson master | 4 cols pipe-delimited | csp_code[0], csp_name[1], csp_branch[2], csp_status[3] |
+| `su_mast.txt` | SuReason master | 3 cols pipe-delimited | code[0], description[1] |
+| `su_trans.txt` / `pt_trans.txt` | SU/PT reason backfill | 4 cols pipe-delimited | membershipNo[0], agreementNo[1], code[2]. `su_trans.txt` → `Agreement.suCode` (only if current `acctClassify=SU`); `pt_trans.txt` → `Agreement.canCode` (only if current `acctClassify=PT`, **overwrites** any existing value — pt_trans.txt is authoritative). Match key: `membershipNo + agreementNo` (NOT `agreementNo` alone — see "FK vs natural key" below, agreementNo is duplicated across TT/TF transfer pairs). Updates existing Agreement records (no separate trans table), same pattern as `rci_enrol.txt`. `pt_mast.txt` is **not used** — every code in `pt_trans.txt` (numeric, 08-45) already exists in `CancellationReason`, while `pt_mast.txt`'s own numbering (00-17) is a stale/superseded lookup the live data doesn't reference. |
 
 Informix date format is `dd-mm-yyyy` — the `d()` helper in migration scripts handles this.
 
@@ -495,7 +511,9 @@ Reports use a separate per-user access model — independent of department permi
 6. Add the new key to the `ReportKey` type union in `frontend/src/types/index.ts`
 
 ## Agreement Detail card order
-1. Agreement Details (net purchase price, loan type/amount, termination reason)
+1. Agreement Details (net purchase price, loan type/amount, termination/suspension reason —
+   branches on `acctClassify`: `SU` shows `suCode`+`SuReason` under "Suspension Reason", `PT`/`TM`
+   show `canCode`+`CancellationReason` under "Termination / Cancellation reason", `NA` hides the row entirely)
 2. Nominees (salutation, full name, name card, designation — 4-column grid per nominee; edit modal has same 4 fields with auto-uppercase)
 3. RCI Information (if any RCI field exists — RCI ID, RCI Nominee, Joint Date, Expiry Date; data from `rci_enrol.txt` not si_entitlement)
 4. Annual Maintenance Charges (AMC Billed, Total AMC, AMC Next Due)

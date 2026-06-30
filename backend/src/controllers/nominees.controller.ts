@@ -5,7 +5,7 @@ import { prisma } from '../utils/prisma';
 import { writeAudit } from '../utils/audit';
 
 const nomineeSchema = z.object({
-  nomineeSeq:  z.number().int().min(1).max(2),
+  nomineeSeq:  z.number().int().min(1).max(3),
   fullName:    z.string().optional().nullable(),
   icOld:       z.string().optional().nullable(),
   icNew:       z.string().optional().nullable(),
@@ -23,7 +23,7 @@ const nomineeSchema = z.object({
 });
 
 const bodySchema = z.object({
-  nominees: z.array(nomineeSchema).min(1).max(2),
+  nominees: z.array(nomineeSchema).min(1).max(3),
 });
 
 export async function updateNominees(req: Request, res: Response): Promise<void> {

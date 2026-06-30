@@ -19,6 +19,7 @@ const agreementUpdateSchema = z.object({
   salesSource:      z.string().optional(),
   certificateNo:    z.string().optional(),
   rciRefNo:         z.string().optional().nullable(),
+  rciNominee:       z.string().optional().nullable(),
   rciEnrolDate:     z.string().datetime().optional().nullable(),
   rciExpiryDate:    z.string().datetime().optional().nullable(),
   rciFeePaid:       z.number().optional().nullable(),
@@ -127,6 +128,7 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
       nominees:           { orderBy: { nomineeSeq: 'asc' } },
       amcInvoices:        { orderBy: [{ invoiceYearSeq: 'asc' }, { invComponent: 'asc' }] },
       cancellationReason: true,
+      suReason:           true,
     },
   });
   if (!agreement) { res.status(404).json({ error: 'Agreement not found' }); return; }
@@ -188,40 +190,63 @@ export async function updateAgreement(req: Request, res: Response): Promise<void
   }
 }
 
+const changeStatusSchema = z.object({
+  acctClassify: z.enum(['NA', 'SU', 'PT', 'TM']),
+  reasonCode:   z.string().trim().min(1).optional().nullable(),
+});
+
 export async function changeAgreementStatus(req: Request, res: Response): Promise<void> {
   const id = req.params.id;
-  const { acctClassify } = z.object({ acctClassify: z.enum(['NA', 'SU', 'PT', 'TM']) }).parse(req.body);
+  const { acctClassify, reasonCode } = changeStatusSchema.parse(req.body);
+
+  if (acctClassify !== 'NA' && !reasonCode) {
+    res.status(400).json({ error: 'A reason code is required when changing status to SU, PT, or TM' });
+    return;
+  }
 
   const agreement = await prisma.agreement.findUnique({ where: { id }, include: { amcSchedule: true } });
   if (!agreement) { res.status(404).json({ error: 'Agreement not found' }); return; }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.agreement.update({
-      where: { id },
-      data: {
-        acctClassify,
-        statusChangeDate: acctClassify === 'NA' ? null : new Date(),
-        statusChangeUser: acctClassify === 'NA' ? null : req.user!.username,
-        updatedAt: new Date(),
-      },
+  // Reason code always lives on the field matching the new status; the other
+  // field is cleared so a stale reason from a prior status can't resurface later.
+  const reasonData =
+    acctClassify === 'SU'                              ? { suCode: reasonCode!, canCode: null }
+    : (acctClassify === 'PT' || acctClassify === 'TM')  ? { canCode: reasonCode!, suCode: null }
+    : { canCode: null, suCode: null };
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.agreement.update({
+        where: { id },
+        data: {
+          acctClassify,
+          ...reasonData,
+          statusChangeDate: acctClassify === 'NA' ? null : new Date(),
+          statusChangeUser: acctClassify === 'NA' ? null : req.user!.username,
+          updatedAt: new Date(),
+        },
+      });
+      // Stop billing if suspended or pending termination
+      if (agreement.amcSchedule && (acctClassify === 'SU' || acctClassify === 'PT' || acctClassify === 'TM')) {
+        await tx.amcSchedule.update({ where: { id: agreement.amcSchedule.id }, data: { billingStatus: 'C', updatedAt: new Date() } });
+      }
+      // Reopen billing on reactivation
+      if (agreement.amcSchedule && acctClassify === 'NA') {
+        await tx.amcSchedule.update({ where: { id: agreement.amcSchedule.id }, data: { billingStatus: 'N', updatedAt: new Date() } });
+      }
+      await tx.auditLog.create({
+        data: {
+          userId: req.user.id,
+          action: `Changed agreement ${agreement.agreementNo} status to ${acctClassify}`,
+          actionType: 'UPDATE',
+          targetType: 'Agreement',
+          metadata: { agreementId: id, oldStatus: agreement.acctClassify, newStatus: acctClassify, reasonCode: reasonCode ?? null },
+        },
+      });
     });
-    // Stop billing if suspended or pending termination
-    if (agreement.amcSchedule && (acctClassify === 'SU' || acctClassify === 'PT' || acctClassify === 'TM')) {
-      await tx.amcSchedule.update({ where: { id: agreement.amcSchedule.id }, data: { billingStatus: 'C', updatedAt: new Date() } });
-    }
-    // Reopen billing on reactivation
-    if (agreement.amcSchedule && acctClassify === 'NA') {
-      await tx.amcSchedule.update({ where: { id: agreement.amcSchedule.id }, data: { billingStatus: 'N', updatedAt: new Date() } });
-    }
-    await tx.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: `Changed agreement ${agreement.agreementNo} status to ${acctClassify}`,
-        actionType: 'UPDATE',
-        targetType: 'Agreement',
-        metadata: { agreementId: id, oldStatus: agreement.acctClassify, newStatus: acctClassify },
-      },
-    });
-  });
-  res.json({ message: 'Agreement status updated' });
+    res.json({ message: 'Agreement status updated' });
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code === 'P2003') { res.status(400).json({ error: 'Invalid reason code' }); return; }
+    throw e;
+  }
 }

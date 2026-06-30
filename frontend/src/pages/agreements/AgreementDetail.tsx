@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { agreementsApi } from '../../api/agreements';
+import { cancellationReasonsApi } from '../../api/cancellationReasons';
+import { suReasonsApi } from '../../api/suReasons';
+import { apiError } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
@@ -35,28 +38,65 @@ export function AgreementDetail() {
   const [statusModal, setStatusModal] = useState(false);
   const [nomModal, setNomModal] = useState(false);
   const [newStatus, setNewStatus] = useState<AgreementStatus>('NA');
-  const [nominees, setNominees] = useState<Array<Record<string, string>>>([{}, {}]);
+  const [reasonCode, setReasonCode] = useState('');
+  const [statusError, setStatusError] = useState('');
+  const [nominees, setNominees] = useState<Array<Record<string, string>>>([{}, {}, {}]);
+  const [rciModal, setRciModal] = useState(false);
+  const [rciForm, setRciForm] = useState<Record<string, string>>({});
 
   const { data: agmt, isLoading } = useQuery<Agreement>({
     queryKey: ['agreement', id],
     queryFn: () => agreementsApi.get(id!).then(r => r.data.data),
   });
 
+  const { data: cancellationReasons } = useQuery({
+    queryKey: ['cancellation-reasons'],
+    queryFn: () => cancellationReasonsApi.list().then(r => r.data.data),
+    enabled: statusModal,
+  });
+
+  const { data: suReasons } = useQuery({
+    queryKey: ['su-reasons'],
+    queryFn: () => suReasonsApi.list().then(r => r.data.data),
+    enabled: statusModal,
+  });
+
+  // New status -> which reason list applies (NA has none)
+  const reasonOptions = newStatus === 'SU' ? suReasons : newStatus === 'PT' || newStatus === 'TM' ? cancellationReasons : undefined;
+
+  function handleStatusChange(s: AgreementStatus) {
+    setNewStatus(s);
+    setStatusError('');
+    // Pre-fill with the agreement's existing reason only if it still applies to the newly picked status
+    if (s === 'SU') setReasonCode(s === agmt?.acctClassify ? (agmt?.suCode ?? '') : '');
+    else if (s === 'PT' || s === 'TM') setReasonCode(s === agmt?.acctClassify ? (agmt?.canCode ?? '') : '');
+    else setReasonCode('');
+  }
+
   useEffect(() => {
     if (agmt) {
       setNewStatus(agmt.acctClassify);
-      // Always keep exactly 2 slots; find by nomineeSeq so seq-1 and seq-2 land in the right index
+      setReasonCode(agmt.acctClassify === 'SU' ? (agmt.suCode ?? '') : agmt.acctClassify === 'PT' || agmt.acctClassify === 'TM' ? (agmt.canCode ?? '') : '');
+      // Always keep exactly 3 slots; find by nomineeSeq so seq-1/2/3 land in the right index
       const toStr = (n: object | undefined): Record<string, string> =>
         n ? Object.fromEntries(Object.entries(n).map(([k, v]) => [k, v === null || v === undefined ? '' : String(v)])) : {};
       const n1 = agmt.nominees?.find(n => n.nomineeSeq === 1);
       const n2 = agmt.nominees?.find(n => n.nomineeSeq === 2);
-      setNominees([toStr(n1), toStr(n2)]);
+      const n3 = agmt.nominees?.find(n => n.nomineeSeq === 3);
+      setNominees([toStr(n1), toStr(n2), toStr(n3)]);
+      setRciForm({
+        rciRefNo: agmt.rciRefNo ?? '',
+        rciNominee: agmt.rciNominee ?? '',
+        rciEnrolDate: agmt.rciEnrolDate ? agmt.rciEnrolDate.slice(0, 10) : '',
+        rciExpiryDate: agmt.rciExpiryDate ? agmt.rciExpiryDate.slice(0, 10) : '',
+      });
     }
   }, [agmt]);
 
   const statusMut = useMutation({
-    mutationFn: (s: AgreementStatus) => agreementsApi.changeStatus(id!, s),
-    onSuccess: () => { setStatusModal(false); qc.invalidateQueries({ queryKey: ['agreement', id] }); },
+    mutationFn: () => agreementsApi.changeStatus(id!, newStatus, newStatus === 'NA' ? null : reasonCode),
+    onSuccess: () => { setStatusModal(false); setStatusError(''); qc.invalidateQueries({ queryKey: ['agreement', id] }); },
+    onError: (err: unknown) => setStatusError(apiError(err)),
   });
 
   const [nomError, setNomError] = useState('');
@@ -79,6 +119,22 @@ export function AgreementDetail() {
       const msg = err instanceof Error ? err.message : 'Save failed. Please try again.';
       setNomError(msg);
     },
+  });
+
+  const [rciError, setRciError] = useState('');
+
+  const rciMut = useMutation({
+    mutationFn: () => {
+      const DATE_FIELDS = new Set(['rciEnrolDate', 'rciExpiryDate']);
+      const payload: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(rciForm)) {
+        if (DATE_FIELDS.has(k)) { payload[k] = v.trim() === '' ? null : `${v}T00:00:00.000Z`; continue; }
+        payload[k] = v.trim() === '' ? null : v.trim();
+      }
+      return agreementsApi.update(id!, payload);
+    },
+    onSuccess: () => { setRciError(''); setRciModal(false); qc.invalidateQueries({ queryKey: ['agreement', id] }); },
+    onError: (err: unknown) => setRciError(apiError(err)),
   });
 
   if (isLoading) return <PageSpinner />;
@@ -179,18 +235,27 @@ export function AgreementDetail() {
                 </dd>
               </div>
             )}
-            {agmt.cancellationReason && (
+            {agmt.acctClassify === 'SU' && agmt.suReason && (
+              <div className="col-span-full">
+                <dt className="text-xs text-gray-500 uppercase tracking-wide">Suspension Reason</dt>
+                <dd className="mt-0.5 font-medium">
+                  {agmt.suCode} — {agmt.suReason.description}
+                </dd>
+              </div>
+            )}
+            {agmt.acctClassify === 'PT' && agmt.cancellationReason && (
+              <div className="col-span-full">
+                <dt className="text-xs text-gray-500 uppercase tracking-wide">Pending Termination Reason</dt>
+                <dd className="mt-0.5 font-medium">
+                  {agmt.canCode} — {agmt.cancellationReason.description}
+                </dd>
+              </div>
+            )}
+            {agmt.acctClassify === 'TM' && agmt.cancellationReason && (
               <div className="col-span-full">
                 <dt className="text-xs text-gray-500 uppercase tracking-wide">Termination / Cancellation reason</dt>
                 <dd className="mt-0.5 font-medium">
                   {agmt.canCode} — {agmt.cancellationReason.description}
-                  <span className={`ml-2 text-xs px-1.5 py-0.5 rounded font-semibold ${
-                    agmt.cancellationReason.category === 'CC'
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-red-100 text-red-700'
-                  }`}>
-                    {agmt.cancellationReason.category === 'CC' ? 'Cancellation' : 'Termination'}
-                  </span>
                 </dd>
               </div>
             )}
@@ -214,7 +279,11 @@ export function AgreementDetail() {
       <Card>
         <CardHeader className="flex items-center justify-between">
           <p className="font-semibold text-gray-700">Nominees</p>
-          {canEdit('AGREEMENTS') && <Button variant="secondary" size="sm" onClick={() => setNomModal(true)}>Edit nominees</Button>}
+          {canEdit('AGREEMENTS') && (
+            <Button variant="secondary" size="sm" onClick={() => setNomModal(true)}>
+              {agmt.nominees?.length ? 'Edit nominees' : 'Add nominees'}
+            </Button>
+          )}
         </CardHeader>
         <CardBody>
           {agmt.nominees?.length ? (
@@ -244,19 +313,24 @@ export function AgreementDetail() {
       </Card>
 
       {/* ── RCI Info ───────────────────────────────────────────── */}
-      {(agmt.rciRefNo || agmt.rciNominee || agmt.rciEnrolDate || agmt.rciExpiryDate) && (
-        <Card>
-          <CardHeader><p className="font-semibold text-gray-700">RCI Information</p></CardHeader>
-          <CardBody>
-            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
-              <div><dt className="text-xs text-gray-500 uppercase tracking-wide">RCI ID</dt><dd className="mt-0.5 font-medium">{agmt.rciRefNo || '—'}</dd></div>
-              <div><dt className="text-xs text-gray-500 uppercase tracking-wide">RCI Nominee</dt><dd className="mt-0.5 font-medium">{agmt.rciNominee || '—'}</dd></div>
-              <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Joint Date</dt><dd className="mt-0.5 font-medium">{agmt.rciEnrolDate ? format(new Date(agmt.rciEnrolDate), 'dd/MM/yyyy') : '—'}</dd></div>
-              <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Expiry Date</dt><dd className="mt-0.5 font-medium">{agmt.rciExpiryDate ? format(new Date(agmt.rciExpiryDate), 'dd/MM/yyyy') : '—'}</dd></div>
-            </dl>
-          </CardBody>
-        </Card>
-      )}
+      <Card>
+        <CardHeader className="flex items-center justify-between">
+          <p className="font-semibold text-gray-700">RCI Information</p>
+          {canEdit('AGREEMENTS') && (
+            <Button variant="secondary" size="sm" onClick={() => setRciModal(true)}>
+              {(agmt.rciRefNo || agmt.rciNominee || agmt.rciEnrolDate || agmt.rciExpiryDate) ? 'Edit RCI info' : 'Add RCI info'}
+            </Button>
+          )}
+        </CardHeader>
+        <CardBody>
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
+            <div><dt className="text-xs text-gray-500 uppercase tracking-wide">RCI ID</dt><dd className="mt-0.5 font-medium">{agmt.rciRefNo || '—'}</dd></div>
+            <div><dt className="text-xs text-gray-500 uppercase tracking-wide">RCI Nominee</dt><dd className="mt-0.5 font-medium">{agmt.rciNominee || '—'}</dd></div>
+            <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Joint Date</dt><dd className="mt-0.5 font-medium">{agmt.rciEnrolDate ? format(new Date(agmt.rciEnrolDate), 'dd/MM/yyyy') : '—'}</dd></div>
+            <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Expiry Date</dt><dd className="mt-0.5 font-medium">{agmt.rciExpiryDate ? format(new Date(agmt.rciExpiryDate), 'dd/MM/yyyy') : '—'}</dd></div>
+          </dl>
+        </CardBody>
+      </Card>
 
       {/* ── AMC Summary ─────────────────────────────────────────── */}
       {agmt.amcSchedule && (
@@ -335,26 +409,47 @@ export function AgreementDetail() {
         </Card>
       )}
 
-      <Modal open={statusModal} title="Change Agreement Status" onClose={() => setStatusModal(false)}>
+      <Modal open={statusModal} title="Change Agreement Status" onClose={() => { setStatusModal(false); setStatusError(''); }}>
         <div className="space-y-4">
-          <Select label="New status" value={newStatus} onChange={e => setNewStatus(e.target.value as AgreementStatus)}>
+          <Select label="New status" value={newStatus} onChange={e => handleStatusChange(e.target.value as AgreementStatus)}>
             <option value="NA">NA — Active</option>
             <option value="SU">SU — Suspended</option>
             <option value="PT">PT — Pending Termination</option>
             <option value="TM">TM — Terminated</option>
           </Select>
           <p className="text-xs text-gray-500">SU/PT/TM stops AMC billing. Reverting to NA re-opens it.</p>
+          {newStatus !== 'NA' && (
+            <Select
+              label={newStatus === 'SU' ? 'Suspension reason' : 'Termination / Cancellation reason'}
+              value={reasonCode}
+              onChange={e => setReasonCode(e.target.value)}
+            >
+              <option value="">— Select a reason —</option>
+              {reasonOptions?.map(r => (
+                <option key={r.code} value={r.code}>{r.code} — {r.description}</option>
+              ))}
+            </Select>
+          )}
+          {statusError && <p className="text-sm text-red-600">{statusError}</p>}
           <div className="flex gap-3">
-            <Button onClick={() => statusMut.mutate(newStatus)} loading={statusMut.isPending}>Save</Button>
-            <Button variant="secondary" onClick={() => setStatusModal(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (newStatus !== 'NA' && !reasonCode) { setStatusError('Please select a reason.'); return; }
+                statusMut.mutate();
+              }}
+              loading={statusMut.isPending}
+            >
+              Save
+            </Button>
+            <Button variant="secondary" onClick={() => { setStatusModal(false); setStatusError(''); }}>Cancel</Button>
           </div>
         </div>
       </Modal>
 
       <Modal open={nomModal} title="Edit Nominees" size="xl" onClose={() => { setNomModal(false); setNomError(''); }}>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-6">
-            {[0, 1].map(i => {
+          <div className="grid grid-cols-3 gap-6">
+            {[0, 1, 2].map(i => {
               const setField = (field: string, upper = true) =>
                 (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
                   setNominees(n => n.map((r, idx) => idx === i ? { ...r, [field]: upper ? e.target.value.toUpperCase() : e.target.value } : r));
@@ -388,6 +483,26 @@ export function AgreementDetail() {
           <div className="flex gap-3">
             <Button onClick={() => nomMut.mutate()} loading={nomMut.isPending}>Save nominees</Button>
             <Button variant="secondary" onClick={() => { setNomModal(false); setNomError(''); }}>Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={rciModal} title="Edit RCI Information" onClose={() => { setRciModal(false); setRciError(''); }}>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="RCI ID" value={rciForm.rciRefNo ?? ''}
+              onChange={e => setRciForm(f => ({ ...f, rciRefNo: e.target.value.toUpperCase() }))} />
+            <Input label="RCI Nominee" value={rciForm.rciNominee ?? ''}
+              onChange={e => setRciForm(f => ({ ...f, rciNominee: e.target.value.toUpperCase() }))} />
+            <Input label="Joint Date" type="date" value={rciForm.rciEnrolDate ?? ''}
+              onChange={e => setRciForm(f => ({ ...f, rciEnrolDate: e.target.value }))} />
+            <Input label="Expiry Date" type="date" value={rciForm.rciExpiryDate ?? ''}
+              onChange={e => setRciForm(f => ({ ...f, rciExpiryDate: e.target.value }))} />
+          </div>
+          {rciError && <p className="text-sm text-red-600">{rciError}</p>}
+          <div className="flex gap-3">
+            <Button onClick={() => rciMut.mutate()} loading={rciMut.isPending}>Save</Button>
+            <Button variant="secondary" onClick={() => { setRciModal(false); setRciError(''); }}>Cancel</Button>
           </div>
         </div>
       </Modal>

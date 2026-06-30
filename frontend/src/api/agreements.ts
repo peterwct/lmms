@@ -10,8 +10,8 @@ export const agreementsApi = {
   update: (id: string, data: Record<string, unknown>) =>
     api.put<{ data: Agreement }>(`/agreements/${id}`, data),
 
-  changeStatus: (id: string, acctClassify: AgreementStatus) =>
-    api.patch(`/agreements/${id}/status`, { acctClassify }),
+  changeStatus: (id: string, acctClassify: AgreementStatus, reasonCode?: string | null) =>
+    api.patch(`/agreements/${id}/status`, { acctClassify, reasonCode }),
 
   updateNominees: (id: string, nominees: Partial<Nominee>[]) =>
     api.put(`/agreements/${id}/nominees`, { nominees }),

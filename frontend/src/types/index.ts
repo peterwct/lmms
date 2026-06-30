@@ -106,6 +106,11 @@ export interface CancellationReason {
   status: string;   // A | U | N
 }
 
+export interface SuReason {
+  code: string;
+  description: string;
+}
+
 export interface State {
   code: string;
   name: string;
@@ -244,6 +249,7 @@ export interface Agreement {
   outstdDoc: boolean;
   docDescription?: string;
   canCode?: string;
+  suCode?: string;
   transferFlag?: string;
   transferToMembership?: string;
   transferFromMembership?: string;
@@ -256,6 +262,7 @@ export interface Agreement {
   transferUser?: string;
   transferToUser?: string;
   cancellationReason?: CancellationReason;
+  suReason?: SuReason;
   statusChangeDate?: string;
   statusChangeUser?: string;
   createdAt: string;

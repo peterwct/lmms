@@ -13,6 +13,8 @@
       AmcSchedule       - AMC Schedules (migrate-amc-schedules.ts)
       RciEnrol          - RCI enrollment / nominee (migrate-rci-enrol.ts)
       Salesperson       - Salesperson master (migrate-salesperson.ts)
+      SuPtReason        - SU/PT reason codes: SuReason seed + Agreement.suCode/canCode backfill
+                          (seed-su-reasons.ts + migrate-su-pt-reasons.ts)
 
 .PARAMETER DatabaseUrl
     PostgreSQL connection string. Defaults to $env:DATABASE_URL or .env file.
@@ -25,12 +27,13 @@
     .\migrate-table.ps1 -Table IndividualMember
     .\migrate-table.ps1 -Table Agreement
     .\migrate-table.ps1 -Table PbsScheme -DryRun
+    .\migrate-table.ps1 -Table SuPtReason                  # SU/PT reason backfill (suCode + canCode overwrite)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -135,6 +138,14 @@ $TableConfig = @{
         TruncateSql = @('TRUNCATE "Salesperson";')
         RequiredFiles = @('csp_mast.txt')
         Scripts = @('prisma/migrate-salesperson.ts')
+    }
+    SuPtReason = @{
+        TruncateSql = @()
+        RequiredFiles = @('su_mast.txt', 'su_trans.txt', 'pt_trans.txt')
+        Scripts = @(
+            'prisma/seed-su-reasons.ts',
+            'prisma/migrate-su-pt-reasons.ts'
+        )
     }
 }
 
