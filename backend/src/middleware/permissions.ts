@@ -61,3 +61,12 @@ export function requireITorCredit(req: Request, res: Response, next: NextFunctio
   }
   next();
 }
+
+// IT or Member Services (for agreement nominees / RCI edits)
+export function requireITorMemberServices(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user.department.isLocked && req.user.department.name !== 'Member Services') {
+    res.status(403).json({ error: 'Member Services or IT access required' });
+    return;
+  }
+  next();
+}

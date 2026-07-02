@@ -195,6 +195,25 @@ const changeStatusSchema = z.object({
   reasonCode:   z.string().trim().min(1).optional().nullable(),
 });
 
+// Department-based authority for a status change. IT (isLocked) and Finance may set
+// any status in any direction. Credit may set NA/SU/PT but never TM, and may not touch
+// a record whose current status is already TM (i.e. cannot reverse a termination).
+// Everyone else (incl. Member Services) has no status-change authority.
+function statusChangeAllowed(
+  dept: { name: string; isLocked: boolean },
+  currentStatus: string,
+  newStatus: string,
+): boolean {
+  if (dept.isLocked) return true;
+  if (dept.name === 'Finance') return true;
+  if (dept.name === 'Credit') {
+    if (newStatus === 'TM') return false;
+    if (currentStatus === 'TM') return false;
+    return true;
+  }
+  return false;
+}
+
 export async function changeAgreementStatus(req: Request, res: Response): Promise<void> {
   const id = req.params.id;
   const { acctClassify, reasonCode } = changeStatusSchema.parse(req.body);
@@ -206,6 +225,11 @@ export async function changeAgreementStatus(req: Request, res: Response): Promis
 
   const agreement = await prisma.agreement.findUnique({ where: { id }, include: { amcSchedule: true } });
   if (!agreement) { res.status(404).json({ error: 'Agreement not found' }); return; }
+
+  if (!statusChangeAllowed(req.user.department, agreement.acctClassify, acctClassify)) {
+    res.status(403).json({ error: 'Not authorized to set this status' });
+    return;
+  }
 
   // Reason code always lives on the field matching the new status; the other
   // field is cleared so a stale reason from a prior status can't resurface later.

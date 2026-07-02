@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { RequireEdit } from './components/RequirePermission';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { ChangePassword } from './pages/ChangePassword';
@@ -55,7 +56,7 @@ export default function App() {
               <Route path="admin/audit"         element={<AuditLog />} />
               <Route path="members"             element={<Members />} />
               <Route path="members/:id"         element={<MemberDetail />} />
-              <Route path="members/:id/edit"    element={<MemberForm />} />
+              <Route path="members/:id/edit"    element={<RequireEdit module="MEMBERS"><MemberForm /></RequireEdit>} />
               <Route path="agreements"          element={<Agreements />} />
               <Route path="agreements/:id"      element={<AgreementDetail />} />
               <Route path="reports"             element={<Reports />} />

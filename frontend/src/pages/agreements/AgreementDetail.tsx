@@ -15,7 +15,12 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { AgreementStatusBadge } from '../../components/AgreementStatusBadge';
 import { ProductBadge } from '../../components/ProductBadge';
 import type { Agreement, AgreementStatus } from '../../types';
+import { allowedNewStatuses, canEditNomineesRci } from '../../lib/agreementAuth';
 import { format } from 'date-fns';
+
+const STATUS_LABEL: Record<AgreementStatus, string> = {
+  NA: 'NA — Active', SU: 'SU — Suspended', PT: 'PT — Pending Termination', TM: 'TM — Terminated',
+};
 
 const INV_COMPONENT_LABEL: Record<string, string> = {
   MAIN_AMC: 'AMC', SINKING_FUND: 'Sinking Fund', SERVICE_TAX: 'Service Tax', ROUNDING: 'Rounding',
@@ -32,7 +37,7 @@ function fmtRM(val: string | number | undefined | null) {
 
 export function AgreementDetail() {
   const { id } = useParams<{ id: string }>();
-  const { canEdit } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [statusModal, setStatusModal] = useState(false);
@@ -175,7 +180,7 @@ export function AgreementDetail() {
             </Link>
           </p>
         </div>
-        {canEdit('AGREEMENTS') && (
+        {allowedNewStatuses(user, agmt.acctClassify).length > 0 && (
           <Button variant="secondary" size="sm" onClick={() => setStatusModal(true)}>Change status</Button>
         )}
       </div>
@@ -279,7 +284,7 @@ export function AgreementDetail() {
       <Card>
         <CardHeader className="flex items-center justify-between">
           <p className="font-semibold text-gray-700">Nominees</p>
-          {canEdit('AGREEMENTS') && (
+          {canEditNomineesRci(user) && (
             <Button variant="secondary" size="sm" onClick={() => setNomModal(true)}>
               {agmt.nominees?.length ? 'Edit nominees' : 'Add nominees'}
             </Button>
@@ -316,7 +321,7 @@ export function AgreementDetail() {
       <Card>
         <CardHeader className="flex items-center justify-between">
           <p className="font-semibold text-gray-700">RCI Information</p>
-          {canEdit('AGREEMENTS') && (
+          {canEditNomineesRci(user) && (
             <Button variant="secondary" size="sm" onClick={() => setRciModal(true)}>
               {(agmt.rciRefNo || agmt.rciNominee || agmt.rciEnrolDate || agmt.rciExpiryDate) ? 'Edit RCI info' : 'Add RCI info'}
             </Button>
@@ -412,10 +417,9 @@ export function AgreementDetail() {
       <Modal open={statusModal} title="Change Agreement Status" onClose={() => { setStatusModal(false); setStatusError(''); }}>
         <div className="space-y-4">
           <Select label="New status" value={newStatus} onChange={e => handleStatusChange(e.target.value as AgreementStatus)}>
-            <option value="NA">NA — Active</option>
-            <option value="SU">SU — Suspended</option>
-            <option value="PT">PT — Pending Termination</option>
-            <option value="TM">TM — Terminated</option>
+            {allowedNewStatuses(user, agmt.acctClassify).map(s => (
+              <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+            ))}
           </Select>
           <p className="text-xs text-gray-500">SU/PT/TM stops AMC billing. Reverting to NA re-opens it.</p>
           {newStatus !== 'NA' && (
