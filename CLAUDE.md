@@ -134,7 +134,7 @@ BCRYPT_ROUNDS=12
 
 ### Deploying to test server
 
-Use `deploy-test.ps1` (project root). It uses **PowerShell Remoting (WinRM)** — Windows-native, no SSH required. Prompts for the Administrator password via a Windows credential dialog each run.
+Use `deploy-test.ps1` (project root). It uses **PowerShell Remoting (WinRM)** — Windows-native, no SSH required. Prompts for the Administrator password via a Windows credential dialog each run, and (with `-MigrateDb`) also prompts for the `postgres` superuser password via `Read-Host` for the lhb_app GRANT step. Both prompts are interactive — run this directly in the user's own PowerShell window, not through a non-interactive/automated shell (e.g. Claude Code's Bash/PowerShell tools), which will hang on `Read-Host`/`Get-Credential`.
 
 **One-time setup on the TEST SERVER** (via RDP, PowerShell as Administrator):
 ```powershell
@@ -171,7 +171,7 @@ Set-Item WSMan:\localhost\Client\TrustedHosts -Value "199.1.1.32" -Force  # trus
 ```
 
 **What the script does:**
-1. Prompts for Administrator password (Windows credential dialog)
+1. Prompts for Administrator password (Windows credential dialog), and (if `-MigrateDb`) the `postgres` superuser password (`Read-Host`)
 2. Opens a WinRM session to the test server
 3. Builds backend TypeScript locally (`npm run build` in `backend/`), copies `backend/dist/` to the test server
 4. Copies `prisma/schema.prisma` to the test server
@@ -313,6 +313,7 @@ Sourced from Informix `si_entitlement`. Key fields:
 46 codes from `agmt_can_cate.txt`. Relation: `Agreement.canCode → CancellationReason.code`.
 Category: `CC`=Cancellation, `TM`=Termination. Status: `A`=Active, `U`=Inactive, `N`=Not displayed.
 Used for `PT` and `TM` agreements (`canCode` backfilled for PT from `pt_trans.txt` — see "Informix migration" below).
+Only `status='A'` codes (20 of 46) are offered in the "Change Status" reason picker — see "Change Agreement Status" below.
 
 ### SuReason
 28 codes from `su_mast.txt`. Relation: `Agreement.suCode → SuReason.code`. Distinct code space from
@@ -417,12 +418,15 @@ Key endpoints:
 ```
 POST /api/auth/login                        Login → JWT cookie
 GET  /api/states                            List all state codes
+GET  /api/cancellation-reasons              Active (status='A') CancellationReason codes — for PT/TM reason picker
+GET  /api/su-reasons                        All SuReason codes — for SU reason picker
 GET  /api/members?search=&memberType=&...   Search members
 GET  /api/members/enquiry?...               Member Enquiry search (same params as /api/agreements; uses MEMBERS permission)
 GET  /api/members/:id                       Member + agreements + nominees
 PUT  /api/members/:id                       Update member
 GET  /api/agreements?q=&coCode=&...         List/search agreements
 GET  /api/agreements/:id                    Agreement detail + AMC + PBS + invoices
+PATCH /api/agreements/:id/status            Change acctClassify + reason code (suCode/canCode); see "Change Agreement Status" below
 GET  /api/amc/schedules?q=&coCode=&...      AMC billing schedules (search supported)
 POST /api/amc/invoices/generate             Generate AMC invoices
 POST /api/amc/dayend/generate               Generate SQL Account day-end file
@@ -512,15 +516,27 @@ Reports use a separate per-user access model — independent of department permi
 
 ## Agreement Detail card order
 1. Agreement Details (net purchase price, loan type/amount, termination/suspension reason —
-   branches on `acctClassify`: `SU` shows `suCode`+`SuReason` under "Suspension Reason", `PT`/`TM`
-   show `canCode`+`CancellationReason` under "Termination / Cancellation reason", `NA` hides the row entirely)
-2. Nominees (salutation, full name, name card, designation — 4-column grid per nominee; edit modal has same 4 fields with auto-uppercase)
-3. RCI Information (if any RCI field exists — RCI ID, RCI Nominee, Joint Date, Expiry Date; data from `rci_enrol.txt` not si_entitlement)
+   branches on `acctClassify`: `SU` shows `suCode`+`SuReason` under "Suspension Reason", `PT` shows
+   `canCode`+`CancellationReason` under "Pending Termination Reason", `TM` shows the same fields under
+   "Termination / Cancellation reason", `NA` hides the row entirely)
+2. Nominees (up to 3 — salutation, full name, name card, designation, IC old/new, home tel, mobile, email, address; card button reads "Add nominees" when none exist yet, "Edit nominees" once at least one is on record; edit modal has 3 columns, one per nominee, with the same field set for all three even though nominee 3 historically only carries 4 fields from `si_entitlement.txt`'s `e_loc_*` columns)
+3. RCI Information (always rendered, even when empty, so it can be added — RCI ID, RCI Nominee, Joint Date, Expiry Date; data originally from `rci_enrol.txt` not si_entitlement, but editable via `PUT /api/agreements/:id`; card button reads "Add RCI info" when all 4 fields are empty, "Edit RCI info" otherwise)
 4. Annual Maintenance Charges (AMC Billed, Total AMC, AMC Next Due)
 5. Zurich Payback Scheme (if exists — cert no, scheme type, payback date, claimed badge)
 6. Invoice History
 
 > AMC and PBS are fetched by `coCode + agreementNo` in `getAgreement()` — NOT via the Prisma FK (`agreementId`). This is intentional: the Informix source data can have multiple agreements sharing the same `agreementNo + coCode` (different members), so matching by natural key ensures both agreements resolve to the same PBS/AMC record rather than relying on whichever UUID the migration happened to link.
+
+## Change Agreement Status
+
+`PATCH /api/agreements/:id/status` (`changeAgreementStatus` in `backend/src/controllers/agreements.controller.ts`) sets `acctClassify` and, since this session, also requires and saves a reason code:
+
+- **`reasonCode` is required** in the request body whenever the new status is `SU`, `PT`, or `TM` (400 if missing). Not required/used for `NA`.
+- The reason is written to **exactly one** of `suCode` (status `SU`) or `canCode` (status `PT`/`TM`) — **the other field is always cleared to `null`** on every status change, including when reverting to `NA` (which clears both). This guarantees a status's reason field never shows a leftover value from a previous, unrelated status change (this was a real bug pattern found and fixed in this session — see git history / PT backfill work for the historical-data version of the same issue).
+- Invalid reason codes (not present in `SuReason`/`CancellationReason`) are caught as a Prisma FK violation (`P2003`) and returned as `400 { error: 'Invalid reason code' }` rather than crashing.
+- Still also flips `AmcSchedule.billingStatus` (`C` for SU/PT/TM, `N` for NA) and writes an `AuditLog` row, unchanged from before.
+- Frontend: the "Change Status" modal (`AgreementDetail.tsx`) shows a reason `<Select>` whenever the picked status isn't `NA`, sourced from `GET /api/su-reasons` (status=SU) or `GET /api/cancellation-reasons` (status=PT/TM). Save is blocked client-side until a reason is chosen.
+- **`GET /api/cancellation-reasons` filters to `status='A'` only** (20 of the 46 codes) — the `'U'` (inactive/legacy) codes are intentionally excluded from new selections even though several of them (e.g. `26`, `39`, `44`) are the most common reasons in historical data. Confirmed with the user this is intentional: `'A'` codes carry newer, curated descriptions meant for ongoing use; `'U'` codes are legacy-only, kept so old records still display correctly but not offered for new status changes. `GET /api/su-reasons` returns all 28 `SuReason` codes unfiltered (no status field on that table).
 
 ## MemberDetail conventions
 - **Spouse name** shown inside Personal Information card (no separate Spouse card); spouse IC not displayed.
