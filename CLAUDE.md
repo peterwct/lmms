@@ -242,6 +242,7 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 - Routes in `backend/src/routes/` — thin, just auth middleware + controller wiring
 - All routes require `authenticate` + `requirePasswordChanged` + `requirePermission(module, action)`
 - **Report routes** use `requireReportAccess(reportKey)` instead of `requirePermission` — see `backend/src/middleware/permissions.ts`
+- **Department-name guards** (also in `permissions.ts`) enforce fine-grained rules the 4-boolean matrix can't express: `requireITorFinance`, `requireITorCredit`, `requireITorMemberServices`. These match on `req.user.department.name` (with the usual `isLocked` IT bypass) and are used where a specific department — not just "any editor" — is required. See "Department-specific action rules" under Navigation / permissions.
 - Zod used for all request body validation; all optional string fields use `.nullish()` to accept null (field clearing)
 - `writeAudit()` called on every mutating operation
 - Prisma client is a singleton at `backend/src/utils/prisma.ts`
@@ -494,6 +495,24 @@ GET  /api/pbs/reports/variance                     Generate PBS Variance Report 
 - Access control is entirely department-based (`DeptModulePermission` table)
 - Login response includes full department permissions (sidebar renders correctly immediately on login)
 
+### Department-specific action rules (beyond the module matrix)
+
+Some actions need finer control than the `AGREEMENTS + edit` / `MEMBERS + edit` booleans allow — different
+departments get different rights on the *same* module, and some rules depend on data values (not just the
+action). These are enforced by **department-name checks** (matching `user.department.name`), with the usual
+IT (`isLocked`) bypass. No schema/matrix change backs these — they live in middleware + controller + frontend.
+
+| Action | Allowed departments (+ IT) | Where enforced |
+|---|---|---|
+| **Change agreement status** (`PATCH /agreements/:id/status`) | **Finance** (any status, any direction); **Credit** (NA/SU/PT and reverse to NA, but **never TM** and **cannot touch a TM record**). Member Services and all others: **none**. | `statusChangeAllowed()` in `agreements.controller.ts` (value-level rule → in-controller, route has no `requirePermission`). Frontend mirror: `allowedNewStatuses()` in `frontend/src/lib/agreementAuth.ts` gates the button + filters the status `<Select>`. |
+| **Edit nominees** (`PUT /agreements/:id/nominees`) and **RCI / agreement update** (`PUT /agreements/:id`) | **Member Services** only | `requireITorMemberServices` guard. Frontend mirror: `canEditNomineesRci()` in `agreementAuth.ts` gates both card buttons. |
+| **Edit member** (`PUT /members/:id`) | **Member Services** only | Already the case via the matrix (`MEMBERS + edit` = Member Services + IT). Frontend: `RequireEdit` wrapper (`frontend/src/components/RequirePermission.tsx`) also guards the `/members/:id/edit` route to close direct-URL access. |
+
+> When changing these rules, **update both the backend guard/controller and the `agreementAuth.ts` mirror** so
+> the UI and API never disagree. `changeAgreementStatus` still checks the reason code / clears the opposite
+> field / flips billing / writes audit exactly as before — the department rule runs *after* the agreement is
+> loaded (it needs the current `acctClassify`) and returns `403 { error: 'Not authorized to set this status' }`.
+
 ### Report access (per-user)
 
 Reports use a separate per-user access model — independent of department permissions.
@@ -519,8 +538,8 @@ Reports use a separate per-user access model — independent of department permi
    branches on `acctClassify`: `SU` shows `suCode`+`SuReason` under "Suspension Reason", `PT` shows
    `canCode`+`CancellationReason` under "Pending Termination Reason", `TM` shows the same fields under
    "Termination / Cancellation reason", `NA` hides the row entirely)
-2. Nominees (up to 3 — salutation, full name, name card, designation, IC old/new, home tel, mobile, email, address; card button reads "Add nominees" when none exist yet, "Edit nominees" once at least one is on record; edit modal has 3 columns, one per nominee, with the same field set for all three even though nominee 3 historically only carries 4 fields from `si_entitlement.txt`'s `e_loc_*` columns)
-3. RCI Information (always rendered, even when empty, so it can be added — RCI ID, RCI Nominee, Joint Date, Expiry Date; data originally from `rci_enrol.txt` not si_entitlement, but editable via `PUT /api/agreements/:id`; card button reads "Add RCI info" when all 4 fields are empty, "Edit RCI info" otherwise)
+2. Nominees (up to 3 — salutation, full name, name card, designation, IC old/new, home tel, mobile, email, address; card button reads "Add nominees" when none exist yet, "Edit nominees" once at least one is on record; edit modal has 3 columns, one per nominee, with the same field set for all three even though nominee 3 historically only carries 4 fields from `si_entitlement.txt`'s `e_loc_*` columns). **Add/Edit button shown to Member Services + IT only** (`canEditNomineesRci()`).
+3. RCI Information (always rendered, even when empty, so it can be added — RCI ID, RCI Nominee, Joint Date, Expiry Date; data originally from `rci_enrol.txt` not si_entitlement, but editable via `PUT /api/agreements/:id`; card button reads "Add RCI info" when all 4 fields are empty, "Edit RCI info" otherwise). **Add/Edit button shown to Member Services + IT only** (`canEditNomineesRci()`).
 4. Annual Maintenance Charges (AMC Billed, Total AMC, AMC Next Due)
 5. Zurich Payback Scheme (if exists — cert no, scheme type, payback date, claimed badge)
 6. Invoice History
@@ -531,6 +550,7 @@ Reports use a separate per-user access model — independent of department permi
 
 `PATCH /api/agreements/:id/status` (`changeAgreementStatus` in `backend/src/controllers/agreements.controller.ts`) sets `acctClassify` and, since this session, also requires and saves a reason code:
 
+- **Authorization is department-specific**, not `requirePermission('AGREEMENTS','edit')` (that guard was removed from this route). Finance (+ IT) may set any status in any direction; Credit may set NA/SU/PT and reverse to NA but **never TM** and **cannot change a record whose current status is already TM**; Member Services and everyone else get `403`. Enforced by `statusChangeAllowed(dept, currentStatus, newStatus)` after the agreement is loaded. See "Department-specific action rules" under Navigation / permissions for the full table and the frontend mirror.
 - **`reasonCode` is required** in the request body whenever the new status is `SU`, `PT`, or `TM` (400 if missing). Not required/used for `NA`.
 - The reason is written to **exactly one** of `suCode` (status `SU`) or `canCode` (status `PT`/`TM`) — **the other field is always cleared to `null`** on every status change, including when reverting to `NA` (which clears both). This guarantees a status's reason field never shows a leftover value from a previous, unrelated status change (this was a real bug pattern found and fixed in this session — see git history / PT backfill work for the historical-data version of the same issue).
 - Invalid reason codes (not present in `SuReason`/`CancellationReason`) are caught as a Prisma FK violation (`P2003`) and returned as `400 { error: 'Invalid reason code' }` rather than crashing.
@@ -540,7 +560,8 @@ Reports use a separate per-user access model — independent of department permi
 
 ## MemberDetail conventions
 - **Spouse name** shown inside Personal Information card (no separate Spouse card); spouse IC not displayed.
-- **Change Status** is only on AgreementDetail, not MemberDetail.
+- **Change Status** is only on AgreementDetail, not MemberDetail. On AgreementDetail the "Change status" header button is hidden unless the user has at least one allowed transition (`allowedNewStatuses(user, acctClassify).length > 0`) — Finance/Credit/IT only.
+- **Edit** button (header) shows for `canEdit('MEMBERS')` (Member Services + IT). The `/members/:id/edit` route is additionally wrapped in `RequireEdit` (`components/RequirePermission.tsx`) so a non-editor hitting the URL directly is redirected back to the detail page.
 - **Agreements accordion**: agreement number is the hyperlink (no separate View button, no date shown). Agreements with `transferFlag='TT'` show the number as strikethrough grey — link disabled.
 - All text dropdowns (salutation, gender, race, marital status, nature of work) use uppercase option labels in MemberForm. Email fields do not auto-uppercase. Remarks field does not auto-uppercase.
 
