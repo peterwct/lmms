@@ -1,4 +1,11 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
+// Load the project-root .env regardless of cwd (the backend starts in backend/,
+// where there is no .env). override:true so the file is authoritative and a stale
+// shell DATABASE_URL can't silently take over. Must run before any other imports
+// that read process.env.
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
+
 import 'express-async-errors';
 import express, { Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
