@@ -19,7 +19,7 @@ const MAINTENANCE: PbsMenuItem[] = [
   { num: 1,  label: 'PBS Enquiry & Maintenance',      to: '/pbs/enquiry',      icon: <Search className="h-4 w-4" />, enabled: true },
   { num: 2,  label: 'Proforma Enquiry & Generation',  to: '/pbs/proforma',     icon: <FileText className="h-4 w-4" /> },
   { num: 3,  label: 'PBS Certificate Tracking',        to: '/pbs/tracking',     icon: <MapPin className="h-4 w-4" /> },
-  { num: 4,  label: 'Auto Transfer to Claim',          to: '/pbs/transfer',     icon: <ArrowRightLeft className="h-4 w-4" /> },
+  { num: 4,  label: 'Auto Transfer to Claim',          to: '/pbs/transfer',     icon: <ArrowRightLeft className="h-4 w-4" />, enabled: true },
 ];
 
 function buildReports(hasReport: (key: ReportKey) => boolean): PbsMenuItem[] {

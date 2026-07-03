@@ -4,7 +4,6 @@ import { ArrowLeft, Construction } from 'lucide-react';
 const LABELS: Record<string, string> = {
   '/pbs/proforma':     'Proforma Enquiry & Generation',
   '/pbs/tracking':     'PBS Certificate Tracking',
-  '/pbs/transfer':     'Auto Transfer to Claim',
   '/pbs/report':       'PBS Report',
   '/pbs/not-in-pbs':   'Not in PBS Report',
 };

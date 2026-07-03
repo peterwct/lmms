@@ -31,6 +31,7 @@ import { PbsPlaceholder } from './pages/pbs/PbsPlaceholder';
 import { PbsClaimReport } from './pages/pbs/PbsClaimReport';
 import { PbsNotInPbsReport } from './pages/pbs/PbsNotInPbsReport';
 import { PbsVarianceReport } from './pages/pbs/PbsVarianceReport';
+import { PbsAutoTransfer } from './pages/pbs/PbsAutoTransfer';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -71,7 +72,7 @@ export default function App() {
               <Route path="pbs/enquiry/:id"     element={<PbsEnquiryDetail />} />
               <Route path="pbs/proforma"         element={<PbsPlaceholder />} />
               <Route path="pbs/tracking"         element={<PbsPlaceholder />} />
-              <Route path="pbs/transfer"         element={<PbsPlaceholder />} />
+              <Route path="pbs/transfer"         element={<PbsAutoTransfer />} />
               <Route path="pbs/report"           element={<PbsPlaceholder />} />
               <Route path="pbs/variance"         element={<PbsVarianceReport />} />
               <Route path="pbs/claim-report"     element={<PbsClaimReport />} />
