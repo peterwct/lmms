@@ -22,6 +22,7 @@ lmms/
 │   ├── migrate-rci-enrol.ts # RCI enrollment data from rci_enrol.txt (updates Agreement.rciRefNo/rciNominee/rciEnrolDate/rciExpiryDate)
 │   ├── migrate-salesperson.ts  # Salesperson master from csp_mast.txt
 │   ├── migrate-su-pt-reasons.ts  # SU/PT reason backfill from su_trans.txt + pt_trans.txt
+│   ├── migrate-booking-entitlement.ts  # Booking entitlement nights used from booking_ent1.txt (LHC 03/15)
 │   └── migrations/          # Applied migration history
 ├── refresh-test-db.ps1      # Clears + re-imports all Informix data; use for UAT refreshes and live cutover
 ├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule, RciEnrol, SuPtReason)
@@ -184,6 +185,8 @@ Set-Item WSMan:\localhost\Client\TrustedHosts -Value "199.1.1.32" -Force  # trus
 7. (If not `-SkipFrontend`) builds frontend locally (`npm run build` in `frontend/`), copies `frontend/dist/` to the test server
 8. Remote: `pm2 stop` → `npm install` (if `-InstallPackages`) → `prisma migrate deploy` (if `-MigrateDb`) → `prisma generate` (if `-SchemaChanged`) → `pm2 delete` + `pm2 start backend\ecosystem.config.js --env production`
 
+> **`prisma migrate deploy` runs as the `postgres` superuser, not `lhb_app`.** Step 6a sets `$env:DATABASE_URL` to a `postgresql://postgres:...@localhost:5432/lhb_mms` URL (password from the same `Read-Host` prompt used for the GRANT step) before calling `migrate deploy`. This is required because `lhb_app` has only DML grants (no `CREATE`, and isn't the table owner), so any migration doing `CREATE TABLE` / adding a FK to a postgres-owned table / `ALTER`ing an existing table fails with `permission denied for schema public` (SQLSTATE 42501). If a migrate deploy ever fails mid-way it is recorded as failed and blocks future deploys (P3009) — clear it with `prisma migrate resolve --rolled-back <migration_name>` (run as postgres) before retrying.
+
 **PowerShell 5.1 script quirks** (already fixed in `deploy-test.ps1`, keep in mind for future edits):
 - Non-ASCII characters (`—`, `→`, etc.) in string literals cause parse errors — PowerShell 5.1 reads scripts as Windows-1252 by default; UTF-8 multi-byte sequences for those chars include `0x94` which maps to a smart-quote (`"`) and prematurely closes the string. Use only ASCII in string literals; non-ASCII is safe in comments.
 - Do not name a function parameter `$args` — it shadows PowerShell's built-in automatic variable and silently receives `$null` instead of the passed value.
@@ -223,10 +226,11 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table RciEnrol                    # RCI enrollment (updates rciRefNo/rciNominee/dates on Agreement)
 .\migrate-table.ps1 -Table SuPtReason                  # SU/PT reason backfill (suCode + canCode overwrite)
 .\migrate-table.ps1 -Table Salesperson                 # Salesperson master
+.\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15; truncates + reimports)
 .\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
 
-**Note:** After `-Table Agreement`, you must re-import dependent tables: `AmcSchedule`, `PbsScheme`, `PbsClaim`, `RciEnrol`.
+**Note:** After `-Table Agreement`, you must re-import dependent tables: `AmcSchedule`, `PbsScheme`, `PbsClaim`, `RciEnrol`, `BookingEntitlement`.
 
 ## Authentication
 
@@ -364,6 +368,16 @@ Unique on `[userId, reportKey]`. IT users bypass this table entirely — checked
 ### Salesperson
 Reference table from `csp_mast.txt`. Fields: `code` (unique), `name`, `branch`, `status`.
 
+### BookingEntitlement
+Normalized redesign of the wide Informix `booking_ent1` table (which had one column per agreement
+year). 177,164 rows from `booking_ent1.txt` — one row per (agreement, `yearSeq`) where usage is
+non-zero. Fields: `agreementId` (FK), `coCode`, `agreementNo`, `membershipNo`, `yearSeq` (1 = agreement's
+first year = `agreementDate` year), `nightsUsed` (`be_yearN`), `weekendUsed` (`be_wkN`).
+Unique: `[coCode, agreementNo, membershipNo, yearSeq]`. **LHC 03/15 only** (02/12 rows in the source are skipped).
+Each agreement year is entitled to **7 nights** (of which ≤1 may be a weekend night — weekend is
+*included in*, not added to, the 7). Balances (computed in `getAgreement`, natural-key matched, clamped ≥0):
+`nights = 7 − nightsUsed`, `weekend = 1 − weekendUsed`. See the Entitlement Balance card in Agreement Detail.
+
 ### State
 39 records from `state.txt`. Fields: `code` (PK, 2-digit), `name`. Served via `GET /api/states`.
 
@@ -386,6 +400,8 @@ Source tables and their column counts (verified from actual export files):
 | `csp_mast.txt` | Salesperson master | 4 cols pipe-delimited | csp_code[0], csp_name[1], csp_branch[2], csp_status[3] |
 | `su_mast.txt` | SuReason master | 3 cols pipe-delimited | code[0], description[1] |
 | `su_trans.txt` / `pt_trans.txt` | SU/PT reason backfill | 4 cols pipe-delimited | membershipNo[0], agreementNo[1], code[2]. `su_trans.txt` → `Agreement.suCode` (only if current `acctClassify=SU`); `pt_trans.txt` → `Agreement.canCode` (only if current `acctClassify=PT`, **overwrites** any existing value — pt_trans.txt is authoritative). Match key: `membershipNo + agreementNo` (NOT `agreementNo` alone — see "FK vs natural key" below, agreementNo is duplicated across TT/TF transfer pairs). Updates existing Agreement records (no separate trans table), same pattern as `rci_enrol.txt`. `pt_mast.txt` is **not used** — every code in `pt_trans.txt` (numeric, 08-45) already exists in `CancellationReason`, while `pt_mast.txt`'s own numbering (00-17) is a stale/superseded lookup the live data doesn't reference. |
+
+| `booking_ent1.txt` | Booking entitlement (nights used) | 207 fields pipe-delimited | coCode[0], **membershipNo[1]** (long string e.g. `00002-KL-Y-0001/M/I`), **agreementNo[2]** (short e.g. `00457`) — note the natural-key columns are ordered membershipNo-then-agreementNo, the reverse of intuition. be_year1..50 = c[3..52] (nights used), be_wk1..50 = c[153..202] (weekend used). Blocks 2 (c[53..102]) & 3 (c[103..152]) and trailer (c[203..205]) are other categories, ignored. Only coCode 03/15 imported → `BookingEntitlement` (one row per non-zero year). See `prisma/migrate-booking-entitlement.ts`. |
 
 Informix date format is `dd-mm-yyyy` — the `d()` helper in migration scripts handles this.
 
@@ -542,11 +558,17 @@ Reports use a separate per-user access model — independent of department permi
    branches on `acctClassify`: `SU` shows `suCode`+`SuReason` under "Suspension Reason", `PT` shows
    `canCode`+`CancellationReason` under "Pending Termination Reason", `TM` shows the same fields under
    "Termination / Cancellation reason", `NA` hides the row entirely)
-2. Nominees (up to 3 — salutation, full name, name card, designation, IC old/new, home tel, mobile, email, address; card button reads "Add nominees" when none exist yet, "Edit nominees" once at least one is on record; edit modal has 3 columns, one per nominee, with the same field set for all three even though nominee 3 historically only carries 4 fields from `si_entitlement.txt`'s `e_loc_*` columns). **Add/Edit button shown to Member Services + IT only** (`canEditNomineesRci()`).
-3. RCI Information (always rendered, even when empty, so it can be added — RCI ID, RCI Nominee, Joint Date, Expiry Date; data originally from `rci_enrol.txt` not si_entitlement, but editable via `PUT /api/agreements/:id`; card button reads "Add RCI info" when all 4 fields are empty, "Edit RCI info" otherwise). **Add/Edit button shown to Member Services + IT only** (`canEditNomineesRci()`).
-4. Annual Maintenance Charges (AMC Billed, Total AMC, AMC Next Due)
-5. Zurich Payback Scheme (if exists — cert no, scheme type, payback date, claimed badge)
-6. Invoice History
+2. Entitlement Balance (**LHC 03/15 only**, read-only) — remaining un-utilized nights per year in a
+   7-year window anchored to the current calendar year: `Acc` = year−1, `Curr` = year, `Ad1..Ad5` = next 5.
+   Two rows (Year / Bal): weekday-group `nights` = `7 − nightsUsed`, Weekends-group = `1 − weekendUsed`,
+   both clamped ≥0; years past the agreement's expiry (`endDate ?? agreementDate + termYears`) show 0.
+   `entitlementBalance` array computed server-side in `getAgreement()` from `BookingEntitlement`
+   (natural-key matched). Card hidden for CP (02) and when the array is null.
+3. Nominees (up to 3 — salutation, full name, name card, designation, IC old/new, home tel, mobile, email, address; card button reads "Add nominees" when none exist yet, "Edit nominees" once at least one is on record; edit modal has 3 columns, one per nominee, with the same field set for all three even though nominee 3 historically only carries 4 fields from `si_entitlement.txt`'s `e_loc_*` columns). **Add/Edit button shown to Member Services + IT only** (`canEditNomineesRci()`).
+4. RCI Information (always rendered, even when empty, so it can be added — RCI ID, RCI Nominee, Joint Date, Expiry Date; data originally from `rci_enrol.txt` not si_entitlement, but editable via `PUT /api/agreements/:id`; card button reads "Add RCI info" when all 4 fields are empty, "Edit RCI info" otherwise). **Add/Edit button shown to Member Services + IT only** (`canEditNomineesRci()`).
+5. Annual Maintenance Charges (AMC Billed, Total AMC, AMC Next Due)
+6. Zurich Payback Scheme (if exists — cert no, scheme type, payback date, claimed badge)
+7. Invoice History
 
 > AMC and PBS are fetched by `coCode + agreementNo` in `getAgreement()` — NOT via the Prisma FK (`agreementId`). This is intentional: the Informix source data can have multiple agreements sharing the same `agreementNo + coCode` (different members), so matching by natural key ensures both agreements resolve to the same PBS/AMC record rather than relying on whichever UUID the migration happened to link.
 

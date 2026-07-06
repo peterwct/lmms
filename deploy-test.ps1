@@ -203,11 +203,19 @@ if ($InstallPackages) {
 if ($MigrateDb) {
     Step "6a. Running prisma migrate deploy ..."
     Remote "prisma migrate deploy" {
-        param($p)
+        param($p, $pw)
         Set-Location $p
+        # Migrations MUST run as the postgres superuser (schema owner). lhb_app has
+        # only DML grants (no CREATE, not table owner), so CREATE TABLE / FK / ALTER
+        # steps fail with 'permission denied for schema public' (SQLSTATE 42501).
+        # Build a postgres DATABASE_URL from the password already prompted for the
+        # GRANT step; process env overrides any lhb_app value in a server .env.
+        $plainPw = (New-Object System.Management.Automation.PSCredential('postgres', $pw)).GetNetworkCredential().Password
+        $encPw = [uri]::EscapeDataString($plainPw)
+        $env:DATABASE_URL = "postgresql://postgres:$encPw@localhost:5432/lhb_mms"
         npx prisma migrate deploy 2>$null
         if ($LASTEXITCODE -ne 0) { throw "prisma migrate deploy failed (exit $LASTEXITCODE)" }
-    } @($RemotePath)
+    } @($RemotePath, $pgPassword)
 
     Step "6a2. Granting lhb_app permissions on new tables ..."
     Remote "psql GRANT" {

@@ -280,6 +280,54 @@ export function AgreementDetail() {
         </CardBody>
       </Card>
 
+      {/* ── Entitlement Balance (LHC 03/15 only) ────────────────── */}
+      {['03', '15'].includes(agmt.coCode) && agmt.entitlementBalance && (
+        <Card>
+          <CardHeader>
+            <p className="font-semibold text-gray-700">Entitlement Balance</p>
+          </CardHeader>
+          <CardBody>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs text-center border-collapse">
+                <thead>
+                  <tr className="bg-blue-600 text-white">
+                    <th className="px-2 py-1.5 border border-blue-500" />
+                    {agmt.entitlementBalance.map(c => (
+                      <th key={`h-${c.label}`} className="px-2 py-1.5 border border-blue-500 font-medium whitespace-nowrap">
+                        {c.label}
+                      </th>
+                    ))}
+                    <th className="px-2 py-1.5 border border-blue-500 font-medium" colSpan={agmt.entitlementBalance.length}>
+                      Weekends
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th className="px-2 py-1.5 border border-gray-200 bg-teal-500 text-white font-medium">Year</th>
+                    {agmt.entitlementBalance.map(c => (
+                      <td key={`ny-${c.label}`} className="px-2 py-1 border border-gray-200">{c.year}</td>
+                    ))}
+                    {agmt.entitlementBalance.map(c => (
+                      <td key={`wy-${c.label}`} className="px-2 py-1 border border-gray-200">{c.year}</td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <th className="px-2 py-1.5 border border-gray-200 bg-teal-500 text-white font-medium">Bal</th>
+                    {agmt.entitlementBalance.map(c => (
+                      <td key={`nb-${c.label}`} className="px-2 py-1 border border-gray-200 font-medium">{c.nights}</td>
+                    ))}
+                    {agmt.entitlementBalance.map(c => (
+                      <td key={`wb-${c.label}`} className="px-2 py-1 border border-gray-200 font-medium">{c.weekend}</td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
       {/* ── Nominees ────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="flex items-center justify-between">

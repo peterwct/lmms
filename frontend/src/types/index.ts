@@ -272,6 +272,14 @@ export interface Agreement {
   amcSchedule?: AmcSchedule;
   amcInvoices?: AmcInvoice[];
   pbsScheme?: PbsScheme;
+  entitlementBalance?: EntitlementBalance[] | null;
+}
+
+export interface EntitlementBalance {
+  label: string;   // Acc | Curr | Ad1..Ad5
+  year: number;
+  nights: number;  // 7 - nights used (clamped at 0)
+  weekend: number; // 1 - weekend used (clamped at 0)
 }
 
 export interface AmcPrice {

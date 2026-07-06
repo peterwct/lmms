@@ -48,7 +48,7 @@ export async function listAgreements(req: Request, res: Response): Promise<void>
   const { skip, take, page, limit } = parsePagination(req.query as Record<string, unknown>);
   const {
     memberId, coCode, acctClassify, branchCode, q,
-    membershipNo, agreementNo, name, icNew, icOld, jaName, spouseName,
+    membershipNo, agreementNo, name, icNew, icOld, jaName, spouseName, nomineeName,
     sortBy, sortDir,
   } = req.query as Record<string, string>;
 
@@ -76,6 +76,7 @@ export async function listAgreements(req: Request, res: Response): Promise<void>
   if (icOld?.trim())        and.push({ member: { icOld:    { contains: icOld.trim(), mode: 'insensitive' } } });
   if (jaName?.trim())       and.push({ member: { jaName:   { contains: jaName.trim(), mode: 'insensitive' } } });
   if (spouseName?.trim())   and.push({ member: { spouseName: { contains: spouseName.trim(), mode: 'insensitive' } } });
+  if (nomineeName?.trim())  and.push({ nominees: { some: { fullName: { contains: nomineeName.trim(), mode: 'insensitive' } } } });
 
   const where = and.length ? { AND: and } : {};
 
@@ -143,6 +144,44 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
     }),
   ]);
 
+  // Entitlement Balance (LHC 03/15 only): remaining un-utilized nights per year.
+  // Each year within the term is entitled to 7 nights (of which <=1 may be a weekend
+  // night). Usage is stored in BookingEntitlement, matched by natural key (coCode +
+  // membershipNo + agreementNo). Displayed as a 7-year window anchored to the current
+  // calendar year: Acc = year-1, Curr = year, Ad1..Ad5 = year+1..+5. Years past the
+  // agreement's expiry show 0.
+  let entitlementBalance:
+    | { label: string; year: number; nights: number; weekend: number }[]
+    | null = null;
+  if (agreement.coCode === '03' || agreement.coCode === '15') {
+    const usage = await prisma.bookingEntitlement.findMany({
+      where: {
+        coCode: agreement.coCode,
+        membershipNo: agreement.membershipNo,
+        agreementNo: agreement.agreementNo,
+      },
+      select: { yearSeq: true, nightsUsed: true, weekendUsed: true },
+    });
+    const usedBySeq = new Map(usage.map(u => [u.yearSeq, u]));
+    const startYear = agreement.agreementDate.getFullYear();
+    const expiryYear = agreement.endDate
+      ? agreement.endDate.getFullYear()
+      : startYear + agreement.termYears;
+    const nowYear = new Date().getFullYear();
+    const labels = ['Acc', 'Curr', 'Ad1', 'Ad2', 'Ad3', 'Ad4', 'Ad5'];
+    entitlementBalance = labels.map((label, i) => {
+      const year = nowYear - 1 + i; // Acc = nowYear-1 ... Ad5 = nowYear+5
+      const inTerm = year >= startYear && year <= expiryYear;
+      const u = usedBySeq.get(year - startYear + 1);
+      return {
+        label,
+        year,
+        nights: inTerm ? Math.max(0, 7 - (u?.nightsUsed ?? 0)) : 0,
+        weekend: inTerm ? Math.max(0, 1 - (u?.weekendUsed ?? 0)) : 0,
+      };
+    });
+  }
+
   let salespersonName: string | null = null;
   if (agreement.salespersonCode) {
     const sp = await prisma.salesperson.findUnique({ where: { code: agreement.salespersonCode }, select: { name: true } });
@@ -164,7 +203,7 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
     transferFromMemberId = m?.id ?? null;
   }
 
-  res.json({ data: { ...agreement, amcSchedule: amcSchedule ?? null, pbsScheme: pbsScheme ?? null, salespersonName, transferToMemberName, transferFromMemberName, transferToMemberId, transferFromMemberId } });
+  res.json({ data: { ...agreement, amcSchedule: amcSchedule ?? null, pbsScheme: pbsScheme ?? null, entitlementBalance, salespersonName, transferToMemberName, transferFromMemberName, transferToMemberId, transferFromMemberId } });
 }
 
 export async function updateAgreement(req: Request, res: Response): Promise<void> {

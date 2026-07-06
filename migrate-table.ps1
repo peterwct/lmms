@@ -28,12 +28,13 @@
     .\migrate-table.ps1 -Table Agreement
     .\migrate-table.ps1 -Table PbsScheme -DryRun
     .\migrate-table.ps1 -Table SuPtReason                  # SU/PT reason backfill (suCode + canCode overwrite)
+    .\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15 only)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -146,6 +147,11 @@ $TableConfig = @{
             'prisma/seed-su-reasons.ts',
             'prisma/migrate-su-pt-reasons.ts'
         )
+    }
+    BookingEntitlement = @{
+        TruncateSql = @('TRUNCATE "BookingEntitlement";')
+        RequiredFiles = @('booking_ent1.txt')
+        Scripts = @('prisma/migrate-booking-entitlement.ts')
     }
 }
 

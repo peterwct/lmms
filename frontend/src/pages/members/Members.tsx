@@ -17,9 +17,9 @@ type SortDir   = 'asc' | 'desc';
 
 interface SearchState {
   coCode: string; membershipNo: string; agreementNo: string; name: string; icNew: string;
-  icOld: string; jaName: string; spouseName: string;
+  icOld: string; jaName: string; spouseName: string; nomineeName: string;
 }
-const EMPTY: SearchState = { coCode: '', membershipNo: '', agreementNo: '', name: '', icNew: '', icOld: '', jaName: '', spouseName: '' };
+const EMPTY: SearchState = { coCode: '', membershipNo: '', agreementNo: '', name: '', icNew: '', icOld: '', jaName: '', spouseName: '', nomineeName: '' };
 
 function SortHeader({ label, field, sortBy, sortDir, onSort }: {
   label: string; field: SortField;
@@ -53,6 +53,7 @@ export function Members() {
     icOld:        sp.get('icOld')        ?? '',
     jaName:       sp.get('jaName')       ?? '',
     spouseName:   sp.get('spouseName')   ?? '',
+    nomineeName:  sp.get('nomineeName')  ?? '',
   };
 
   // Draft is local — form inputs; initialised from URL so form matches on Back
@@ -65,6 +66,7 @@ export function Members() {
     icOld:        sp.get('icOld')        ?? '',
     jaName:       sp.get('jaName')       ?? '',
     spouseName:   sp.get('spouseName')   ?? '',
+    nomineeName:  sp.get('nomineeName')  ?? '',
   }));
 
   const set = (k: keyof SearchState) =>
@@ -82,6 +84,7 @@ export function Members() {
     if (draft.icOld)        p.icOld        = draft.icOld;
     if (draft.jaName)       p.jaName       = draft.jaName;
     if (draft.spouseName)   p.spouseName   = draft.spouseName;
+    if (draft.nomineeName)  p.nomineeName  = draft.nomineeName;
     setSp(p);
   };
 
@@ -118,6 +121,7 @@ export function Members() {
       icOld:        applied.icOld        || undefined,
       jaName:       applied.jaName       || undefined,
       spouseName:   applied.spouseName   || undefined,
+      nomineeName:  applied.nomineeName  || undefined,
       sortBy:       sortBy               || undefined,
       sortDir,
       page, limit: 20,
@@ -151,6 +155,7 @@ export function Members() {
               ['icOld',        'Old IC / Passport','Old IC or passport no.'],
               ['jaName',       'Joint Applicant',  'Joint applicant name'],
               ['spouseName',   'Spouse Name',      'Spouse name'],
+              ['nomineeName',  'Nominee Name',     'Nominee full name or partial'],
             ] as [keyof SearchState, string, string][]).map(([k, lbl, ph]) => (
               <div key={k}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{lbl}</label>
