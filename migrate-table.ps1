@@ -29,12 +29,13 @@
     .\migrate-table.ps1 -Table PbsScheme -DryRun
     .\migrate-table.ps1 -Table SuPtReason                  # SU/PT reason backfill (suCode + canCode overwrite)
     .\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15 only)
+    .\migrate-table.ps1 -Table CpBookingEntitlement        # CP point balances per year (CP 02 only; truncates + reimports)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -152,6 +153,11 @@ $TableConfig = @{
         TruncateSql = @('TRUNCATE "BookingEntitlement";')
         RequiredFiles = @('booking_ent1.txt')
         Scripts = @('prisma/migrate-booking-entitlement.ts')
+    }
+    CpBookingEntitlement = @{
+        TruncateSql = @('TRUNCATE "CpBookingEntitlement";')
+        RequiredFiles = @('ps_bookent1.txt')
+        Scripts = @('prisma/migrate-cp-booking-entitlement.ts')
     }
 }
 

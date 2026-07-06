@@ -84,6 +84,25 @@ model BookingEntitlement {
   @@index([coCode, agreementNo, membershipNo])
 }
 
+model CpBookingEntitlement {
+  id           String   @id
+  agreementId  String?
+  coCode       String
+  membershipNo String
+  agreementNo  String
+  useYear      DateTime
+  totalPts     Int      @default(0)
+  curUsePts    Int      @default(0)
+  advUsePts    Int      @default(0)
+  acrusePts    Int      @default(0)
+  balPts       Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+
+  @@unique([coCode, membershipNo, agreementNo, useYear])
+  @@index([coCode, membershipNo, agreementNo])
+}
+
 model AmcInvoice {
   id              String       @id
   scheduleId      String

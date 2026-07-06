@@ -210,6 +210,60 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
     entitlementBalance = cols;
   }
 
+  // CP Entitlement Balance (coCode 02 only): point balances per membership year, ported
+  // from the Informix SP get_entitlement_balance_CP. Unlike LHC, CP stores the balance
+  // points directly (balPts) per anniversary-dated year row, so this is a lookup not a
+  // subtraction. ref = the row with the greatest useYear <= today (current membership
+  // year); Accrued = prior year balance capped at half the annual entitlement; Adv1..5 =
+  // future year balances (blank when the row is missing, e.g. after expiry). Matched by
+  // natural key (coCode + membershipNo + agreementNo). Hidden for TM.
+  let cpEntitlementBalance:
+    | { label: string; year: number; bal: number | null }[]
+    | null = null;
+  if (agreement.coCode === '02' && agreement.acctClassify !== 'TM') {
+    const rows = await prisma.cpBookingEntitlement.findMany({
+      where: {
+        coCode: '02',
+        membershipNo: agreement.membershipNo,
+        agreementNo: agreement.agreementNo,
+      },
+      select: { useYear: true, totalPts: true, acrusePts: true, balPts: true },
+    });
+    if (rows.length) {
+      // Key by anniversary calendar year (all rows share the same month/day anniversary).
+      const byYear = new Map<number, { totalPts: number; acrusePts: number; balPts: number }>();
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      let refYear: number | null = null;
+      for (const r of rows) {
+        const y = r.useYear.getFullYear();
+        byYear.set(y, { totalPts: r.totalPts, acrusePts: r.acrusePts, balPts: r.balPts });
+        // ref = greatest useYear <= today (date-only, timezone-normalized like LHC above).
+        const uy = new Date(r.useYear.getFullYear(), r.useYear.getMonth(), r.useYear.getDate());
+        if (uy <= today && (refYear === null || y > refYear)) refYear = y;
+      }
+      if (refYear !== null) {
+        const ref = byYear.get(refYear)!;
+        const maxAccrue = Math.floor(ref.totalPts / 2); // SP: max accrue = half the annual entitlement
+        // Accrued = prior year balance, capped so prior.acrusePts + accrued <= maxAccrue.
+        const prior = byYear.get(refYear - 1);
+        let accrued: number | null = null;
+        if (prior) {
+          accrued = prior.balPts;
+          if (prior.acrusePts + accrued > maxAccrue) accrued = maxAccrue - prior.acrusePts;
+        }
+        const labels = ['Acc', 'Curr', 'Ad1', 'Ad2', 'Ad3', 'Ad4', 'Ad5'];
+        cpEntitlementBalance = labels.map((label, i) => {
+          const year = refYear! + (i - 1); // Acc = ref-1, Curr = ref, Ad1..Ad5 = ref+1..+5
+          // Accrued is the capped carry-forward; every other column is the raw year balance
+          // (blank/null when no source row exists — e.g. years past expiry).
+          const bal = i === 0 ? accrued : byYear.has(year) ? byYear.get(year)!.balPts : null;
+          return { label, year, bal };
+        });
+      }
+    }
+  }
+
   let salespersonName: string | null = null;
   if (agreement.salespersonCode) {
     const sp = await prisma.salesperson.findUnique({ where: { code: agreement.salespersonCode }, select: { name: true } });
@@ -231,7 +285,7 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
     transferFromMemberId = m?.id ?? null;
   }
 
-  res.json({ data: { ...agreement, amcSchedule: amcSchedule ?? null, pbsScheme: pbsScheme ?? null, entitlementBalance, salespersonName, transferToMemberName, transferFromMemberName, transferToMemberId, transferFromMemberId } });
+  res.json({ data: { ...agreement, amcSchedule: amcSchedule ?? null, pbsScheme: pbsScheme ?? null, entitlementBalance, cpEntitlementBalance, salespersonName, transferToMemberName, transferFromMemberName, transferToMemberId, transferFromMemberId } });
 }
 
 export async function updateAgreement(req: Request, res: Response): Promise<void> {

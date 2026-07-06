@@ -209,7 +209,7 @@ $env:DATABASE_URL = "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 .\refresh-test-db.ps1 -DryRun
 ```
 
-The script: truncates PbsClaim + PbsScheme + Member CASCADE → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → re-grants lhb_app permissions → prints final row counts.
+The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + Member CASCADE → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → re-grants lhb_app permissions → prints final row counts.
 
 ### Migrating a single table
 
@@ -227,6 +227,7 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table SuPtReason                  # SU/PT reason backfill (suCode + canCode overwrite)
 .\migrate-table.ps1 -Table Salesperson                 # Salesperson master
 .\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15; truncates + reimports)
+.\migrate-table.ps1 -Table CpBookingEntitlement        # CP point balances per year (CP 02; truncates + reimports)
 .\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
 
@@ -378,6 +379,25 @@ Each agreement year is entitled to **7 nights** (of which ≤1 may be a weekend 
 *included in*, not added to, the 7). Balances (computed in `getAgreement`, natural-key matched, clamped ≥0):
 `nights = 7 − nightsUsed`, `weekend = 1 − weekendUsed`. See the Entitlement Balance card in Agreement Detail.
 
+### CpBookingEntitlement
+CP (coCode `02`) point-based entitlement, one row per (agreement, membership year). 279,062 rows
+from `ps_bookent1.txt`. **Stores the balance points directly** (`balPts` = `psb_balpts`) per
+anniversary-dated year — unlike `BookingEntitlement` which stores nights *used*, so the CP card is
+a lookup, not a subtraction. Fields: `coCode` (always `02`), `membershipNo` (e.g. `M00020/I`),
+`agreementNo` (e.g. `P00020`), `useYear` (**DateTime** — the anniversary date of the membership year),
+`totalPts`, `curUsePts`, `advUsePts`, `acrusePts`, `balPts`. Unique: `[coCode, membershipNo, agreementNo, useYear]`.
+`agreementId` is nullable and **left null** — the read path matches by natural key
+(`coCode + membershipNo + agreementNo`), not the FK. **CP 02 only.**
+
+Balance logic (`getAgreement`, ported from the Informix SP `get_entitlement_balance_CP`): `ref` = the
+row with the greatest `useYear ≤ today` (the current membership year); **Curr** = `ref.balPts`, **Accrued** =
+prior year's `balPts` **capped** so `prior.acrusePts + accrued ≤ floor(ref.totalPts / 2)` (max accrue =
+half the annual entitlement; unused points forfeited after the next anniversary), **Adv1..5** = `balPts`
+of `refYear + 1..5` (**null → blank** when no source row exists, e.g. past expiry). Header years:
+Acc = `refYear − 1`, Curr = `refYear`, Ad1..Ad5 = `refYear + 1..5`. Returned as
+`cpEntitlementBalance: { label, year, bal: number|null }[]`. Card hidden for CP `TM` and when no `ref`
+row exists. See the CP Entitlement Balance card in Agreement Detail.
+
 ### State
 39 records from `state.txt`. Fields: `code` (PK, 2-digit), `name`. Served via `GET /api/states`.
 
@@ -402,6 +422,8 @@ Source tables and their column counts (verified from actual export files):
 | `su_trans.txt` / `pt_trans.txt` | SU/PT reason backfill | 4 cols pipe-delimited | membershipNo[0], agreementNo[1], code[2]. `su_trans.txt` → `Agreement.suCode` (only if current `acctClassify=SU`); `pt_trans.txt` → `Agreement.canCode` (only if current `acctClassify=PT`, **overwrites** any existing value — pt_trans.txt is authoritative). Match key: `membershipNo + agreementNo` (NOT `agreementNo` alone — see "FK vs natural key" below, agreementNo is duplicated across TT/TF transfer pairs). Updates existing Agreement records (no separate trans table), same pattern as `rci_enrol.txt`. `pt_mast.txt` is **not used** — every code in `pt_trans.txt` (numeric, 08-45) already exists in `CancellationReason`, while `pt_mast.txt`'s own numbering (00-17) is a stale/superseded lookup the live data doesn't reference. |
 
 | `booking_ent1.txt` | Booking entitlement (nights used) | 207 fields pipe-delimited | coCode[0], **membershipNo[1]** (long string e.g. `00002-KL-Y-0001/M/I`), **agreementNo[2]** (short e.g. `00457`) — note the natural-key columns are ordered membershipNo-then-agreementNo, the reverse of intuition. be_year1..50 = c[3..52] (nights used), be_wk1..50 = c[153..202] (weekend used). Blocks 2 (c[53..102]) & 3 (c[103..152]) and trailer (c[203..205]) are other categories, ignored. Only coCode 03/15 imported → `BookingEntitlement` (one row per non-zero year). See `prisma/migrate-booking-entitlement.ts`. |
+
+| `ps_bookent1.txt` | CP booking entitlement (point balances) | 9 cols + trailer, pipe-delimited | psb_cocode[0] (always `02`), psb_memno[1] (e.g. `M00020/I`), psb_agmtno[2] (e.g. `P00020`), psb_useyear[3] (`dd-mm-yyyy` anniversary date), psb_totalpts[4], psb_curusepts[5], psb_advusepts[6], psb_acrusepts[7], **psb_balpts[8]** (balance points — the value the CP card displays). **All rows** imported (a fully-unused future year `balPts` and terminal 0-balance rows are both meaningful) → `CpBookingEntitlement`. `agreementId` left null (natural-key read path). Schema verified in `ps_bookent1.sql`. See `prisma/migrate-cp-booking-entitlement.ts`. |
 
 Informix date format is `dd-mm-yyyy` — the `d()` helper in migration scripts handles this.
 
@@ -574,6 +596,16 @@ Reports use a separate per-user access model — independent of department permi
    nights (0 ⇒ 0) for Acc + Curr only. `entitlementBalance` computed server-side in `getAgreement()` from
    `BookingEntitlement` (natural-key matched). Card hidden for CP (02), for **terminated (`acctClassify='TM'`)**
    agreements, and when the array is null (`getAgreement` returns `entitlementBalance: null` in those cases).
+2b. CP Entitlement Balance (**CP 02 only**, read-only) — point balances per membership year, **ported from
+   the Informix SP `get_entitlement_balance_CP`**. Unlike LHC, CP stores the balance points directly
+   (`CpBookingEntitlement.balPts`) per anniversary-dated `useYear`, so this is a lookup not a subtraction.
+   `ref` = the row with the greatest `useYear ≤ today` (current membership year); **Curr** = `ref.balPts`,
+   **Acc** = prior year `balPts` capped so `prior.acrusePts + acc ≤ floor(ref.totalPts / 2)` (max accrue =
+   half the annual entitlement), **Ad1..5** = `balPts` of `refYear+1..5` (**blank** when the source row is
+   missing — e.g. past expiry, like `P00020` Ad5 2031). Header years: Acc = `refYear−1`, Curr = `refYear`,
+   Ad1..Ad5 = `refYear+1..5`. Two rows (Year / Bal). `cpEntitlementBalance` computed server-side in
+   `getAgreement()` (natural-key matched: `coCode+membershipNo+agreementNo`). Card hidden for LHC (03/15),
+   for **terminated (`acctClassify='TM'`)** agreements, and when no `ref` row exists (`cpEntitlementBalance: null`).
 3. Nominees (up to 3 — salutation, full name, name card, designation, IC old/new, home tel, mobile, email, address; card button reads "Add nominees" when none exist yet, "Edit nominees" once at least one is on record; edit modal has 3 columns, one per nominee, with the same field set for all three even though nominee 3 historically only carries 4 fields from `si_entitlement.txt`'s `e_loc_*` columns). **Add/Edit button shown to Member Services + IT only** (`canEditNomineesRci()`).
 4. RCI Information (always rendered, even when empty, so it can be added — RCI ID, RCI Nominee, Joint Date, Expiry Date; data originally from `rci_enrol.txt` not si_entitlement, but editable via `PUT /api/agreements/:id`; card button reads "Add RCI info" when all 4 fields are empty, "Edit RCI info" otherwise). **Add/Edit button shown to Member Services + IT only** (`canEditNomineesRci()`).
 5. Annual Maintenance Charges (AMC Billed, Total AMC, AMC Next Due)

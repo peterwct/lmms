@@ -273,6 +273,7 @@ export interface Agreement {
   amcInvoices?: AmcInvoice[];
   pbsScheme?: PbsScheme;
   entitlementBalance?: EntitlementBalance[] | null;
+  cpEntitlementBalance?: CpEntitlementBalance[] | null;
 }
 
 export interface EntitlementBalance {
@@ -280,6 +281,12 @@ export interface EntitlementBalance {
   year: number;
   nights: number;  // 7 - nights used (clamped at 0)
   weekend: number; // 1 - weekend used (clamped at 0)
+}
+
+export interface CpEntitlementBalance {
+  label: string;      // Acc | Curr | Ad1..Ad5
+  year: number;
+  bal: number | null; // point balance; null => blank cell (no source row / past expiry)
 }
 
 export interface AmcPrice {
