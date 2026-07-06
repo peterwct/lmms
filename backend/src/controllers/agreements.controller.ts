@@ -144,16 +144,18 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
     }),
   ]);
 
-  // Entitlement Balance (LHC 03/15 only): remaining un-utilized nights per year.
-  // Each year within the term is entitled to 7 nights (of which <=1 may be a weekend
-  // night). Usage is stored in BookingEntitlement, matched by natural key (coCode +
-  // membershipNo + agreementNo). Displayed as a 7-year window anchored to the current
-  // calendar year: Acc = year-1, Curr = year, Ad1..Ad5 = year+1..+5. Years past the
-  // agreement's expiry show 0.
+  // Entitlement Balance (LHC 03/15 only): remaining un-utilized nights per membership
+  // year, ported from the Informix SP get_entitlement_balance. Each membership year is
+  // entitled to 7 nights (of which <=1 may be a weekend night). The be_year/be_wk column
+  // feeding each display column is chosen by MEMBERSHIP year (anniversary-adjusted using
+  // the agreement's expiry month/day), NOT by calendar-year offset. Column headers stay a
+  // current-calendar-year window (Acc = year-1, Curr = year, Ad1..Ad5 = year+1..+5).
+  // Usage matched by natural key (coCode + membershipNo + agreementNo).
+  // Terminated (TM) agreements never show the card — the entitlement no longer applies.
   let entitlementBalance:
     | { label: string; year: number; nights: number; weekend: number }[]
     | null = null;
-  if (agreement.coCode === '03' || agreement.coCode === '15') {
+  if ((agreement.coCode === '03' || agreement.coCode === '15') && agreement.acctClassify !== 'TM') {
     const usage = await prisma.bookingEntitlement.findMany({
       where: {
         coCode: agreement.coCode,
@@ -163,23 +165,49 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
       select: { yearSeq: true, nightsUsed: true, weekendUsed: true },
     });
     const usedBySeq = new Map(usage.map(u => [u.yearSeq, u]));
-    const startYear = agreement.agreementDate.getFullYear();
-    const expiryYear = agreement.endDate
-      ? agreement.endDate.getFullYear()
-      : startYear + agreement.termYears;
-    const nowYear = new Date().getFullYear();
+
+    const agmtYear = agreement.agreementDate.getFullYear();
+    const rawExpiry = agreement.endDate
+      ? agreement.endDate
+      : new Date(agmtYear + agreement.termYears, agreement.agreementDate.getMonth(), agreement.agreementDate.getDate());
+    // Normalize to local date-only so day comparisons don't skew across timezones.
+    const expiry = new Date(rawExpiry.getFullYear(), rawExpiry.getMonth(), rawExpiry.getDate());
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const addYears = (d: Date, n: number) => new Date(d.getFullYear() + n, d.getMonth(), d.getDate());
+
+    // SP index rule: the membership year currently in progress is decided by whether this
+    // year's anniversary (expiry month/day) has passed; accrueIdx = that current index - 1.
+    const passed =
+      today.getMonth() > expiry.getMonth() ||
+      (today.getMonth() === expiry.getMonth() && today.getDate() >= expiry.getDate());
+    const accrueIdx = passed ? today.getFullYear() - agmtYear : today.getFullYear() - agmtYear - 1;
+
     const labels = ['Acc', 'Curr', 'Ad1', 'Ad2', 'Ad3', 'Ad4', 'Ad5'];
-    entitlementBalance = labels.map((label, i) => {
-      const year = nowYear - 1 + i; // Acc = nowYear-1 ... Ad5 = nowYear+5
-      const inTerm = year >= startYear && year <= expiryYear;
-      const u = usedBySeq.get(year - startYear + 1);
-      return {
-        label,
-        year,
-        nights: inTerm ? Math.max(0, 7 - (u?.nightsUsed ?? 0)) : 0,
-        weekend: inTerm ? Math.max(0, 1 - (u?.weekendUsed ?? 0)) : 0,
-      };
+    const cols = labels.map((label, i) => {
+      const seq = accrueIdx + i; // Acc = accrueIdx, Curr = +1, ... Ad5 = +6
+      const u = usedBySeq.get(seq); // seq < 1 or missing => 0 used
+      let nights = Math.max(0, 7 - (u?.nightsUsed ?? 0));
+      let weekend = Math.max(0, 1 - (u?.weekendUsed ?? 0));
+      // Expiry zeroing (SP): Current (offset 0) .. Ad5 (offset 5) become 0 once the
+      // agreement expires on/before today + offset years. Accrue (offset -1) is NEVER
+      // zeroed: unused nights carry forward 1 year and are forfeited only after the next
+      // anniversary, so last year's accrued balance stays claimable post-expiry.
+      const offset = i - 1;
+      if (offset >= 0 && expiry <= addYears(today, offset)) {
+        nights = 0;
+        weekend = 0;
+      }
+      // Header year = the calendar year the membership period begins (agmtYear + seq - 1).
+      // For anniversary-passed agreements this equals the current-year window; for agreements
+      // whose anniversary is still ahead this year it is one lower (e.g. 75018: Curr = 2025).
+      return { label, year: agmtYear + seq - 1, nights, weekend };
     });
+    // SP: weekend follows nights for Accrue + Current only (nights 0 => weekend 0).
+    if (cols[0].nights === 0) cols[0].weekend = 0;
+    if (cols[1].nights === 0) cols[1].weekend = 0;
+
+    entitlementBalance = cols;
   }
 
   let salespersonName: string | null = null;

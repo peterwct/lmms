@@ -558,12 +558,22 @@ Reports use a separate per-user access model — independent of department permi
    branches on `acctClassify`: `SU` shows `suCode`+`SuReason` under "Suspension Reason", `PT` shows
    `canCode`+`CancellationReason` under "Pending Termination Reason", `TM` shows the same fields under
    "Termination / Cancellation reason", `NA` hides the row entirely)
-2. Entitlement Balance (**LHC 03/15 only**, read-only) — remaining un-utilized nights per year in a
-   7-year window anchored to the current calendar year: `Acc` = year−1, `Curr` = year, `Ad1..Ad5` = next 5.
-   Two rows (Year / Bal): weekday-group `nights` = `7 − nightsUsed`, Weekends-group = `1 − weekendUsed`,
-   both clamped ≥0; years past the agreement's expiry (`endDate ?? agreementDate + termYears`) show 0.
-   `entitlementBalance` array computed server-side in `getAgreement()` from `BookingEntitlement`
-   (natural-key matched). Card hidden for CP (02) and when the array is null.
+2. Entitlement Balance (**LHC 03/15 only**, read-only) — remaining un-utilized nights per membership
+   year, **ported from the Informix SP `get_entitlement_balance`**. Which `be_year`/`be_wk`
+   (`BookingEntitlement.yearSeq`) column feeds each display column is chosen by **membership year
+   (anniversary-adjusted)**: `accrueIdx = todayYear − agreementYear` if this year's anniversary (expiry
+   month/day) has passed, else `− 1`; `Curr = accrueIdx+1 … Ad5 = accrueIdx+6`. The **header year** for a
+   column is the calendar year that membership period *begins* = `agreementYear + seq − 1` (so it equals
+   the current-year window only when the anniversary has already passed this year; for a not-yet-reached
+   anniversary it is one lower — e.g. `75018` start 07-Dec-2004: Acc = 2024/`be_year21`, Curr = 2025/`be_year22`).
+   Two rows (Year / Bal): `nights` = `7 − nightsUsed`,
+   Weekends = `1 − weekendUsed`, both clamped ≥0. **Expiry (faithful to SP):** `Curr`/`Ad1..Ad5` (offset
+   0..5) zero once `expiry ≤ today + offset years`; **`Acc` is never zeroed** — unused nights carry
+   forward 1 year (accrued) and are forfeited only after the next anniversary, so an expiring agreement
+   still shows last year's Accrue balance (e.g. `31201` → Acc 2025 = 7, Curr+Adv = 0). Weekend follows
+   nights (0 ⇒ 0) for Acc + Curr only. `entitlementBalance` computed server-side in `getAgreement()` from
+   `BookingEntitlement` (natural-key matched). Card hidden for CP (02), for **terminated (`acctClassify='TM'`)**
+   agreements, and when the array is null (`getAgreement` returns `entitlementBalance: null` in those cases).
 3. Nominees (up to 3 — salutation, full name, name card, designation, IC old/new, home tel, mobile, email, address; card button reads "Add nominees" when none exist yet, "Edit nominees" once at least one is on record; edit modal has 3 columns, one per nominee, with the same field set for all three even though nominee 3 historically only carries 4 fields from `si_entitlement.txt`'s `e_loc_*` columns). **Add/Edit button shown to Member Services + IT only** (`canEditNomineesRci()`).
 4. RCI Information (always rendered, even when empty, so it can be added — RCI ID, RCI Nominee, Joint Date, Expiry Date; data originally from `rci_enrol.txt` not si_entitlement, but editable via `PUT /api/agreements/:id`; card button reads "Add RCI info" when all 4 fields are empty, "Edit RCI info" otherwise). **Add/Edit button shown to Member Services + IT only** (`canEditNomineesRci()`).
 5. Annual Maintenance Charges (AMC Billed, Total AMC, AMC Next Due)
