@@ -17,9 +17,9 @@ type SortDir   = 'asc' | 'desc';
 
 interface SearchState {
   coCode: string; membershipNo: string; agreementNo: string; name: string; icNew: string;
-  icOld: string; jaName: string; spouseName: string; nomineeName: string;
+  icOld: string; jaName: string; spouseName: string; nomineeName: string; email: string; companyName: string;
 }
-const EMPTY: SearchState = { coCode: '', membershipNo: '', agreementNo: '', name: '', icNew: '', icOld: '', jaName: '', spouseName: '', nomineeName: '' };
+const EMPTY: SearchState = { coCode: '', membershipNo: '', agreementNo: '', name: '', icNew: '', icOld: '', jaName: '', spouseName: '', nomineeName: '', email: '', companyName: '' };
 
 function SortHeader({ label, field, sortBy, sortDir, onSort }: {
   label: string; field: SortField;
@@ -54,6 +54,8 @@ export function Members() {
     jaName:       sp.get('jaName')       ?? '',
     spouseName:   sp.get('spouseName')   ?? '',
     nomineeName:  sp.get('nomineeName')  ?? '',
+    email:        sp.get('email')        ?? '',
+    companyName:  sp.get('companyName')  ?? '',
   };
 
   // Draft is local — form inputs; initialised from URL so form matches on Back
@@ -67,6 +69,8 @@ export function Members() {
     jaName:       sp.get('jaName')       ?? '',
     spouseName:   sp.get('spouseName')   ?? '',
     nomineeName:  sp.get('nomineeName')  ?? '',
+    email:        sp.get('email')        ?? '',
+    companyName:  sp.get('companyName')  ?? '',
   }));
 
   const set = (k: keyof SearchState) =>
@@ -85,6 +89,8 @@ export function Members() {
     if (draft.jaName)       p.jaName       = draft.jaName;
     if (draft.spouseName)   p.spouseName   = draft.spouseName;
     if (draft.nomineeName)  p.nomineeName  = draft.nomineeName;
+    if (draft.email)        p.email        = draft.email;
+    if (draft.companyName)  p.companyName  = draft.companyName;
     setSp(p);
   };
 
@@ -122,6 +128,8 @@ export function Members() {
       jaName:       applied.jaName       || undefined,
       spouseName:   applied.spouseName   || undefined,
       nomineeName:  applied.nomineeName  || undefined,
+      email:        applied.email        || undefined,
+      companyName:  applied.companyName  || undefined,
       sortBy:       sortBy               || undefined,
       sortDir,
       page, limit: 20,
@@ -150,12 +158,14 @@ export function Members() {
             {([
               ['membershipNo', 'Membership No.',  'e.g. 02099-KL-A-0222'],
               ['agreementNo',  'Agreement No.',   'e.g. 00253'],
-              ['name',         'Member Name',     'Full name or partial'],
+              ['name',         'Member/Corporate Name', 'Full name or partial'],
               ['icNew',        'IC Number (New)', '12-digit MyKad'],
               ['icOld',        'Old IC / Passport','Old IC or passport no.'],
               ['jaName',       'Joint Applicant',  'Joint applicant name'],
               ['spouseName',   'Spouse Name',      'Spouse name'],
               ['nomineeName',  'Nominee Name',     'Nominee full name or partial'],
+              ['email',        'Email',            'Email or partial'],
+              ['companyName',  "Member's Employer Name", 'Employer / company name'],
             ] as [keyof SearchState, string, string][]).map(([k, lbl, ph]) => (
               <div key={k}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{lbl}</label>

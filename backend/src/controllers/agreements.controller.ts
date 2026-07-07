@@ -48,7 +48,7 @@ export async function listAgreements(req: Request, res: Response): Promise<void>
   const { skip, take, page, limit } = parsePagination(req.query as Record<string, unknown>);
   const {
     memberId, coCode, acctClassify, branchCode, q,
-    membershipNo, agreementNo, name, icNew, icOld, jaName, spouseName, nomineeName,
+    membershipNo, agreementNo, name, icNew, icOld, jaName, spouseName, nomineeName, email, companyName,
     sortBy, sortDir,
   } = req.query as Record<string, string>;
 
@@ -77,6 +77,8 @@ export async function listAgreements(req: Request, res: Response): Promise<void>
   if (jaName?.trim())       and.push({ member: { jaName:   { contains: jaName.trim(), mode: 'insensitive' } } });
   if (spouseName?.trim())   and.push({ member: { spouseName: { contains: spouseName.trim(), mode: 'insensitive' } } });
   if (nomineeName?.trim())  and.push({ nominees: { some: { fullName: { contains: nomineeName.trim(), mode: 'insensitive' } } } });
+  if (email?.trim())        and.push({ member: { email:    { contains: email.trim(), mode: 'insensitive' } } });
+  if (companyName?.trim())  and.push({ member: { companyName: { contains: companyName.trim(), mode: 'insensitive' } } });
 
   const where = and.length ? { AND: and } : {};
 
