@@ -482,6 +482,7 @@ enum ReportKey {
   PBS_CLAIM_REPORT
   PBS_NOT_IN_PBS_REPORT
   PBS_VARIANCE_REPORT
+  PBS_AUTO_TRANSFER
 }
 
 enum BillingStatus {

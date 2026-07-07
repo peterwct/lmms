@@ -560,7 +560,7 @@ IT (`isLocked`) bypass. No schema/matrix change backs these — they live in mid
 Reports use a separate per-user access model — independent of department permissions.
 
 - **`UserReportAccess`** table: `userId`, `reportKey` (enum), `grantedById`, `grantedAt`. Unique on `[userId, reportKey]`.
-- **`ReportKey` enum**: `MEMBER_REPORT`, `AGREEMENT_REPORT`, `EXPIRY_REPORT`, `EXPIRING_MEMBER_REPORT`, `REMAINING_VALUE_REPORT`, `EXPIRY_SUMMARY_REPORT`, `PBS_PAY_BY_MONTH_REPORT`, `PBS_CLAIM_REPORT`, `PBS_NOT_IN_PBS_REPORT`, `PBS_VARIANCE_REPORT` — add new values here when adding reports.
+- **`ReportKey` enum**: `MEMBER_REPORT`, `AGREEMENT_REPORT`, `EXPIRY_REPORT`, `EXPIRING_MEMBER_REPORT`, `REMAINING_VALUE_REPORT`, `EXPIRY_SUMMARY_REPORT`, `PBS_PAY_BY_MONTH_REPORT`, `PBS_CLAIM_REPORT`, `PBS_NOT_IN_PBS_REPORT`, `PBS_VARIANCE_REPORT`, `PBS_AUTO_TRANSFER` — add new values here when adding reports. `PBS_AUTO_TRANSFER` gates the **Auto Transfer to Claim** process (not a report — a maintenance function) via the same per-user grant model: its routes (`/api/pbs/transfer*`) use `requireReportAccess('PBS_AUTO_TRANSFER')` instead of `requirePermission('PBS_SCHEME', …)`, and the menu item in `Pbs.tsx` is gated by `hasReport('PBS_AUTO_TRANSFER')`.
 - IT department bypasses all report access checks (same as module permissions).
 - IT grants/revokes access via the "Report Access" card on the User Detail page (`/admin/users/:id`).
 - Sidebar shows a single **Reports** link only when `hasReport()` returns true for at least one key. Clicking it goes to `/reports`, which renders a card grid of accessible reports.

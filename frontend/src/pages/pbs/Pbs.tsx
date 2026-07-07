@@ -15,12 +15,14 @@ interface PbsMenuItem {
   enabled?: boolean;
 }
 
-const MAINTENANCE: PbsMenuItem[] = [
-  { num: 1,  label: 'PBS Enquiry & Maintenance',      to: '/pbs/enquiry',      icon: <Search className="h-4 w-4" />, enabled: true },
-  { num: 2,  label: 'Proforma Enquiry & Generation',  to: '/pbs/proforma',     icon: <FileText className="h-4 w-4" /> },
-  { num: 3,  label: 'PBS Certificate Tracking',        to: '/pbs/tracking',     icon: <MapPin className="h-4 w-4" /> },
-  { num: 4,  label: 'Auto Transfer to Claim',          to: '/pbs/transfer',     icon: <ArrowRightLeft className="h-4 w-4" />, enabled: true },
-];
+function buildMaintenance(hasReport: (key: ReportKey) => boolean): PbsMenuItem[] {
+  return [
+    { num: 1,  label: 'PBS Enquiry & Maintenance',      to: '/pbs/enquiry',      icon: <Search className="h-4 w-4" />, enabled: true },
+    { num: 2,  label: 'Proforma Enquiry & Generation',  to: '/pbs/proforma',     icon: <FileText className="h-4 w-4" /> },
+    { num: 3,  label: 'PBS Certificate Tracking',        to: '/pbs/tracking',     icon: <MapPin className="h-4 w-4" /> },
+    ...(hasReport('PBS_AUTO_TRANSFER') ? [{ num: 4, label: 'Auto Transfer to Claim', to: '/pbs/transfer', icon: <ArrowRightLeft className="h-4 w-4" />, enabled: true }] : []),
+  ];
+}
 
 function buildReports(hasReport: (key: ReportKey) => boolean): PbsMenuItem[] {
   return [
@@ -73,6 +75,7 @@ function MenuSection({ title, items }: { title: string; items: PbsMenuItem[] }) 
 
 export function Pbs() {
   const { hasReport } = useAuth();
+  const maintenance = buildMaintenance(hasReport);
   const reports = buildReports(hasReport);
 
   return (
@@ -83,7 +86,7 @@ export function Pbs() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-        <MenuSection title="Maintenance" items={MAINTENANCE} />
+        <MenuSection title="Maintenance" items={maintenance} />
         <MenuSection title="Reports" items={reports} />
       </div>
     </div>

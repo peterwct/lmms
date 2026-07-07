@@ -19,9 +19,9 @@ router.get('/reports/not-in-pbs',           requireReportAccess('PBS_NOT_IN_PBS_
 router.get('/reports/variance/preview',     requireReportAccess('PBS_VARIANCE_REPORT'),      varianceReport.previewPbsVariance);
 router.get('/reports/variance',             requireReportAccess('PBS_VARIANCE_REPORT'),      varianceReport.generatePbsVariance);
 
-router.get('/transfer/preview',       requirePermission('PBS_SCHEME', 'view'),   ctrl.previewAutoTransfer);
-router.post('/transfer/export',       requirePermission('PBS_SCHEME', 'view'),   ctrl.exportAutoTransfer);
-router.post('/transfer',              requirePermission('PBS_SCHEME', 'create'), ctrl.runAutoTransfer);
+router.get('/transfer/preview',       requireReportAccess('PBS_AUTO_TRANSFER'),  ctrl.previewAutoTransfer);
+router.post('/transfer/export',       requireReportAccess('PBS_AUTO_TRANSFER'),  ctrl.exportAutoTransfer);
+router.post('/transfer',              requireReportAccess('PBS_AUTO_TRANSFER'),  ctrl.runAutoTransfer);
 
 router.get('/',                       requirePermission('PBS_SCHEME', 'view'),   ctrl.listPbsSchemes);
 router.get('/:id',                    requirePermission('PBS_SCHEME', 'view'),   ctrl.getPbsScheme);
