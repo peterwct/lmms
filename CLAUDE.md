@@ -175,6 +175,15 @@ Set-Item WSMan:\localhost\Client\TrustedHosts -Value "199.1.1.32" -Force  # trus
 .\deploy-test.ps1 -SkipFrontend -SchemaChanged -DryRun
 ```
 
+> **Forgetting `-SchemaChanged` after adding a Prisma field → runtime 500 on the server.** If you add a
+> field to `schema.prisma` (e.g. `BookingEntitlement.actualNights`) and deploy **without** `-SchemaChanged`,
+> the server keeps its old Prisma client while the new backend code `select`s the new field. Every request
+> hitting that query returns **500** with `PrismaClientValidationError: Unknown field '<name>'` — even
+> though the DB column exists. Confirmed on the Entitlement Balance card work (2026-07-09): the fix is to
+> redeploy with `-SchemaChanged` (runs `prisma generate` on the server after `pm2 stop`). `-MigrateDb` is
+> only needed additionally when a new migration file must be applied to the server DB. Check
+> `pm2 logs lhb-mms-backend --err --lines 30 --nostream` on the server to spot the `Unknown field` error.
+
 **What the script does:**
 1. Prompts for Administrator password (Windows credential dialog), and (if `-MigrateDb`) the `postgres` superuser password (`Read-Host`)
 2. Opens a WinRM session to the test server
@@ -373,10 +382,14 @@ Reference table from `csp_mast.txt`. Fields: `code` (unique), `name`, `branch`, 
 Normalized redesign of the wide Informix `booking_ent1` table (which had one column per agreement
 year). 177,164 rows from `booking_ent1.txt` — one row per (agreement, `yearSeq`) where usage is
 non-zero. Fields: `agreementId` (FK), `coCode`, `agreementNo`, `membershipNo`, `yearSeq` (1 = agreement's
-first year = `agreementDate` year), `nightsUsed` (`be_yearN`), `weekendUsed` (`be_wkN`).
+first year = `agreementDate` year), `nightsUsed` (`be_yearN`), `actualNights` (`be_act_nightN`),
+`weekendUsed` (`be_wkN`).
 Unique: `[coCode, agreementNo, membershipNo, yearSeq]`. **LHC 03/15 only** (02/12 rows in the source are skipped).
 Each agreement year is entitled to **7 nights** (of which ≤1 may be a weekend night — weekend is
-*included in*, not added to, the 7). Balances (computed in `getAgreement`, natural-key matched, clamped ≥0):
+*included in*, not added to, the 7). `nightsUsed` is the entitlement drawn from that year's own 7-night
+bucket; `actualNights` (`be_act_night`, migrated since the full-`cal_ent` card work) is every night
+physically taken in that year window and may exceed 7 by borrowing accrued/advance nights — it feeds the
+**Usable Nights** and **Used** columns. Balances (computed in `getAgreement`, natural-key matched, clamped ≥0):
 `nights = 7 − nightsUsed`, `weekend = 1 − weekendUsed`. See the Entitlement Balance card in Agreement Detail.
 
 ### CpBookingEntitlement
@@ -421,7 +434,7 @@ Source tables and their column counts (verified from actual export files):
 | `su_mast.txt` | SuReason master | 3 cols pipe-delimited | code[0], description[1] |
 | `su_trans.txt` / `pt_trans.txt` | SU/PT reason backfill | 4 cols pipe-delimited | membershipNo[0], agreementNo[1], code[2]. `su_trans.txt` → `Agreement.suCode` (only if current `acctClassify=SU`); `pt_trans.txt` → `Agreement.canCode` (only if current `acctClassify=PT`, **overwrites** any existing value — pt_trans.txt is authoritative). Match key: `membershipNo + agreementNo` (NOT `agreementNo` alone — see "FK vs natural key" below, agreementNo is duplicated across TT/TF transfer pairs). Updates existing Agreement records (no separate trans table), same pattern as `rci_enrol.txt`. `pt_mast.txt` is **not used** — every code in `pt_trans.txt` (numeric, 08-45) already exists in `CancellationReason`, while `pt_mast.txt`'s own numbering (00-17) is a stale/superseded lookup the live data doesn't reference. |
 
-| `booking_ent1.txt` | Booking entitlement (nights used) | 207 fields pipe-delimited | coCode[0], **membershipNo[1]** (long string e.g. `00002-KL-Y-0001/M/I`), **agreementNo[2]** (short e.g. `00457`) — note the natural-key columns are ordered membershipNo-then-agreementNo, the reverse of intuition. be_year1..50 = c[3..52] (nights used), be_wk1..50 = c[153..202] (weekend used). Blocks 2 (c[53..102]) & 3 (c[103..152]) and trailer (c[203..205]) are other categories, ignored. Only coCode 03/15 imported → `BookingEntitlement` (one row per non-zero year). See `prisma/migrate-booking-entitlement.ts`. |
+| `booking_ent1.txt` | Booking entitlement (nights used) | 207 fields pipe-delimited | coCode[0], **membershipNo[1]** (long string e.g. `00002-KL-Y-0001/M/I`), **agreementNo[2]** (short e.g. `00457`) — note the natural-key columns are ordered membershipNo-then-agreementNo, the reverse of intuition. be_year1..50 = c[3..52] (nights used → `nightsUsed`), be_act_night1..50 = c[53..102] (actual nights taken → `actualNights`), be_wk1..50 = c[153..202] (weekend used → `weekendUsed`). Block 3 (c[103..152]) and trailer (c[203..205]) are other categories, ignored. Only coCode 03/15 imported → `BookingEntitlement` (one row per year where any of nights/actual/weekend is non-zero). See `prisma/migrate-booking-entitlement.ts`. |
 
 | `ps_bookent1.txt` | CP booking entitlement (point balances) | 9 cols + trailer, pipe-delimited | psb_cocode[0] (always `02`), psb_memno[1] (e.g. `M00020/I`), psb_agmtno[2] (e.g. `P00020`), psb_useyear[3] (`dd-mm-yyyy` anniversary date), psb_totalpts[4], psb_curusepts[5], psb_advusepts[6], psb_acrusepts[7], **psb_balpts[8]** (balance points — the value the CP card displays). **All rows** imported (a fully-unused future year `balPts` and terminal 0-balance rows are both meaningful) → `CpBookingEntitlement`. `agreementId` left null (natural-key read path). Schema verified in `ps_bookent1.sql`. See `prisma/migrate-cp-booking-entitlement.ts`. |
 
@@ -593,9 +606,15 @@ Reports use a separate per-user access model — independent of department permi
    0..5) zero once `expiry ≤ today + offset years`; **`Acc` is never zeroed** — unused nights carry
    forward 1 year (accrued) and are forfeited only after the next anniversary, so an expiring agreement
    still shows last year's Accrue balance (e.g. `31201` → Acc 2025 = 7, Curr+Adv = 0). Weekend follows
-   nights (0 ⇒ 0) for Acc + Curr only. `entitlementBalance` computed server-side in `getAgreement()` from
-   `BookingEntitlement` (natural-key matched). Card hidden for CP (02), for **terminated (`acctClassify='TM'`)**
-   agreements, and when the array is null (`getAgreement` returns `entitlementBalance: null` in those cases).
+   nights (0 ⇒ 0) for Acc + Curr only. Three extra columns port the rest of the `cal_ent` screen:
+   **Forf** = `Σ (7 − nightsUsed[k])` for membership years `k = 1 … accrueIdx−1` (unused balance from
+   years older than Accrue — no longer claimable; upper bound clamped at `termYears`; 0 when `accrueIdx ≤ 1`);
+   **Used** = `actualNights` of the current year (seq `accrueIdx+1`), headed by the Curr column's year;
+   **Usable Nights** = `max(0, min(14 − actualNights[curr], accBal + currBal + adv1Bal))` (14 = 2-year cap).
+   `entitlementBalance` is now an **object** `{ columns, forfeitedNights, usableNights, usedNights, usedYear }`
+   (was a bare array), computed server-side in `getAgreement()` from `BookingEntitlement` (natural-key matched).
+   Card hidden for CP (02), for **terminated (`acctClassify='TM'`)** agreements, and when it is null
+   (`getAgreement` returns `entitlementBalance: null` in those cases).
 2b. CP Entitlement Balance (**CP 02 only**, read-only) — point balances per membership year, **ported from
    the Informix SP `get_entitlement_balance_CP`**. Unlike LHC, CP stores the balance points directly
    (`CpBookingEntitlement.balPts`) per anniversary-dated `useYear`, so this is a lookup not a subtraction.

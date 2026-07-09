@@ -272,15 +272,23 @@ export interface Agreement {
   amcSchedule?: AmcSchedule;
   amcInvoices?: AmcInvoice[];
   pbsScheme?: PbsScheme;
-  entitlementBalance?: EntitlementBalance[] | null;
+  entitlementBalance?: EntitlementBalance | null;
   cpEntitlementBalance?: CpEntitlementBalance[] | null;
 }
 
-export interface EntitlementBalance {
+export interface EntitlementBalanceColumn {
   label: string;   // Acc | Curr | Ad1..Ad5
   year: number;
   nights: number;  // 7 - nights used (clamped at 0)
   weekend: number; // 1 - weekend used (clamped at 0)
+}
+
+export interface EntitlementBalance {
+  columns: EntitlementBalanceColumn[]; // Acc | Curr | Ad1..Ad5 (7 columns)
+  forfeitedNights: number;             // unused balance from years older than Accrue
+  usableNights: number;                // min(14 - actual[curr], acc+curr+adv1 balances)
+  usedNights: number;                  // actual nights taken in the current membership year
+  usedYear: number;                    // calendar year of the current membership year
 }
 
 export interface CpEntitlementBalance {

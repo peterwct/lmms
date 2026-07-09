@@ -155,7 +155,13 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
   // Usage matched by natural key (coCode + membershipNo + agreementNo).
   // Terminated (TM) agreements never show the card — the entitlement no longer applies.
   let entitlementBalance:
-    | { label: string; year: number; nights: number; weekend: number }[]
+    | {
+        columns: { label: string; year: number; nights: number; weekend: number }[];
+        forfeitedNights: number;
+        usableNights: number;
+        usedNights: number;
+        usedYear: number;
+      }
     | null = null;
   if ((agreement.coCode === '03' || agreement.coCode === '15') && agreement.acctClassify !== 'TM') {
     const usage = await prisma.bookingEntitlement.findMany({
@@ -164,7 +170,7 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
         membershipNo: agreement.membershipNo,
         agreementNo: agreement.agreementNo,
       },
-      select: { yearSeq: true, nightsUsed: true, weekendUsed: true },
+      select: { yearSeq: true, nightsUsed: true, actualNights: true, weekendUsed: true },
     });
     const usedBySeq = new Map(usage.map(u => [u.yearSeq, u]));
 
@@ -209,7 +215,31 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
     if (cols[0].nights === 0) cols[0].weekend = 0;
     if (cols[1].nights === 0) cols[1].weekend = 0;
 
-    entitlementBalance = cols;
+    // Forfeited nights (SP cal_ent): sum of the un-utilized balance (7 - nightsUsed) for every
+    // membership year OLDER than the Accrue year. Only Accrue + Current + advance years remain
+    // claimable; anything before Accrue is lost. Uses nightsUsed only (no actualNights needed).
+    // Upper bound clamped at termYears so a long-expired agreement's non-existent post-term years
+    // (which have no rows => would each add a phantom 7) are not counted.
+    let forfeitedNights = 0;
+    const forfLast = Math.min(accrueIdx - 1, agreement.termYears);
+    for (let seq = 1; seq <= forfLast; seq++) {
+      forfeitedNights += Math.max(0, 7 - (usedBySeq.get(seq)?.nightsUsed ?? 0));
+    }
+
+    // Used <year> (SP: curr_used_nights) = actual nights physically taken in the current
+    // membership year (Curr = seq accrueIdx + 1); its header year is the Curr column's year.
+    const currActual = usedBySeq.get(accrueIdx + 1)?.actualNights ?? 0;
+    const usedNights = currActual;
+    const usedYear = cols[1].year;
+
+    // Usable nights (SP): min(14 - actual_nights[curr], accBal + currBal + adv1Bal). The 14 is
+    // the 2-year annual cap (current 7 + one accrued/advance 7); clamped >= 0 for over-bookings.
+    const usableNights = Math.max(
+      0,
+      Math.min(14 - currActual, cols[0].nights + cols[1].nights + cols[2].nights),
+    );
+
+    entitlementBalance = { columns: cols, forfeitedNights, usableNights, usedNights, usedYear };
   }
 
   // CP Entitlement Balance (coCode 02 only): point balances per membership year, ported

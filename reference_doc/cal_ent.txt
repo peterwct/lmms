@@ -1,0 +1,213 @@
+function cal_ent(p_date)
+  define p_date date
+  define array_cnt smallint
+  define acc_year2 smallint
+  define rtu_yr smallint #P07
+
+  if p_date > p_si_entitlement.e_enddate then
+         let acc_year = p_si_entitlement.e_rtu_years
+         let curr_year = p_si_entitlement.e_rtu_years + 1
+         let adv_year = p_si_entitlement.e_rtu_years + 2
+         let adv2_year = p_si_entitlement.e_rtu_years + 3
+         let adv3_year = p_si_entitlement.e_rtu_years + 4
+         let adv4_year = p_si_entitlement.e_rtu_years + 5
+         let adv5_year = p_si_entitlement.e_rtu_years + 6
+  else
+     for array_cnt = 1 to 50 
+      if p_date >= p50_rec[array_cnt].from_date and
+         p_date <= p50_rec[array_cnt].to_date then
+         let acc_year = array_cnt - 1
+         let curr_year = array_cnt
+         let adv_year = array_cnt + 1
+         let adv2_year = array_cnt + 2
+         let adv3_year = array_cnt + 3
+         let adv4_year = array_cnt + 4
+         let adv5_year = array_cnt + 5
+         exit for
+      end if
+    end for
+  end if
+
+  IF curr_year >= 2 THEN
+     let c_acc_year = (year(p50_rec[curr_year].from_date) - 1)
+  ELSE
+    LET c_acc_year = "----"
+  END IF
+
+  IF curr_year > p_si_entitlement.e_rtu_years THEN #If agmt expire
+     let rtu_yr = p_si_entitlement.e_rtu_years
+     let c_acc_year  = year(p50_rec[rtu_yr].from_date)
+     let c_curr_year = year(p50_rec[rtu_yr].from_date) +1 
+     let c_adv_year  = year(p50_rec[rtu_yr].from_date) +2 
+     let c_adv2_year = year(p50_rec[rtu_yr].from_date) +3 
+     let c_adv3_year = year(p50_rec[rtu_yr].from_date) +4 
+     let c_adv4_year = year(p50_rec[rtu_yr].from_date) +5 
+     let c_adv5_year = year(p50_rec[rtu_yr].from_date) +6 
+  ELSE
+     let c_curr_year = year(p50_rec[curr_year].from_date)
+     let c_adv_year  = year(p50_rec[curr_year].from_date) + 1
+     let c_adv2_year = year(p50_rec[curr_year].from_date) + 2 
+     let c_adv3_year = year(p50_rec[curr_year].from_date) + 3
+     let c_adv4_year = year(p50_rec[curr_year].from_date) + 4 
+     let c_adv5_year = year(p50_rec[curr_year].from_date) + 5
+  END IF
+
+  let c2_acc_year = c_acc_year[3,4]
+  let c2_curr_year = c_curr_year[3,4]
+  let c2_adv_year = c_adv_year[3,4]
+  let c2_adv2_year = c_adv2_year[3,4]
+  let c2_adv3_year = c_adv3_year[3,4]
+  let c2_adv4_year = c_adv4_year[3,4]
+  let c2_adv5_year = c_adv5_year[3,4]
+  error "AGMT IS IN YEAR: ", curr_year using "##", " of ", 
+ 	p_si_entitlement.e_rtu_years 
+  if acc_year = 0 then
+     let acc_nights = 0
+     let curr_nights = (7 - p50_rec[curr_year].used_nights)
+  else
+     if curr_year > p_si_entitlement.e_rtu_years then #if agmt expired
+        error "AGMT ALREADY EXPIRED. CAN ONLY USE ACCRUED ENT. YEAR "
+        let acc_nights = (7 - p50_rec[rtu_yr].used_nights)
+        let curr_nights = 0
+     else
+        let acc_nights = (7 - p50_rec[acc_year].used_nights)
+        let curr_nights = (7 - p50_rec[curr_year].used_nights)
+     end if
+  end if
+  let c_acc_nights = acc_nights 
+  let c_curr_nights = curr_nights 
+ 
+  if adv_year > p_si_entitlement.e_rtu_years then
+     let adv_nights = 0
+  else
+     let adv_nights = (7 - p50_rec[adv_year].used_nights)
+  end if
+  if adv2_year > p_si_entitlement.e_rtu_years then
+     let adv2_nights = 0
+  else
+     let adv2_nights = (7 - p50_rec[adv2_year].used_nights)
+  end if
+  if adv3_year > p_si_entitlement.e_rtu_years then
+     let adv3_nights = 0
+  else
+     let adv3_nights = (7 - p50_rec[adv3_year].used_nights)
+  end if
+  if adv4_year > p_si_entitlement.e_rtu_years then
+     let adv4_nights = 0
+  else
+     let adv4_nights = (7 - p50_rec[adv4_year].used_nights)
+  end if
+  if adv5_year > p_si_entitlement.e_rtu_years then
+     let adv5_nights = 0
+  else
+     let adv5_nights = (7 - p50_rec[adv5_year].used_nights)
+  end if
+
+  let c_adv_nights = adv_nights 
+  let c_adv2_nights = adv2_nights 
+  let c_adv3_nights = adv3_nights 
+  let c_adv4_nights = adv4_nights 
+  let c_adv5_nights = adv5_nights 
+
+  let t_used_nights = p_booking_ent1.be_used_todate
+  let c_t_used_nights = t_used_nights
+
+  let curr_used_nights = p50_rec[curr_year].actual_nights
+  let c_curr_used_nights = curr_used_nights
+ 
+  for array_cnt = 1 to 50
+      if p_bk_mast.bm_request_date >= p50_rec[array_cnt].from_date and 
+         p_bk_mast.bm_request_date <= p50_rec[array_cnt].to_date then
+         let acc_year2 = array_cnt - 1
+         exit for
+      end if
+  end for
+
+  let forf_nights = 0
+  for array_cnt = 1 to (acc_year2 - 1)
+    let forf_nights = forf_nights + (7 - p50_rec[array_cnt].used_nights)
+  end for
+  let c_forf_nights = forf_nights
+
+  let temp_usable_nights1 = 14 - p50_rec[curr_year].actual_nights
+  let temp_usable_nights2 = acc_nights + curr_nights + adv_nights
+  if temp_usable_nights1 > temp_usable_nights2 then
+     let usable_nights = temp_usable_nights2
+  else
+     let usable_nights = temp_usable_nights1
+  end if
+  let c_usable_nights = usable_nights
+
+  if acc_year = 0 then
+     let acc_weekend = 0
+  else
+     let acc_weekend = 1 - p50_rec[acc_year].wk
+  end if
+  if acc_nights = 0 then
+     let acc_weekend = 0
+  end if
+  let c_acc_weekend = acc_weekend
+
+  let curr_weekend = 1 - p50_rec[curr_year].wk 
+  if curr_nights = 0 then
+     let curr_weekend = 0
+  end if
+  let c_curr_weekend = curr_weekend
+
+  if adv_year > p_si_entitlement.e_rtu_years then  
+     let adv_weekend = 0
+  else
+     let adv_weekend = 1 - p50_rec[adv_year].wk
+  end if
+  if adv2_year > p_si_entitlement.e_rtu_years then	
+     let adv2_weekend = 0
+  else
+     let adv2_weekend = 1 - p50_rec[adv2_year].wk
+  end if
+  if adv3_year > p_si_entitlement.e_rtu_years then	
+     let adv3_weekend = 0
+  else
+     let adv3_weekend = 1 - p50_rec[adv3_year].wk
+  end if
+  if adv4_year > p_si_entitlement.e_rtu_years then
+     let adv4_weekend = 0
+  else
+     let adv4_weekend = 1 - p50_rec[adv4_year].wk
+  end if
+  if adv5_year > p_si_entitlement.e_rtu_years then
+     let adv5_weekend = 0
+  else
+     let adv5_weekend = 1 - p50_rec[adv5_year].wk
+  end if
+  if adv_nights = 0 then
+     let adv_weekend = 0
+  end if
+  if adv2_nights = 0 then
+     let adv2_weekend = 0
+  end if
+  if adv3_nights = 0 then
+     let adv3_weekend = 0
+  end if
+  if adv4_nights = 0 then
+     let adv4_weekend = 0
+  end if
+  if adv5_nights = 0 then
+     let adv5_weekend = 0
+  end if
+  let c_adv_weekend = adv_weekend
+  let c_adv2_weekend = adv2_weekend
+  Let c_adv3_weekend = adv3_weekend
+  let c_adv4_weekend = adv4_weekend
+  let c_adv5_weekend = adv5_weekend
+
+### to get the actual current ent. year
+  LET act_ent_yr = NULL
+
+  FOR array_cnt = 1 TO 50
+    IF TODAY >= p50_rec[array_cnt].from_date AND
+       TODAY <= p50_rec[array_cnt].to_date THEN
+       LET act_ent_yr = YEAR(p50_rec[array_cnt].from_date)
+       EXIT FOR
+    END IF
+  END FOR
+end function

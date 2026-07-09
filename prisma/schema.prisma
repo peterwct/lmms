@@ -75,6 +75,7 @@ model BookingEntitlement {
   membershipNo String
   yearSeq      Int
   nightsUsed   Int       @default(0)
+  actualNights Int       @default(0)
   weekendUsed  Int       @default(0)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime

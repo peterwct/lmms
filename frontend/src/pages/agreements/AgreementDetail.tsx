@@ -292,12 +292,15 @@ export function AgreementDetail() {
                 <thead>
                   <tr className="bg-blue-600 text-white">
                     <th className="px-2 py-1.5 border border-blue-500" />
-                    {agmt.entitlementBalance.map(c => (
+                    <th className="px-2 py-1.5 border border-blue-500 font-medium whitespace-nowrap">Forf</th>
+                    {agmt.entitlementBalance.columns.map(c => (
                       <th key={`h-${c.label}`} className="px-2 py-1.5 border border-blue-500 font-medium whitespace-nowrap">
                         {c.label}
                       </th>
                     ))}
-                    <th className="px-2 py-1.5 border border-blue-500 font-medium" colSpan={agmt.entitlementBalance.length}>
+                    <th className="px-2 py-1.5 border border-blue-500 font-medium whitespace-nowrap">Usable Nights</th>
+                    <th className="px-2 py-1.5 border border-blue-500 font-medium whitespace-nowrap">Used</th>
+                    <th className="px-2 py-1.5 border border-blue-500 font-medium" colSpan={agmt.entitlementBalance.columns.length}>
                       Weekends
                     </th>
                   </tr>
@@ -305,19 +308,25 @@ export function AgreementDetail() {
                 <tbody>
                   <tr>
                     <th className="px-2 py-1.5 border border-gray-200 bg-teal-500 text-white font-medium">Year</th>
-                    {agmt.entitlementBalance.map(c => (
+                    <td className="px-2 py-1 border border-gray-200" />
+                    {agmt.entitlementBalance.columns.map(c => (
                       <td key={`ny-${c.label}`} className="px-2 py-1 border border-gray-200">{c.year}</td>
                     ))}
-                    {agmt.entitlementBalance.map(c => (
+                    <td className="px-2 py-1 border border-gray-200" />
+                    <td className="px-2 py-1 border border-gray-200">{agmt.entitlementBalance.usedYear}</td>
+                    {agmt.entitlementBalance.columns.map(c => (
                       <td key={`wy-${c.label}`} className="px-2 py-1 border border-gray-200">{c.year}</td>
                     ))}
                   </tr>
                   <tr>
                     <th className="px-2 py-1.5 border border-gray-200 bg-teal-500 text-white font-medium">Bal</th>
-                    {agmt.entitlementBalance.map(c => (
+                    <td className="px-2 py-1 border border-gray-200 font-medium">{agmt.entitlementBalance.forfeitedNights}</td>
+                    {agmt.entitlementBalance.columns.map(c => (
                       <td key={`nb-${c.label}`} className="px-2 py-1 border border-gray-200 font-medium">{c.nights}</td>
                     ))}
-                    {agmt.entitlementBalance.map(c => (
+                    <td className="px-2 py-1 border border-gray-200 font-medium">{agmt.entitlementBalance.usableNights}</td>
+                    <td className="px-2 py-1 border border-gray-200 font-medium">{agmt.entitlementBalance.usedNights}</td>
+                    {agmt.entitlementBalance.columns.map(c => (
                       <td key={`wb-${c.label}`} className="px-2 py-1 border border-gray-200 font-medium">{c.weekend}</td>
                     ))}
                   </tr>

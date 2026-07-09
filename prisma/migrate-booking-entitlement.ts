@@ -7,14 +7,16 @@
  *  [0]        coCode        -> only '03' / '15' (LHC) are imported; '02'/'12' skipped
  *  [1]        membershipNo  -> e.g. '00002-KL-Y-0001/M/I'
  *  [2]        agreementNo   -> e.g. '00457'
- *  [3..52]    be_year1..50  -> nightsUsed per year (total nights used; max observed 10)
- *  [53..102]  block 2       -> other category, IGNORED
- *  [103..152] block 3       -> other category, IGNORED
- *  [153..202] be_wk1..50    -> weekendUsed per year (0/1)
- *  [203..205] trailer totals-> IGNORED
+ *  [3..52]    be_year1..50     -> nightsUsed per year (entitlement drawn from that year's bucket)
+ *  [53..102]  be_act_night1..50-> actualNights per year (all nights physically taken in the year
+ *                                 window; may exceed 7 by drawing on accrued/advance buckets)
+ *  [103..152] block 3          -> other category, IGNORED
+ *  [153..202] be_wk1..50       -> weekendUsed per year (0/1)
+ *  [203..205] trailer totals   -> IGNORED
  *
  * Emits one BookingEntitlement row per (agreement, yearSeq) where nightsUsed>0 OR
- * weekendUsed>0 (zero-usage years are omitted; the app treats a missing year as 0 used).
+ * actualNights>0 OR weekendUsed>0 (zero-usage years are omitted; the app treats a missing year
+ * as 0 used).
  * yearSeq N (1..50) => calendar year = agreementDate.getFullYear() + N - 1.
  * agreementId resolved by natural key coCode + membershipNo + agreementNo.
  *
@@ -32,8 +34,9 @@ const MIGRATE_DIR = path.join(__dirname, '..', 'migrate');
 const DELIM = '|';
 const BATCH = 500;
 const YEARS = 50;
-const YEAR_BASE = 3;   // be_year1 = c[3]
-const WK_BASE = 153;   // be_wk1   = c[153]
+const YEAR_BASE = 3;   // be_year1      = c[3]
+const ACT_BASE = 53;   // be_act_night1 = c[53]
+const WK_BASE = 153;   // be_wk1        = c[153]
 const DRY_RUN = process.argv.includes('--dry-run');
 
 const t = (s: string | undefined): string | null =>
@@ -102,8 +105,9 @@ async function main() {
 
     for (let N = 1; N <= YEARS; N++) {
       const nightsUsed = n(c[YEAR_BASE + N - 1]);
+      const actualNights = n(c[ACT_BASE + N - 1]);
       const weekendUsed = n(c[WK_BASE + N - 1]);
-      if (nightsUsed === 0 && weekendUsed === 0) continue;
+      if (nightsUsed === 0 && actualNights === 0 && weekendUsed === 0) continue;
       batch.push({
         id: randomUUID(),
         updatedAt: new Date(),
@@ -113,6 +117,7 @@ async function main() {
         membershipNo,
         yearSeq: N,
         nightsUsed,
+        actualNights,
         weekendUsed,
       });
       entRows++;
