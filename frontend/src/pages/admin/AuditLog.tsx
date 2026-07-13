@@ -50,6 +50,19 @@ export function AuditLog() {
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setDraft(d => ({ ...d, [k]: e.target.value }));
 
+  // Date To can never be earlier than Date From. Picking a From that is empty/after
+  // the current To bumps To up to match (yyyy-MM-dd strings sort chronologically).
+  const setFrom = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const from = e.target.value;
+    setDraft(d => ({ ...d, from, to: !d.to || (from && from > d.to) ? from : d.to }));
+  };
+
+  // Guard against a To earlier than From (e.g. typed in directly); clamp it up to From.
+  const setTo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const to = e.target.value;
+    setDraft(d => ({ ...d, to: d.from && to && to < d.from ? d.from : to }));
+  };
+
   const handleSearch = () => {
     const p: Record<string, string> = { s: '1', page: '1' };
     if (draft.from)       p.from       = draft.from;
@@ -79,6 +92,7 @@ export function AuditLog() {
   const { data, isLoading } = useQuery({
     queryKey: ['audit', params],
     queryFn: () => auditApi.list(params).then(r => r.data),
+    enabled: searched,
   });
 
   return (
@@ -88,11 +102,11 @@ export function AuditLog() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Date From</label>
-            <Input type="date" value={draft.from} onChange={set('from')} />
+            <Input type="date" value={draft.from} onChange={setFrom} />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Date To</label>
-            <Input type="date" value={draft.to} onChange={set('to')} />
+            <Input type="date" value={draft.to} min={draft.from || undefined} onChange={setTo} />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">User</label>
@@ -120,11 +134,13 @@ export function AuditLog() {
         <div className="flex items-center gap-2">
           <Button onClick={handleSearch}>Search</Button>
           <Button variant="secondary" onClick={handleClear}>Clear</Button>
-          {data?.meta && <RecordCount total={data.meta.total} />}
+          {searched && data?.meta && <RecordCount total={data.meta.total} />}
         </div>
       </div>
 
-      {isLoading ? <PageSpinner /> : (
+      {!searched ? (
+        <p className="px-4 py-8 text-center text-gray-400">Enter search criteria above and click Search.</p>
+      ) : isLoading ? <PageSpinner /> : (
         <>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase">

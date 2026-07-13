@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { FileText, FileSpreadsheet, AlertCircle, Search, ArrowLeft } from 'lucide-react';
 import { reportsApi, type ExpiryRow } from '../../api/reports';
 import { apiError } from '../../api/client';
 import { Card } from '../../components/ui/Card';
@@ -127,9 +128,13 @@ export function ExpiryReport() {
   const [excelLoading, setExcelLoading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
+  // Preview only runs when the user clicks Preview.
+  const [previewRequested, setPreviewRequested] = useState(false);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['expiry-report-preview'],
     queryFn: () => reportsApi.expiryPreview().then(r => r.data),
+    enabled: previewRequested,
   });
 
   const busy = pdfLoading || excelLoading;
@@ -161,6 +166,10 @@ export function ExpiryReport() {
 
   return (
     <div className="space-y-4">
+      <Link to="/reports" className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800">
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Back to Reports
+      </Link>
       <div>
         <h2 className="text-lg font-bold text-gray-800">Senior Management Report — Analysis of Agreement Expiry</h2>
         <p className="text-sm text-gray-500 mt-1">
@@ -177,6 +186,10 @@ export function ExpiryReport() {
               {downloadError}
             </div>
           )}
+          <Button onClick={() => setPreviewRequested(true)} loading={previewRequested && isLoading} variant="secondary">
+            <Search className="h-4 w-4" />
+            Preview
+          </Button>
           <Button onClick={() => handleDownload('pdf')} disabled={busy} loading={pdfLoading} variant="primary">
             <FileText className="h-4 w-4" />
             Download PDF
@@ -185,7 +198,7 @@ export function ExpiryReport() {
             <FileSpreadsheet className="h-4 w-4" />
             Download Excel
           </Button>
-          {data && (
+          {previewRequested && data && (
             <span className="text-sm text-gray-500">
               <span className="font-semibold text-gray-800">{data.data.length}</span> expiry years &mdash;&nbsp;
               <span className="font-semibold text-blue-700">{data.meta.totalAgreements.toLocaleString()}</span> agreements total
@@ -193,7 +206,11 @@ export function ExpiryReport() {
           )}
         </div>
 
-        {isLoading && <PageSpinner />}
+        {!previewRequested && (
+          <p className="px-4 py-8 text-center text-gray-400">Click Preview to load the report.</p>
+        )}
+
+        {previewRequested && isLoading && <PageSpinner />}
 
         {error && (
           <div className="flex items-center gap-2 px-4 py-6 text-sm text-red-600">
@@ -202,7 +219,7 @@ export function ExpiryReport() {
           </div>
         )}
 
-        {!isLoading && data && <ExpiryTable rows={data.data} />}
+        {previewRequested && !isLoading && data && <ExpiryTable rows={data.data} />}
       </Card>
     </div>
   );

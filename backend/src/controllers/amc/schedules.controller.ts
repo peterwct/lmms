@@ -33,10 +33,21 @@ export async function listSchedules(req: Request, res: Response): Promise<void> 
     }
   }
   if (dueDate) {
-    const d = new Date(dueDate);
-    const next = new Date(d);
-    next.setDate(next.getDate() + 1);
-    and.push({ nextDueDate: { gte: d, lt: next } });
+    // dueDate is a month value in `YYYY-MM` form — match the whole calendar month.
+    // Fall back to a single-day range if a full `YYYY-MM-DD` date is supplied.
+    const monthMatch = /^(\d{4})-(\d{2})$/.exec(dueDate);
+    if (monthMatch) {
+      const year = parseInt(monthMatch[1], 10);
+      const month = parseInt(monthMatch[2], 10) - 1;
+      const start = new Date(year, month, 1);
+      const next = new Date(year, month + 1, 1);
+      and.push({ nextDueDate: { gte: start, lt: next } });
+    } else {
+      const d = new Date(dueDate);
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
+      and.push({ nextDueDate: { gte: d, lt: next } });
+    }
   } else if (dueBefore || dueAfter) {
     and.push({ nextDueDate: {
       ...(dueAfter  ? { gte: new Date(dueAfter)  } : {}),

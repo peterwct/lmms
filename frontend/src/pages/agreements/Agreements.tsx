@@ -99,7 +99,7 @@ export function Agreements() {
           <input
             type="text"
             value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
+            onChange={e => setSearchInput(e.target.value.toUpperCase())}
             placeholder="Search agreement no., membership no. or name…"
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />

@@ -75,7 +75,8 @@ export function Members() {
 
   const set = (k: keyof SearchState) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setDraft(d => ({ ...d, [k]: e.target.value }));
+      // Auto-upshift all search fields except email (matching the app-wide email convention)
+      setDraft(d => ({ ...d, [k]: k === 'email' ? e.target.value : e.target.value.toUpperCase() }));
 
   // Search pushes a new history entry so Back returns here
   const handleSearch = () => {

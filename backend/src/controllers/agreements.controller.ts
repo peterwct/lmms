@@ -250,7 +250,7 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
   // future year balances (blank when the row is missing, e.g. after expiry). Matched by
   // natural key (coCode + membershipNo + agreementNo). Hidden for TM.
   let cpEntitlementBalance:
-    | { label: string; year: number; bal: number | null }[]
+    | { columns: { label: string; year: number; bal: number | null }[]; forfeitedPts: number }
     | null = null;
   if (agreement.coCode === '02' && agreement.acctClassify !== 'TM') {
     const rows = await prisma.cpBookingEntitlement.findMany({
@@ -284,14 +284,24 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
           accrued = prior.balPts;
           if (prior.acrusePts + accrued > maxAccrue) accrued = maxAccrue - prior.acrusePts;
         }
+        // Forfeited points (SP get_entitlement_balance_CP): sum of balPts for every year row up
+        // to and including the accrue year (refYear - 1), minus the still-claimable accrued value.
+        // Anything not carried forward as Accrue from those older years is lost. Clamped >= 0.
+        let forfeitedPts = 0;
+        for (const [y, v] of byYear) {
+          if (y <= refYear - 1) forfeitedPts += v.balPts;
+        }
+        forfeitedPts = Math.max(0, forfeitedPts - (accrued ?? 0));
+
         const labels = ['Acc', 'Curr', 'Ad1', 'Ad2', 'Ad3', 'Ad4', 'Ad5'];
-        cpEntitlementBalance = labels.map((label, i) => {
+        const columns = labels.map((label, i) => {
           const year = refYear! + (i - 1); // Acc = ref-1, Curr = ref, Ad1..Ad5 = ref+1..+5
           // Accrued is the capped carry-forward; every other column is the raw year balance
           // (blank/null when no source row exists — e.g. years past expiry).
           const bal = i === 0 ? accrued : byYear.has(year) ? byYear.get(year)!.balPts : null;
           return { label, year, bal };
         });
+        cpEntitlementBalance = { columns, forfeitedPts };
       }
     }
   }

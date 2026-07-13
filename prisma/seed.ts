@@ -78,24 +78,6 @@ const DEPARTMENTS = [
   { name: 'Resort Operations',description: 'Manages resort bookings and entitlements',      isLocked: false },
 ];
 
-// ─── Cancellation reasons ─────────────────────────────────────────────────────
-
-const CANCELLATION_REASONS = [
-  { code: '01', description: '10 Days Cooling Off Period',                 category: 'CC', type: 'D' },
-  { code: '02', description: 'Misrepresentation by Sales Person',          category: 'CC', type: 'D' },
-  { code: '03', description: 'Financial Difficulties',                     category: 'CC', type: 'D' },
-  { code: '04', description: 'Change of Mind',                             category: 'CC', type: 'D' },
-  { code: '05', description: 'Unable to Service Loan',                     category: 'CC', type: 'D' },
-  { code: '06', description: 'Dissatisfied with Resort/Product',           category: 'CC', type: 'D' },
-  { code: '07', description: 'Deceased',                                   category: 'TM', type: 'D' },
-  { code: '08', description: 'Transfer of Membership',                     category: 'TM', type: 'D' },
-  { code: '09', description: 'Expiry of Term',                             category: 'TM', type: 'D' },
-  { code: '10', description: 'Termination by Company',                     category: 'TM', type: 'D' },
-  { code: '11', description: 'Voluntary Surrender',                        category: 'TM', type: 'D' },
-  { code: '12', description: 'Outstanding AMC',                            category: 'TM', type: 'D' },
-  { code: '45', description: 'Agreement Expired',                          category: 'TM', type: 'D' },
-];
-
 // ─── AMC Rate Masters — LHC (coCode 03 + 15) ─────────────────────────────────
 
 const AMC_PRICES = [
@@ -192,15 +174,10 @@ async function main() {
     },
   });
 
-  // 4. Cancellation reasons
-  console.log('  → Cancellation reasons');
-  for (const reason of CANCELLATION_REASONS) {
-    await prisma.cancellationReason.upsert({
-      where: { code: reason.code },
-      update: { description: reason.description, category: reason.category, type: reason.type },
-      create: reason,
-    });
-  }
+  // 4. Cancellation reasons are seeded from the authoritative Informix export
+  //    (migrate/agmt_can_cate.txt) via prisma/seed-cancellation-reasons.ts.
+  //    Do not seed them here — a hardcoded list would overwrite the real
+  //    descriptions on upsert-by-code (last writer wins).
 
   // 5. AMC price master — LHC
   console.log('  → AMC price master (LHC)');

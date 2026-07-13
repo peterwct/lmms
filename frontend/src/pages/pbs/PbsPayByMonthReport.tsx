@@ -5,7 +5,7 @@ import { pbsApi } from '../../api/pbs';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
-import { ArrowLeft, Download } from 'lucide-react';
+import { ArrowLeft, Download, Search } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface StatusCounts { na: number; su: number; pt: number; tm: number; total: number }
@@ -34,6 +34,9 @@ type Tab = 'monthly' | 'yearly';
 export function PbsPayByMonthReport() {
   const [tab, setTab] = useState<Tab>('monthly');
 
+  // Preview only runs when the user clicks Preview.
+  const [previewRequested, setPreviewRequested] = useState(false);
+
   const { data, isLoading } = useQuery({
     queryKey: ['pbs-pay-by-month'],
     queryFn: () => pbsApi.previewPayByMonth().then(r => r.data as {
@@ -41,6 +44,7 @@ export function PbsPayByMonthReport() {
       yearly: PbsPayYearRow[];
       meta: { totalRows: number; totals: { k19: StatusCounts; k21: StatusCounts } };
     }),
+    enabled: previewRequested,
   });
 
   const rows = data?.data ?? [];
@@ -84,13 +88,23 @@ export function PbsPayByMonthReport() {
             PBS payback amounts grouped by month and year, split by 19K and 21K scheme types. Excludes claimed records.
           </p>
         </div>
-        <Button onClick={handleDownload} disabled={!rows.length && !yearlyRows.length} size="sm">
-          <Download className="h-4 w-4 mr-1.5" />
-          Download Excel
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setPreviewRequested(true)} loading={previewRequested && isLoading} variant="secondary" size="sm">
+            <Search className="h-4 w-4 mr-1.5" />
+            Preview
+          </Button>
+          <Button onClick={handleDownload} size="sm">
+            <Download className="h-4 w-4 mr-1.5" />
+            Download Excel
+          </Button>
+        </div>
       </div>
 
-      {isLoading ? <PageSpinner /> : (
+      {!previewRequested ? (
+        <Card>
+          <div className="px-6 py-12 text-center text-gray-400">Click Preview to load the report.</div>
+        </Card>
+      ) : isLoading ? <PageSpinner /> : (
         <>
           <div className="flex gap-1 border-b">
             <button

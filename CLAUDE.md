@@ -332,7 +332,7 @@ Sourced from Informix `si_entitlement`. Key fields:
 46 codes from `agmt_can_cate.txt`. Relation: `Agreement.canCode → CancellationReason.code`.
 Category: `CC`=Cancellation, `TM`=Termination. Status: `A`=Active, `U`=Inactive, `N`=Not displayed.
 Used for `PT` and `TM` agreements (`canCode` backfilled for PT from `pt_trans.txt` — see "Informix migration" below).
-Only `status='A'` codes (20 of 46) are offered in the "Change Status" reason picker — see "Change Agreement Status" below.
+Only `status='A'` codes (15 of 46) are offered in the "Change Status" reason picker — the active set is authoritative in `prisma/seed-cancellation-reasons.ts` (`ACTIVE_CODES`), not the status column of `agmt_can_cate.txt`. See "Change Agreement Status" below.
 
 ### SuReason
 28 codes from `su_mast.txt`. Relation: `Agreement.suCode → SuReason.code`. Distinct code space from
@@ -643,7 +643,7 @@ Reports use a separate per-user access model — independent of department permi
 - Invalid reason codes (not present in `SuReason`/`CancellationReason`) are caught as a Prisma FK violation (`P2003`) and returned as `400 { error: 'Invalid reason code' }` rather than crashing.
 - Still also flips `AmcSchedule.billingStatus` (`C` for SU/PT/TM, `N` for NA) and writes an `AuditLog` row, unchanged from before.
 - Frontend: the "Change Status" modal (`AgreementDetail.tsx`) shows a reason `<Select>` whenever the picked status isn't `NA`, sourced from `GET /api/su-reasons` (status=SU) or `GET /api/cancellation-reasons` (status=PT/TM). Save is blocked client-side until a reason is chosen.
-- **`GET /api/cancellation-reasons` filters to `status='A'` only** (20 of the 46 codes) — the `'U'` (inactive/legacy) codes are intentionally excluded from new selections even though several of them (e.g. `26`, `39`, `44`) are the most common reasons in historical data. Confirmed with the user this is intentional: `'A'` codes carry newer, curated descriptions meant for ongoing use; `'U'` codes are legacy-only, kept so old records still display correctly but not offered for new status changes. `GET /api/su-reasons` returns all 28 `SuReason` codes unfiltered (no status field on that table).
+- **`GET /api/cancellation-reasons` filters to `status='A'` only** (15 of the 46 codes) — the active set is defined by the business and is authoritative in `ACTIVE_CODES` in `prisma/seed-cancellation-reasons.ts` (it deliberately overrides the status column of `agmt_can_cate.txt`, whose values do not match current rules). Active codes as of 2026-07-10: `08, 10, 13, 15, 21, 22, 24, 25, 34, 37, 38, 39, 43, 45, 46`. All other codes are kept as `'U'` so historical records still display correctly but are not offered for new status changes. To change the active set, edit `ACTIVE_CODES` and re-run the seed. `GET /api/su-reasons` returns all 28 `SuReason` codes unfiltered (no status field on that table).
 
 ## MemberDetail conventions
 - **Spouse name** shown inside Personal Information card (no separate Spouse card); spouse IC not displayed.

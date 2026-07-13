@@ -5,7 +5,7 @@ import { pbsApi } from '../../api/pbs';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
-import { ArrowLeft, Download } from 'lucide-react';
+import { ArrowLeft, Download, Search } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface ClaimPreviewRow {
@@ -41,6 +41,9 @@ type Tab = 'claim' | 'nd';
 export function PbsClaimReport() {
   const [tab, setTab] = useState<Tab>('claim');
 
+  // Preview only runs when the user clicks Preview.
+  const [previewRequested, setPreviewRequested] = useState(false);
+
   const { data, isLoading } = useQuery({
     queryKey: ['pbs-claim-report'],
     queryFn: () => pbsApi.previewClaimReport().then(r => r.data as {
@@ -48,6 +51,7 @@ export function PbsClaimReport() {
       nd: ClaimPreviewRow[];
       meta: ClaimMeta;
     }),
+    enabled: previewRequested,
   });
 
   const claimRows = data?.data ?? [];
@@ -85,13 +89,23 @@ export function PbsClaimReport() {
             Zurich PBS claim listing. Excel download includes both worksheets.
           </p>
         </div>
-        <Button onClick={handleDownload} disabled={!claimRows.length && !ndRows.length} size="sm">
-          <Download className="h-4 w-4 mr-1.5" />
-          Download Excel
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setPreviewRequested(true)} loading={previewRequested && isLoading} variant="secondary" size="sm">
+            <Search className="h-4 w-4 mr-1.5" />
+            Preview
+          </Button>
+          <Button onClick={handleDownload} size="sm">
+            <Download className="h-4 w-4 mr-1.5" />
+            Download Excel
+          </Button>
+        </div>
       </div>
 
-      {isLoading ? <PageSpinner /> : (
+      {!previewRequested ? (
+        <Card>
+          <div className="px-6 py-12 text-center text-gray-400">Click Preview to load the report.</div>
+        </Card>
+      ) : isLoading ? <PageSpinner /> : (
         <>
           {/* Tabs */}
           <div className="flex gap-1 border-b">

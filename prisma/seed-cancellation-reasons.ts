@@ -16,6 +16,16 @@ import * as path from 'path';
 
 const prisma = new PrismaClient();
 
+// Per business (2026-07-10), ONLY these codes are offered in the "Change Status"
+// reason picker (status = 'A'). Every other code is retained for historical
+// display but deactivated (status = 'U'). This override is authoritative and
+// deliberately ignores the status column in agmt_can_cate.txt, whose values do
+// not reflect the current business rules.
+const ACTIVE_CODES = new Set([
+  '08', '10', '13', '15', '21', '22', '24', '25',
+  '34', '37', '38', '39', '43', '45', '46',
+]);
+
 async function main() {
   const lines = fs.readFileSync(
     path.join(__dirname, '..', 'migrate', 'agmt_can_cate.txt'),
@@ -29,9 +39,10 @@ async function main() {
     const desc     = c[1]?.trim();
     const category = c[2]?.trim();
     const type     = c[3]?.trim() || null;
-    const status   = c[5]?.trim() || 'A';
 
     if (!code || !desc || !category) continue;
+
+    const status = ACTIVE_CODES.has(code) ? 'A' : 'U';
 
     await prisma.cancellationReason.upsert({
       where:  { code },
@@ -43,12 +54,13 @@ async function main() {
   }
 
   // Code 05 is used in agreements but absent from agmt_can_cate.txt — keep it
+  // for historical display; not in ACTIVE_CODES, so deactivated.
   await prisma.cancellationReason.upsert({
     where:  { code: '05' },
-    update: { description: 'UNABLE TO SERVICE LOAN', category: 'CC', type: 'D', status: 'A' },
-    create: { code: '05', description: 'UNABLE TO SERVICE LOAN', category: 'CC', type: 'D', status: 'A' },
+    update: { description: 'UNABLE TO SERVICE LOAN', category: 'CC', type: 'D', status: 'U' },
+    create: { code: '05', description: 'UNABLE TO SERVICE LOAN', category: 'CC', type: 'D', status: 'U' },
   });
-  console.log(`  05 | UNABLE TO SERVICE LOAN | CC | A  (kept from seed)`);
+  console.log(`  05 | UNABLE TO SERVICE LOAN | CC | U  (kept from seed, deactivated)`);
   upserted++;
 
   const total = await prisma.cancellationReason.count();

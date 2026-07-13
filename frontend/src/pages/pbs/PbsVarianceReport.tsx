@@ -1,10 +1,11 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { pbsApi } from '../../api/pbs';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
-import { ArrowLeft, Download } from 'lucide-react';
+import { ArrowLeft, Download, Search } from 'lucide-react';
 
 interface VarianceRow {
   coCode: string;
@@ -19,12 +20,16 @@ interface VarianceRow {
 }
 
 export function PbsVarianceReport() {
+  // Preview only runs when the user clicks Preview.
+  const [previewRequested, setPreviewRequested] = useState(false);
+
   const { data, isLoading } = useQuery({
     queryKey: ['pbs-variance-report'],
     queryFn: () => pbsApi.previewVariance().then(r => r.data as {
       data: VarianceRow[];
       meta: { total: number };
     }),
+    enabled: previewRequested,
   });
 
   const rows = data?.data ?? [];
@@ -59,13 +64,23 @@ export function PbsVarianceReport() {
             Compares rightful scheme (by agreement date) against the Zurich scheme on record.
           </p>
         </div>
-        <Button onClick={handleDownload} disabled={!rows.length} size="sm">
-          <Download className="h-4 w-4 mr-1.5" />
-          Download Excel
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setPreviewRequested(true)} loading={previewRequested && isLoading} variant="secondary" size="sm">
+            <Search className="h-4 w-4 mr-1.5" />
+            Preview
+          </Button>
+          <Button onClick={handleDownload} size="sm">
+            <Download className="h-4 w-4 mr-1.5" />
+            Download Excel
+          </Button>
+        </div>
       </div>
 
-      {isLoading ? <PageSpinner /> : rows.length === 0 ? (
+      {!previewRequested ? (
+        <Card>
+          <div className="px-6 py-12 text-center text-gray-400">Click Preview to load the report.</div>
+        </Card>
+      ) : isLoading ? <PageSpinner /> : rows.length === 0 ? (
         <Card>
           <div className="px-6 py-12 text-center text-gray-400">No records found.</div>
         </Card>

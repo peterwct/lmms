@@ -273,7 +273,7 @@ export interface Agreement {
   amcInvoices?: AmcInvoice[];
   pbsScheme?: PbsScheme;
   entitlementBalance?: EntitlementBalance | null;
-  cpEntitlementBalance?: CpEntitlementBalance[] | null;
+  cpEntitlementBalance?: CpEntitlementBalance | null;
 }
 
 export interface EntitlementBalanceColumn {
@@ -291,10 +291,15 @@ export interface EntitlementBalance {
   usedYear: number;                    // calendar year of the current membership year
 }
 
-export interface CpEntitlementBalance {
+export interface CpEntitlementBalanceColumn {
   label: string;      // Acc | Curr | Ad1..Ad5
   year: number;
   bal: number | null; // point balance; null => blank cell (no source row / past expiry)
+}
+
+export interface CpEntitlementBalance {
+  columns: CpEntitlementBalanceColumn[]; // Acc | Curr | Ad1..Ad5 (7 columns)
+  forfeitedPts: number;                  // points from years older than / capped out of Accrue
 }
 
 export interface AmcPrice {

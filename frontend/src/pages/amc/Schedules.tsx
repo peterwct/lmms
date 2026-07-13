@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { amcApi } from '../../api/amc';
@@ -11,9 +11,16 @@ import { ProductBadge } from '../../components/ProductBadge';
 import { RecordCount } from '../../components/ui/RecordCount';
 import { format } from 'date-fns';
 
+const PRODUCT_LABELS: Record<string, string> = { '03': 'LHC-03', '15': 'LHC-15', '02': 'CP' };
+const STATUS_LABELS: Record<string, string> = {
+  NA: 'Active (NA)', SU: 'Suspended (SU)', PT: 'Pending Termination (PT)', TM: 'Terminated (TM)',
+};
+
 export function Schedules() {
   const [sp, setSp] = useSearchParams();
+  const currentMonth = format(new Date(), 'yyyy-MM');
 
+  // Committed filters (drive the query) — sourced from the URL, updated only on Search.
   const coCode       = sp.get('coCode')       ?? '';
   const acctClassify = sp.get('acctClassify') ?? '';
   const billingStatus = sp.get('billingStatus') ?? '';
@@ -21,27 +28,21 @@ export function Schedules() {
   const q            = sp.get('q')            ?? '';
   const page         = parseInt(sp.get('page') ?? '1', 10);
   const hasFilters   = !!(q || coCode || acctClassify || billingStatus || dueDate);
-  const today        = format(new Date(), 'yyyy-MM-dd');
 
-  // Local search input — debounced to URL
-  const [searchInput, setSearchInput] = useState(() => sp.get('q') ?? '');
+  // Staged filter inputs — held locally until the user clicks Search.
+  const [searchInput, setSearchInput]   = useState(() => sp.get('q') ?? '');
+  const [coCodeInput, setCoCodeInput]   = useState(() => sp.get('coCode') ?? '');
+  const [acctInput, setAcctInput]       = useState(() => sp.get('acctClassify') ?? '');
+  const [dueDateInput, setDueDateInput] = useState(() => sp.get('dueDate') ?? currentMonth);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSp(prev => {
-        const next = new URLSearchParams(prev);
-        if (searchInput.trim()) next.set('q', searchInput.trim()); else next.delete('q');
-        next.set('page', '1');
-        return next;
-      }, { replace: true });
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
-
-  const setFilter = (key: string, value: string) => {
+  const handleSearch = () => {
     setSp(prev => {
       const next = new URLSearchParams(prev);
-      if (value) next.set(key, value); else next.delete(key);
+      const set = (key: string, value: string) => { if (value) next.set(key, value); else next.delete(key); };
+      set('q', searchInput.trim());
+      set('coCode', coCodeInput);
+      set('acctClassify', acctInput);
+      set('dueDate', dueDateInput);
       next.set('page', '1');
       return next;
     }, { replace: true });
@@ -66,8 +67,21 @@ export function Schedules() {
 
   const handleClear = () => {
     setSearchInput('');
+    setCoCodeInput('');
+    setAcctInput('');
+    setDueDateInput(currentMonth);
     setSp({}, { replace: true });
   };
+
+  // Human-readable summary of the applied filters (shown next to the record count).
+  const criteria: { label: string; value: string }[] = [];
+  if (q)            criteria.push({ label: 'Search', value: q });
+  if (coCode)       criteria.push({ label: 'Product', value: PRODUCT_LABELS[coCode] ?? coCode });
+  if (acctClassify) criteria.push({ label: 'Status', value: STATUS_LABELS[acctClassify] ?? acctClassify });
+  if (dueDate) {
+    const [y, m] = dueDate.split('-').map(Number);
+    criteria.push({ label: 'AMC Next Due Month', value: format(new Date(y, m - 1, 1), 'MMMM yyyy') });
+  }
 
   return (
     <div className="space-y-4">
@@ -81,7 +95,8 @@ export function Schedules() {
           <input
             type="text"
             value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
+            onChange={e => setSearchInput(e.target.value.toUpperCase())}
+            onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
             placeholder="Search agreement no., membership no. or name…"
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
@@ -95,40 +110,61 @@ export function Schedules() {
           )}
         </div>
 
-        <Select value={coCode} onChange={e => setFilter('coCode', e.target.value)} className="w-36">
+        <Select value={coCodeInput} onChange={e => setCoCodeInput(e.target.value)} className="w-36">
           <option value="">All Products</option>
           <option value="03">LHC-03</option>
           <option value="15">LHC-15</option>
           <option value="02">CP</option>
         </Select>
 
-        <Select value={acctClassify} onChange={e => setFilter('acctClassify', e.target.value)} className="w-44">
+        <Select value={acctInput} onChange={e => setAcctInput(e.target.value)} className="w-44">
           <option value="">All Status</option>
           <option value="NA">Active (NA)</option>
           <option value="SU">Suspended (SU)</option>
           <option value="PT">Pending Termination (PT)</option>
           <option value="TM">Terminated (TM)</option>
         </Select>
-
-        {hasFilters && (
-          <button onClick={handleClear} className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">
-            Clear
-          </button>
-        )}
       </div>
 
-      <div className="flex items-center gap-1.5">
-        <label className="text-sm text-gray-500 whitespace-nowrap">AMC Next Due Date</label>
-        <input
-          type="date"
-          value={dueDate}
-          min={today}
-          onChange={e => setFilter('dueDate', e.target.value)}
-          className="px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1.5">
+          <label className="text-sm text-gray-500 whitespace-nowrap">AMC Next Due Month</label>
+          <input
+            type="month"
+            value={dueDateInput}
+            onChange={e => setDueDateInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
+            className="px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        <button onClick={handleSearch}
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">
+          Search
+        </button>
+        <button onClick={handleClear}
+          className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">
+          Clear
+        </button>
       </div>
 
-      {hasFilters && <RecordCount total={data?.meta?.total} loading={isLoading} />}
+      {hasFilters && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <RecordCount total={data?.meta?.total} loading={isLoading} />
+          {!isLoading && criteria.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-gray-400">Filters:</span>
+              {criteria.map(c => (
+                <span key={c.label}
+                  className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-100 px-2 py-0.5 text-blue-700">
+                  <span className="text-blue-400">{c.label}:</span>
+                  <span className="font-medium">{c.value}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {!hasFilters ? (
         <Card>

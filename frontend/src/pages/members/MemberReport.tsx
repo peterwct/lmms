@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, FileSpreadsheet, Search, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { FileText, FileSpreadsheet, Search, AlertCircle, ArrowLeft } from 'lucide-react';
 import { reportsApi, type MemberPreviewRow } from '../../api/reports';
 import { apiError } from '../../api/client';
 import { Card, CardBody } from '../../components/ui/Card';
@@ -109,6 +110,10 @@ export function MemberReport() {
 
   return (
     <div className="space-y-4">
+      <Link to="/reports" className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800">
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Back to Reports
+      </Link>
       <div>
         <h2 className="text-lg font-bold text-gray-800">Member Detail Listing</h2>
         <p className="text-sm text-gray-500 mt-1">

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { FileText, FileSpreadsheet, AlertCircle, Search, ArrowLeft } from 'lucide-react';
 import { reportsApi, type ExpirySummaryRow } from '../../api/reports';
 import { apiError } from '../../api/client';
 import { Card } from '../../components/ui/Card';
@@ -105,10 +106,16 @@ export function ExpirySummaryReport() {
   const [excelLoading,  setExcelLoading]  = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
+  // Preview only runs when the user clicks Preview.
+  const [applied, setApplied] = useState<'LHC' | 'CP' | null>(null);
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['expiry-summary-preview', coCode],
-    queryFn:  () => reportsApi.expirySummaryPreview({ coCode }).then(r => r.data),
+    queryKey: ['expiry-summary-preview', applied],
+    queryFn:  () => reportsApi.expirySummaryPreview({ coCode: applied! }).then(r => r.data),
+    enabled: applied !== null,
   });
+
+  const handlePreview = () => setApplied(coCode);
 
   const busy = pdfLoading || excelLoading;
 
@@ -139,6 +146,10 @@ export function ExpirySummaryReport() {
 
   return (
     <div className="space-y-4">
+      <Link to="/reports" className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800">
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Back to Reports
+      </Link>
       <div>
         <h2 className="text-lg font-bold text-gray-800">Summary of Expiring Members by Years</h2>
         <p className="text-sm text-gray-500 mt-1">
@@ -170,6 +181,10 @@ export function ExpirySummaryReport() {
                 {downloadError}
               </div>
             )}
+            <Button onClick={handlePreview} loading={applied !== null && isLoading} variant="secondary">
+              <Search className="h-4 w-4" />
+              Preview
+            </Button>
             <Button onClick={() => handleDownload('pdf')} disabled={busy} loading={pdfLoading} variant="primary">
               <FileText className="h-4 w-4" />
               Download PDF
@@ -181,14 +196,18 @@ export function ExpirySummaryReport() {
           </div>
         </div>
 
-        {data && (
+        {applied && data && (
           <div className="px-4 py-2 text-sm text-gray-500 border-b">
             <span className="font-semibold text-gray-800">{data.data.length}</span> expiry years &mdash;&nbsp;
             <span className="font-semibold text-blue-700">{data.meta.totalAgreements.toLocaleString()}</span> agreements total
           </div>
         )}
 
-        {isLoading && <PageSpinner />}
+        {!applied && (
+          <p className="px-4 py-8 text-center text-gray-400">Select a company, then click Preview.</p>
+        )}
+
+        {applied && isLoading && <PageSpinner />}
 
         {error && (
           <div className="flex items-center gap-2 px-4 py-6 text-sm text-red-600">
@@ -197,7 +216,7 @@ export function ExpirySummaryReport() {
           </div>
         )}
 
-        {!isLoading && data && <SummaryTable rows={data.data} />}
+        {applied && !isLoading && data && <SummaryTable rows={data.data} />}
       </Card>
     </div>
   );
