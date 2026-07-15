@@ -48,7 +48,7 @@ export async function listAgreements(req: Request, res: Response): Promise<void>
   const { skip, take, page, limit } = parsePagination(req.query as Record<string, unknown>);
   const {
     memberId, coCode, acctClassify, branchCode, q,
-    membershipNo, agreementNo, name, icNew, icOld, jaName, spouseName, nomineeName, email, companyName,
+    membershipNo, agreementNo, name, icNew, icOld, jaName, spouseName, nomineeName, email, companyName, phone,
     sortBy, sortDir,
   } = req.query as Record<string, string>;
 
@@ -79,6 +79,33 @@ export async function listAgreements(req: Request, res: Response): Promise<void>
   if (nomineeName?.trim())  and.push({ nominees: { some: { fullName: { contains: nomineeName.trim(), mode: 'insensitive' } } } });
   if (email?.trim())        and.push({ member: { email:    { contains: email.trim(), mode: 'insensitive' } } });
   if (companyName?.trim())  and.push({ member: { companyName: { contains: companyName.trim(), mode: 'insensitive' } } });
+
+  // Phone search — matches ANY phone/fax field on the Member. Numbers are stored in
+  // mixed formats (with and without dashes, e.g. "017-6822868" vs "0194714131"), so we
+  // strip non-digits from both the stored value and the search term before comparing.
+  // Resolved via raw SQL to member ids (a phone match returns very few members, so the
+  // resulting `memberId IN (...)` list is tiny — well under Postgres' bind-var cap).
+  if (phone?.trim()) {
+    const digits = phone.replace(/\D/g, '');
+    if (digits) {
+      const pat = `%${digits}%`;
+      const rows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "Member" WHERE
+             regexp_replace(COALESCE("telHome",     ''), '[^0-9]', '', 'g') LIKE ${pat}
+          OR regexp_replace(COALESCE("telMobile",   ''), '[^0-9]', '', 'g') LIKE ${pat}
+          OR regexp_replace(COALESCE("telOffice",   ''), '[^0-9]', '', 'g') LIKE ${pat}
+          OR regexp_replace(COALESCE("telOffice2",  ''), '[^0-9]', '', 'g') LIKE ${pat}
+          OR regexp_replace(COALESCE("jaTelHome",   ''), '[^0-9]', '', 'g') LIKE ${pat}
+          OR regexp_replace(COALESCE("jaTelOffice", ''), '[^0-9]', '', 'g') LIKE ${pat}
+          OR regexp_replace(COALESCE("jaMobile",    ''), '[^0-9]', '', 'g') LIKE ${pat}
+          OR regexp_replace(COALESCE("faxNo",       ''), '[^0-9]', '', 'g') LIKE ${pat}
+          OR regexp_replace(COALESCE("faxOffice",   ''), '[^0-9]', '', 'g') LIKE ${pat}`;
+      and.push(rows.length ? { memberId: { in: rows.map(r => r.id) } } : { id: '__none__' });
+    } else {
+      // Non-numeric input — a phone search that can't match anything.
+      and.push({ id: '__none__' });
+    }
+  }
 
   const where = and.length ? { AND: and } : {};
 

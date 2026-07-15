@@ -477,7 +477,7 @@ GET  /api/states                            List all state codes
 GET  /api/cancellation-reasons              Active (status='A') CancellationReason codes — for PT/TM reason picker
 GET  /api/su-reasons                        All SuReason codes — for SU reason picker
 GET  /api/members?search=&memberType=&...   Search members
-GET  /api/members/enquiry?...               Member Enquiry search (same params as /api/agreements; uses MEMBERS permission)
+GET  /api/members/enquiry?...               Member Enquiry search (same params as /api/agreements; uses MEMBERS permission). Supports `phone=` — searches all 9 Member phone/fax fields, digit-stripped (see Members module note)
 GET  /api/members/:id                       Member + agreements + nominees
 PUT  /api/members/:id                       Update member
 GET  /api/agreements?q=&coCode=&...         List/search agreements
@@ -534,7 +534,7 @@ GET  /api/pbs/reports/variance                     Generate PBS Variance Report 
 | Admin — Users | ✅ Done | Users, UserDetail, UserForm. No accessLevel field (removed). |
 | Admin — Departments | ✅ Done | Departments, permissions matrix |
 | Admin — Audit Log | ✅ Done | AuditLog (IT only) |
-| Members | ✅ Done | Member Enquiry (search+sort, URL state), MemberDetail, MemberForm. Agreement links with `transferFlag='TT'` are disabled (strikethrough) on both the list and MemberDetail accordion. Change Status removed from MemberDetail — agreements only. Enquiry uses `GET /api/members/enquiry` (MEMBERS permission) not `/api/agreements`. Agreement number links check `canView('AGREEMENTS')` — plain text when disabled. |
+| Members | ✅ Done | Member Enquiry (search+sort, URL state), MemberDetail, MemberForm. Agreement links with `transferFlag='TT'` are disabled (strikethrough) on both the list and MemberDetail accordion. Change Status removed from MemberDetail — agreements only. Enquiry uses `GET /api/members/enquiry` (MEMBERS permission) not `/api/agreements`. Agreement number links check `canView('AGREEMENTS')` — plain text when disabled. **Phone/Fax search** (`phone=` param): searches all 9 Member phone/fax fields (`telHome`, `telMobile`, `telOffice`, `telOffice2`, `jaTelHome`, `jaTelOffice`, `jaMobile`, `faxNo`, `faxOffice`) via raw SQL that digit-strips both sides (`regexp_replace(...,'[^0-9]','','g')`) — numbers are stored in mixed formats (`017-6822868` vs `0194714131`), so bare-digit input still matches dashed values. Resolves to member ids → `{ memberId: { in } }` (match set is tiny, no bind-var risk). In `listAgreements` in [agreements.controller.ts](backend/src/controllers/agreements.controller.ts). |
 | Agreements | ✅ Done | Agreements list (search+sort, URL state, defaults LHC-03/Active, default sort agreementDate asc), AgreementDetail. Columns: Agreement No, Membership No/Name, Agreement Date, Expiry Date, Term, AMC, Status. AMC and PBS cards fetched by `coCode + agreementNo` (not FK) to handle duplicate agreementNo across members. |
 | AMC Billing — Schedules | ✅ Done | Schedules (search+sort, URL state, defaults LHC-03/Active). Filters: product, acctClassify (by membershipNo+agreementNo pairs), AMC Next Due Date (exact date, current/future only). Default sort: acctClassify asc (NA first), then nextDueDate asc. |
 | AMC Billing — Invoices | ✅ Done | Invoices, InvoiceDetail |

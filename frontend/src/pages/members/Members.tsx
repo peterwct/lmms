@@ -17,9 +17,9 @@ type SortDir   = 'asc' | 'desc';
 
 interface SearchState {
   coCode: string; membershipNo: string; agreementNo: string; name: string; icNew: string;
-  icOld: string; jaName: string; spouseName: string; nomineeName: string; email: string; companyName: string;
+  icOld: string; jaName: string; spouseName: string; nomineeName: string; email: string; companyName: string; phone: string;
 }
-const EMPTY: SearchState = { coCode: '', membershipNo: '', agreementNo: '', name: '', icNew: '', icOld: '', jaName: '', spouseName: '', nomineeName: '', email: '', companyName: '' };
+const EMPTY: SearchState = { coCode: '', membershipNo: '', agreementNo: '', name: '', icNew: '', icOld: '', jaName: '', spouseName: '', nomineeName: '', email: '', companyName: '', phone: '' };
 
 function SortHeader({ label, field, sortBy, sortDir, onSort }: {
   label: string; field: SortField;
@@ -56,6 +56,7 @@ export function Members() {
     nomineeName:  sp.get('nomineeName')  ?? '',
     email:        sp.get('email')        ?? '',
     companyName:  sp.get('companyName')  ?? '',
+    phone:        sp.get('phone')        ?? '',
   };
 
   // Draft is local — form inputs; initialised from URL so form matches on Back
@@ -71,6 +72,7 @@ export function Members() {
     nomineeName:  sp.get('nomineeName')  ?? '',
     email:        sp.get('email')        ?? '',
     companyName:  sp.get('companyName')  ?? '',
+    phone:        sp.get('phone')        ?? '',
   }));
 
   const set = (k: keyof SearchState) =>
@@ -92,6 +94,7 @@ export function Members() {
     if (draft.nomineeName)  p.nomineeName  = draft.nomineeName;
     if (draft.email)        p.email        = draft.email;
     if (draft.companyName)  p.companyName  = draft.companyName;
+    if (draft.phone)        p.phone        = draft.phone;
     setSp(p);
   };
 
@@ -131,6 +134,7 @@ export function Members() {
       nomineeName:  applied.nomineeName  || undefined,
       email:        applied.email        || undefined,
       companyName:  applied.companyName  || undefined,
+      phone:        applied.phone        || undefined,
       sortBy:       sortBy               || undefined,
       sortDir,
       page, limit: 20,
@@ -167,6 +171,7 @@ export function Members() {
               ['nomineeName',  'Nominee Name',     'Nominee full name or partial'],
               ['email',        'Email',            'Email or partial'],
               ['companyName',  "Member's Employer Name", 'Employer / company name'],
+              ['phone',        'Phone / Fax No.',  'Any phone or fax number'],
             ] as [keyof SearchState, string, string][]).map(([k, lbl, ph]) => (
               <div key={k}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{lbl}</label>

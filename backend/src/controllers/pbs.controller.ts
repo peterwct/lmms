@@ -21,7 +21,24 @@ export async function listPbsSchemes(req: Request, res: Response): Promise<void>
   const and: object[] = [{ pbsIndc: true }];
 
   if (coCode) and.push({ coCode });
-  if (acctClassify) and.push({ agreement: { acctClassify } });
+  if (acctClassify) {
+    // Resolve status by NATURAL KEY (coCode + agreementNo, non-TT), not the Prisma
+    // FK: PbsScheme.agreementId can point to the transferred-out (TT/TM) counterpart
+    // of a transfer pair, so `{ agreement: { acctClassify } }` would drop the active
+    // holder (e.g. agreement 54571's NA record was invisible under the NA filter).
+    // Done via raw SQL returning matching scheme ids (bounded by the ~5k PBS rows) —
+    // a plain Prisma OR over every matching agreement blows past Postgres' 32767
+    // bind-variable limit for high-count statuses like TM (25k+ agreements).
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT DISTINCT ps.id
+      FROM "PbsScheme" ps
+      JOIN "Agreement" a
+        ON a."coCode" = ps."coCode" AND a."agreementNo" = ps."agreementNo"
+       AND a."transferFlag" IS DISTINCT FROM 'TT'
+      WHERE a."acctClassify"::text = ${acctClassify}`;
+    const ids = rows.map(r => r.id);
+    and.push(ids.length ? { id: { in: ids } } : { id: '__none__' });
+  }
   if (schemeType) and.push({ schemeType });
 
   if (claimIndc === 'true')  and.push({ claimIndc: true });
