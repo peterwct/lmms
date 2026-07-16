@@ -167,6 +167,19 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
 
   for (const schedule of schedules) {
     const { agreement } = schedule;
+
+    // Never bill beyond the agreement's term. Some migrated schedules arrive fully billed
+    // (invoicesIssued == totalInvoices) yet still billingStatus='N' with a nextDueDate — without
+    // this guard they'd be billed one extra year. Report as skipped rather than silently exclude.
+    if (schedule.invoicesIssued >= schedule.totalInvoices) {
+      skipped.push({
+        agreementNo: schedule.agreementNo,
+        membershipNo: schedule.membershipNo,
+        reason: `Already fully billed (${schedule.invoicesIssued}/${schedule.totalInvoices}) — no invoice generated`,
+      });
+      continue;
+    }
+
     const isLhc = schedule.coCode !== '02';
     const invoiceYearSeq = schedule.invoicesIssued + 1;
     const isFinalYear = invoiceYearSeq >= schedule.totalInvoices;

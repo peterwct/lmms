@@ -15,8 +15,8 @@ import { ProductBadge } from '../../components/ProductBadge';
 import { RecordCount } from '../../components/ui/RecordCount';
 
 export function InvoiceCancellation() {
-  const { isIT, user } = useAuth();
-  const canCancel = isIT || user?.department.name === 'Credit';
+  const { canEdit } = useAuth();
+  const canCancel = canEdit('AMC_BILLING'); // cancellation requires AMC Billing Edit permission
 
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');

@@ -124,6 +124,8 @@ async function main() {
       if (!agreementId) { lhcNotFound++; continue; }
     }
 
+    const lhcInvoicesIssued = intVal(c[6] ?? '0');
+    const lhcTotalInvoices  = intVal(c[7] ?? '0');
     batch.push({
       id:              randomUUID(),
       updatedAt:       new Date(),
@@ -132,10 +134,11 @@ async function main() {
       agreementNo,
       coCode,
       firstDueDate:    d(c[3] ?? ''),
-      nextDueDate:     d(c[4] ?? ''),
+      // Fully-billed schedules have no next due — leave null so they're never re-billed (over-billing guard)
+      nextDueDate:     lhcInvoicesIssued >= lhcTotalInvoices ? null : d(c[4] ?? ''),
       lastInvoiceDate: d(c[5] ?? ''),
-      invoicesIssued:  intVal(c[6] ?? '0'),
-      totalInvoices:   intVal(c[7] ?? '0'),
+      invoicesIssued:  lhcInvoicesIssued,
+      totalInvoices:   lhcTotalInvoices,
       priceCode:       t(c[8]),
       billingStatus:   'N',
       legacyCreatedAt: d(c[9] ?? ''),
@@ -171,6 +174,8 @@ async function main() {
       if (!agreementId) { cpNotFound++; continue; }
     }
 
+    const cpInvoicesIssued = intVal(c[6] ?? '0');
+    const cpTotalInvoices  = intVal(c[7] ?? '0');
     batch.push({
       id:              randomUUID(),
       updatedAt:       new Date(),
@@ -179,10 +184,11 @@ async function main() {
       agreementNo,
       coCode,
       firstDueDate:    d(c[3] ?? ''),
-      nextDueDate:     d(c[4] ?? ''),
+      // Fully-billed schedules have no next due — leave null so they're never re-billed (over-billing guard)
+      nextDueDate:     cpInvoicesIssued >= cpTotalInvoices ? null : d(c[4] ?? ''),
       lastInvoiceDate: d(c[5] ?? ''),
-      invoicesIssued:  intVal(c[6] ?? '0'),
-      totalInvoices:   intVal(c[7] ?? '0'),
+      invoicesIssued:  cpInvoicesIssued,
+      totalInvoices:   cpTotalInvoices,
       priceCode:       null,
       billingStatus:   'N',
       legacyCreatedAt: d(c[8] ?? ''),

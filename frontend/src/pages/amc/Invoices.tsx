@@ -23,8 +23,8 @@ const compLabel: Record<string, string> = { MAIN_AMC: 'AMC', SINKING_FUND: 'SF',
 const compColor: Record<string, 'blue' | 'indigo' | 'amber' | 'gray'> = { MAIN_AMC: 'blue', SINKING_FUND: 'indigo', SERVICE_TAX: 'amber', ROUNDING: 'gray' };
 
 export function Invoices() {
-  const { isIT, user } = useAuth();
-  const canGenerate = isIT || user?.department.name === 'Credit';
+  const { canEdit } = useAuth();
+  const canGenerate = canEdit('AMC_BILLING'); // generate requires AMC Billing Edit permission
   const [coCode, setCoCode] = useState('');
   const [billType, setBillType] = useState('');
   const [from, setFrom] = useState('');
@@ -45,6 +45,10 @@ export function Invoices() {
   const [genResult, setGenResult] = useState('');
   const [genSkipped, setGenSkipped] = useState<{ agreementNo: string; membershipNo: string; reason: string }[]>([]);
   const [genError, setGenError] = useState('');
+  const [confirmingBulk, setConfirmingBulk] = useState(false); // confirm step when generating for ALL (no agreement no)
+
+  // Only query once the user has entered a search term or picked a filter — no records by default.
+  const hasFilters = !!(debouncedQ || coCode || billType || from || to);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['amc-invoices', coCode, billType, from, to, debouncedQ, page],
@@ -52,11 +56,12 @@ export function Invoices() {
       coCode: coCode || undefined, billType: billType || undefined,
       from: from || undefined, to: to || undefined, q: debouncedQ || undefined, page, limit: 20,
     }).then(r => r.data),
+    enabled: hasFilters,
   });
 
   const genMut = useMutation({
     mutationFn: () => amcApi.generateInvoices({ productType: genProductType, period: genPeriod || undefined, agreementNo: genAgreementNo.trim() || undefined }),
-    onSuccess: (res) => { setGenResult(res.data.message); setGenSkipped(res.data.skipped ?? []); refetch(); },
+    onSuccess: (res) => { setGenResult(res.data.message); setGenSkipped(res.data.skipped ?? []); setConfirmingBulk(false); refetch(); },
     onError: (err) => setGenError(apiError(err)),
   });
 
@@ -112,14 +117,19 @@ export function Invoices() {
           )}
         </div>
         {canGenerate && (
-          <Button size="sm" onClick={() => { setGenModal(true); setGenResult(''); setGenSkipped([]); setGenError(''); }}>
+          <Button size="sm" onClick={() => { setGenModal(true); setGenResult(''); setGenSkipped([]); setGenError(''); setConfirmingBulk(false); }}>
             <Zap className="h-4 w-4" /> Generate invoices
           </Button>
         )}
       </div>
 
-      <RecordCount total={data?.meta?.total} loading={isLoading} />
+      {hasFilters && <RecordCount total={data?.meta?.total} loading={isLoading} />}
 
+      {!hasFilters ? (
+        <Card>
+          <p className="px-4 py-8 text-center text-gray-400">Enter a search term or select a filter to view invoices.</p>
+        </Card>
+      ) : (
       <Card>
         {isLoading ? <PageSpinner /> : (
           <>
@@ -171,6 +181,7 @@ export function Invoices() {
           </>
         )}
       </Card>
+      )}
 
       {/* Generate modal */}
       <Modal open={genModal} title="Generate Invoices" onClose={() => setGenModal(false)}>
@@ -182,7 +193,7 @@ export function Invoices() {
           <Input label="Period" type="month" value={genPeriod} onChange={e => setGenPeriod(e.target.value)} />
           <div>
             <Input label="Agreement No (leave blank for all)" type="text" value={genAgreementNo}
-                   onChange={e => setGenAgreementNo(e.target.value.toUpperCase())} placeholder="All" />
+                   onChange={e => { setGenAgreementNo(e.target.value.toUpperCase()); setConfirmingBulk(false); }} placeholder="All" />
             {genAgreementNo.trim() && (
               <div className="mt-1 text-xs">
                 {!settled ? (
@@ -218,11 +229,30 @@ export function Invoices() {
             </div>
           )}
           {genError && <p className="text-sm text-red-600">{genError}</p>}
+          {confirmingBulk && !genResult && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              No agreement number entered — this will generate invoices for <span className="font-medium">ALL due {genProductType} agreements</span> for{' '}
+              {genPeriod ? format(new Date(`${genPeriod}-01T00:00:00`), 'MMMM yyyy') : 'the current period'}. Are you sure?
+            </p>
+          )}
           <div className="flex gap-3">
-            <Button onClick={() => genMut.mutate()} loading={genMut.isPending} disabled={!!genResult || agmtNotFound}>
+            {confirmingBulk && !genResult ? (
+              <>
+                <Button onClick={() => genMut.mutate()} loading={genMut.isPending}>
+                  <Zap className="h-4 w-4" /> Yes, generate all
+                </Button>
+                <Button variant="secondary" onClick={() => setConfirmingBulk(false)}>Back</Button>
+              </>
+            ) : (
+              <>
+            <Button
+              onClick={() => { if (!genAgreementNo.trim()) { setConfirmingBulk(true); return; } genMut.mutate(); }}
+              loading={genMut.isPending} disabled={!!genResult || agmtNotFound}>
               <Zap className="h-4 w-4" /> Generate
             </Button>
             <Button variant="secondary" onClick={() => setGenModal(false)}>Close</Button>
+              </>
+            )}
           </div>
         </div>
       </Modal>

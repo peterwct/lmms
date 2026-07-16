@@ -381,20 +381,29 @@ An invoice = a **set** of rows sharing `scheduleId` + `invoiceYearSeq`, one per 
 **Invoice Cancellation** can restore it exactly (see below).
 
 ### AMC Invoice Generation
-`POST /api/amc/invoices/generate` (`generateInvoices`, Credit/IT). Body `{ productType: 'CP'|'LHC',
+`POST /api/amc/invoices/generate` (`generateInvoices`, gated by **`requirePermission('AMC_BILLING','edit')`** —
+i.e. any department with the AMC Billing Edit flag; IT bypasses. Note: this is the standard matrix Edit
+permission, NOT the old Credit/IT department rule. Credit has canEdit=false by default, so grant it in
+Admin → Departments if Credit should generate). Body `{ productType: 'CP'|'LHC',
 period: 'YYYY-MM', agreementNo? }`. `CP → coCode 02`, `LHC → coCode 03+15`. **CP billed monthly; LHC only
 Jan & July.** invDate = **1st of the period month** (UTC midnight); selects schedules with
 `nextDueDate < 1st-of-next-month` (due on/before month-end, sweeps overdue) + `billingStatus='N'` +
 `acctClassify='NA'`, optionally scoped to `agreementNo`. All date math uses `Date.UTC` (stored dates are
 UTC midnight; `addOneYear`/`nextLhcDueDate` are UTC to avoid the prev-day-16:00 drift). Per-schedule
 failures (e.g. no rate tier) are collected and returned as `skipped[]` (shown in the modal), not swallowed.
+**Never bills beyond the term:** a schedule with `invoicesIssued >= totalInvoices` is skipped
+("Already fully billed") — some migrated schedules arrived fully billed yet still `billingStatus='N'`
+with a stale `nextDueDate`, which previously caused a one-year over-bill (agreements 30420/30669/34047).
+`migrate-amc-schedules.ts` now imports `nextDueDate = null` when `invoicesIssued >= totalInvoices` (a null
+due date alone excludes them from selection), so a refresh won't reintroduce the bad state.
 **CP amount formula:** `amcRatePerPoint` is the **all-in** rate; SF is carved OUT of it, not added on top —
 `MAIN_AMC = pts·(rate − sfFrac·rate)`, `SF = pts·sfFrac·rate`, `TAX = gstFrac·roundedMAIN`, plus a
 `ROUNDING` line flooring the total to a whole ringgit.
 
 ### AMC Invoice Cancellation
 `/amc/invoice-cancellation` page + `GET /api/amc/invoices/cancellable?q=` and
-`POST /api/amc/invoices/:id/cancel` (both `requireITorCredit`; Credit/IT-only nav item). Cancels a whole
+`POST /api/amc/invoices/:id/cancel` (both `requirePermission('AMC_BILLING','edit')`; nav item + Cancel
+button gated by `canEdit('AMC_BILLING')`). Cancels a whole
 **unprocessed** invoice (all components), searchable by membershipNo/agreementNo/invoiceNo. **Processed
 invoices cannot be cancelled** — filtered out of the list and re-checked in the endpoint (400). Cancel runs
 in a transaction: **hard-deletes** the component set and **rolls the schedule back** to its pre-billing
@@ -518,9 +527,9 @@ GET  /api/agreements/:id                    Agreement detail + AMC + PBS + invoi
 PATCH /api/agreements/:id/status            Change acctClassify + reason code (suCode/canCode); see "Change Agreement Status" below
 GET  /api/amc/schedules?q=&coCode=&...      AMC billing schedules (search supported)
 GET  /api/amc/invoices?q=&coCode=&...        List/search invoices (q = membershipNo/agreementNo/member name; sorted invDate desc, agreementNo, invNo)
-POST /api/amc/invoices/generate             Generate AMC invoices (body: productType 'CP'|'LHC', period 'YYYY-MM', agreementNo?; requireITorCredit). Returns { generated, skipped[] }
-GET  /api/amc/invoices/cancellable?q=        Unprocessed invoice sets, searchable by membershipNo/agreementNo/invNo (requireITorCredit)
-POST /api/amc/invoices/:id/cancel           Cancel a whole unprocessed invoice + roll back its schedule (requireITorCredit; 400 if processed)
+POST /api/amc/invoices/generate             Generate AMC invoices (body: productType 'CP'|'LHC', period 'YYYY-MM', agreementNo?; requirePermission AMC_BILLING edit). Returns { generated, skipped[] }
+GET  /api/amc/invoices/cancellable?q=        Unprocessed invoice sets, searchable by membershipNo/agreementNo/invNo (requirePermission AMC_BILLING edit)
+POST /api/amc/invoices/:id/cancel           Cancel a whole unprocessed invoice + roll back its schedule (requirePermission AMC_BILLING edit; 400 if processed)
 POST /api/amc/dayend/generate               Generate SQL Account day-end file
 GET  /api/amc/rates/lhc                     LHC rate master
 POST /api/amc/rates/lhc                     Add LHC rate
@@ -574,7 +583,7 @@ GET  /api/pbs/reports/variance                     Generate PBS Variance Report 
 | Agreements | ✅ Done | Agreements list (search+sort, URL state, defaults LHC-03/Active, default sort agreementDate asc), AgreementDetail. Columns: Agreement No, Membership No/Name, Agreement Date, Expiry Date, Term, AMC, Status. AMC and PBS cards fetched by `coCode + agreementNo` (not FK) to handle duplicate agreementNo across members. |
 | AMC Billing — Schedules | ✅ Done | Schedules (search+sort, URL state, defaults LHC-03/Active). Filters: product, acctClassify (by membershipNo+agreementNo pairs), AMC Next Due Date (exact date, current/future only). Default sort: acctClassify asc (NA first), then nextDueDate asc. |
 | AMC Billing — Invoices | ✅ Done | Invoices (search by membershipNo/agreementNo/name, Clear button, sort invDate desc→agreementNo→invNo), InvoiceDetail. **Generate Invoices** modal: Product Type (CP default / LHC), Period (MM/YYYY, default current), Agreement No (blank=all, shows member name to verify; respects due rule). Selects `nextDueDate <= period month-end`, invDate = 1st of period month. Skipped agreements (e.g. no rate tier) surfaced in the result. See "Generate Invoices" + "AMC Invoice Cancellation" below. |
-| AMC Billing — Invoice Cancellation | ✅ Done | `/amc/invoice-cancellation` (Credit/IT only). Search unprocessed invoices by membershipNo/agreementNo/invoiceNo → Cancel a whole invoice (all A/K/S/Y components) → hard-deletes rows + rolls schedule back to pre-billing state. See "AMC Invoice Cancellation" below. |
+| AMC Billing — Invoice Cancellation | ✅ Done | `/amc/invoice-cancellation` (AMC_BILLING Edit permission). Search unprocessed invoices by membershipNo/agreementNo/invoiceNo → Cancel a whole invoice (all A/K/S/Y components) → hard-deletes rows + rolls schedule back to pre-billing state. See "AMC Invoice Cancellation" below. |
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |

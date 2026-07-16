@@ -46,7 +46,7 @@ function NavGroup({ title, items }: { title: string; items: NavItem[] }) {
 }
 
 export function Sidebar() {
-  const { user, logout, canView, hasReport } = useAuth();
+  const { user, logout, canView, canEdit, hasReport } = useAuth();
 
   const adminItems: NavItem[] = [];
   if (canView('ADMIN')) {
@@ -76,8 +76,8 @@ export function Sidebar() {
       { to: '/amc/rates',     label: 'Rate Master', icon: <BarChart3 className="h-4 w-4" /> },
       { to: '/amc/dayend',    label: 'Day-End Files', icon: <ClipboardList className="h-4 w-4" /> },
     );
-    // Invoice Cancellation is a Credit/IT maintenance action
-    if (user?.department.isLocked || user?.department.name === 'Credit') {
+    // Invoice Cancellation requires AMC Billing Edit permission
+    if (canEdit('AMC_BILLING')) {
       amcItems.push({ to: '/amc/invoice-cancellation', label: 'Invoice Cancellation', icon: <Ban className="h-4 w-4" /> });
     }
   }

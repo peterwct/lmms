@@ -18,7 +18,6 @@ const STATUS_LABELS: Record<string, string> = {
 
 export function Schedules() {
   const [sp, setSp] = useSearchParams();
-  const currentMonth = format(new Date(), 'yyyy-MM');
 
   // Committed filters (drive the query) — sourced from the URL, updated only on Search.
   const coCode       = sp.get('coCode')       ?? '';
@@ -33,7 +32,7 @@ export function Schedules() {
   const [searchInput, setSearchInput]   = useState(() => sp.get('q') ?? '');
   const [coCodeInput, setCoCodeInput]   = useState(() => sp.get('coCode') ?? '');
   const [acctInput, setAcctInput]       = useState(() => sp.get('acctClassify') ?? '');
-  const [dueDateInput, setDueDateInput] = useState(() => sp.get('dueDate') ?? currentMonth);
+  const [dueDateInput, setDueDateInput] = useState(() => sp.get('dueDate') ?? '');
 
   const handleSearch = () => {
     setSp(prev => {
@@ -69,7 +68,7 @@ export function Schedules() {
     setSearchInput('');
     setCoCodeInput('');
     setAcctInput('');
-    setDueDateInput(currentMonth);
+    setDueDateInput('');
     setSp({}, { replace: true });
   };
 
