@@ -216,6 +216,19 @@ export interface AmcInvoice {
   agreement?: Partial<Agreement> & { member?: Partial<Member> };
 }
 
+export interface CancellableInvoice {
+  id: string;            // MAIN_AMC row id — used to cancel the whole set
+  invNo: string;
+  invNos: string[];
+  agreementNo: string;
+  membershipNo: string;
+  memberName: string;
+  coCode: string;
+  invDate: string;
+  invoiceYearSeq?: number;
+  totalAmount: string;
+}
+
 export interface Agreement {
   id: string;
   agreementNo: string;

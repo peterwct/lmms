@@ -125,6 +125,8 @@ model AmcInvoice {
   coCode          String
   isProcessed     Boolean      @default(false)
   processedAt     DateTime?
+  prevNextDueDate     DateTime? // schedule.nextDueDate before this invoice advanced it (for exact cancel rollback)
+  prevLastInvoiceDate DateTime? // schedule.lastInvoiceDate before this invoice advanced it
   printDate       DateTime?
   printUser       String?
   printCount      Int          @default(0)

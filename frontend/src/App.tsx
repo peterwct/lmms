@@ -35,6 +35,7 @@ import { PbsAutoTransfer } from './pages/pbs/PbsAutoTransfer';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
+import { InvoiceCancellation } from './pages/amc/InvoiceCancellation';
 import { Rates } from './pages/amc/Rates';
 import { DayEnd } from './pages/amc/DayEnd';
 
@@ -81,6 +82,7 @@ export default function App() {
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />
+              <Route path="amc/invoice-cancellation" element={<InvoiceCancellation />} />
               <Route path="amc/rates"           element={<Rates />} />
               <Route path="amc/dayend"          element={<DayEnd />} />
             </Route>

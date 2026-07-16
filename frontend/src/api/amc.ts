@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AmcSchedule, AmcInvoice, AmcPrice, AmcPricePoints, AuditLog, PaginatedResponse } from '../types';
+import type { AmcSchedule, AmcInvoice, AmcPrice, AmcPricePoints, AuditLog, CancellableInvoice, PaginatedResponse } from '../types';
 
 export const amcApi = {
   // Schedules
@@ -16,11 +16,17 @@ export const amcApi = {
   getInvoice: (id: string) =>
     api.get<{ data: AmcInvoice }>(`/amc/invoices/${id}`),
 
-  generateInvoices: (data: { invDate?: string; coCode?: string }) =>
-    api.post<{ message: string; generated: number }>('/amc/invoices/generate', data),
+  generateInvoices: (data: { productType?: 'CP' | 'LHC'; period?: string; agreementNo?: string }) =>
+    api.post<{ message: string; generated: number; skipped: { agreementNo: string; membershipNo: string; reason: string }[] }>('/amc/invoices/generate', data),
 
   downloadInvoice: (id: string) =>
     api.get(`/amc/invoices/${id}/download`, { responseType: 'blob' }),
+
+  listCancellableInvoices: (params?: { q?: string }) =>
+    api.get<{ data: CancellableInvoice[] }>('/amc/invoices/cancellable', { params }),
+
+  cancelInvoice: (id: string, data?: { reason?: string }) =>
+    api.post<{ message: string }>(`/amc/invoices/${id}/cancel`, data ?? {}),
 
   // Rates
   listLhcRates:    () => api.get<{ data: AmcPrice[] }>('/amc/rates/lhc'),

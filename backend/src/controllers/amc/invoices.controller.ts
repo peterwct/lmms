@@ -33,23 +33,40 @@ async function allocateInvSeq(tx: Prisma.TransactionClient): Promise<string> {
   return String(maxN + 1).padStart(7, '0');
 }
 
+// Date math is done in UTC so results land on clean UTC midnight (matching how
+// nextDueDate is stored). Local constructors would drift to the prev day 16:00Z
+// on a UTC+8 server, which — with month-boundary billing — bills an agreement a month early.
 function addOneYear(d: Date): Date {
-  return new Date(d.getFullYear() + 1, d.getMonth(), d.getDate());
+  return new Date(Date.UTC(d.getUTCFullYear() + 1, d.getUTCMonth(), d.getUTCDate()));
 }
 
 function nextLhcDueDate(after: Date): Date {
   // LHC bills on Jan 1 or Jul 1 — pick the next one after `after`
-  const y = after.getFullYear();
-  const jul = new Date(y, 6, 1);   // July 1
-  const jan = new Date(y + 1, 0, 1); // Jan 1 next year
+  const y = after.getUTCFullYear();
+  const jul = new Date(Date.UTC(y, 6, 1));     // July 1
+  const jan = new Date(Date.UTC(y + 1, 0, 1)); // Jan 1 next year
   return after < jul ? jul : jan;
+}
+
+// Reverse helpers — only used as a fallback when an invoice predates the pre-billing snapshot.
+function subOneYear(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear() - 1, d.getUTCMonth(), d.getUTCDate()));
+}
+function prevLhcDueDate(before: Date): Date {
+  // the Jan 1 / Jul 1 immediately before `before` (reverse of nextLhcDueDate)
+  const y = before.getUTCFullYear();
+  const jan = new Date(Date.UTC(y, 0, 1));
+  const jul = new Date(Date.UTC(y, 6, 1));
+  if (before > jul) return jul;
+  if (before > jan) return jan;
+  return new Date(Date.UTC(y - 1, 6, 1));
 }
 
 // ─── list ─────────────────────────────────────────────────────────────────────
 
 export async function listInvoices(req: Request, res: Response): Promise<void> {
   const { skip, take, page, limit } = parsePagination(req.query as Record<string, unknown>);
-  const { coCode, billType, from, to, agreementId, scheduleId } = req.query as Record<string, string>;
+  const { coCode, billType, from, to, agreementId, scheduleId, q } = req.query as Record<string, string>;
 
   const where: Record<string, unknown> = {};
   if (coCode)      where.coCode      = coCode;
@@ -57,13 +74,28 @@ export async function listInvoices(req: Request, res: Response): Promise<void> {
   if (agreementId) where.agreementId = agreementId;
   if (scheduleId)  where.scheduleId  = scheduleId;
   if (from || to)  where.invDate     = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
+  if (q?.trim()) {
+    const term = q.trim();
+    // Name isn't stored on AmcInvoice — resolve member name -> membershipNos first
+    const memberHits = await prisma.member.findMany({
+      where: { fullName: { contains: term, mode: 'insensitive' } },
+      select: { membershipNo: true },
+    });
+    const membershipNos = memberHits.map(m => m.membershipNo);
+    const orClauses: object[] = [
+      { membershipNo: { contains: term, mode: 'insensitive' } },
+      { agreementNo:  { contains: term, mode: 'insensitive' } },
+    ];
+    if (membershipNos.length) orClauses.push({ membershipNo: { in: membershipNos } });
+    where.OR = orClauses;
+  }
 
   const [total, invoices] = await Promise.all([
     prisma.amcInvoice.count({ where }),
     prisma.amcInvoice.findMany({
       where,
       include: { agreement: { select: { agreementNo: true, member: { select: { membershipNo: true, fullName: true } } } } },
-      orderBy: [{ invDate: 'desc' }, { invNo: 'asc' }],
+      orderBy: [{ invDate: 'desc' }, { agreementNo: 'asc' }, { invNo: 'asc' }],
       skip, take,
     }),
   ]);
@@ -87,25 +119,39 @@ export async function getInvoice(req: Request, res: Response): Promise<void> {
 // ─── generate ─────────────────────────────────────────────────────────────────
 
 const generateSchema = z.object({
-  invDate: z.string().datetime().optional(),
-  coCode:  z.string().optional(),
+  productType: z.enum(['CP', 'LHC']).optional(), // CP = coCode 02; LHC = coCode 03 + 15
+  period:      z.string().regex(/^\d{4}-\d{2}$/).optional(), // YYYY-MM billing period
+  agreementNo: z.string().trim().optional(),      // blank = all agreements
 });
+
+// CP is billed monthly; LHC is billed only in Jan & July. Both map product -> coCode(s).
+const PRODUCT_COCODES: Record<'CP' | 'LHC', string[]> = { CP: ['02'], LHC: ['03', '15'] };
 
 export async function generateInvoices(req: Request, res: Response): Promise<void> {
   const parsed = generateSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() }); return; }
 
-  const invDate = parsed.data.invDate ? new Date(parsed.data.invDate) : new Date();
-  invDate.setHours(0, 0, 0, 0);
+  // Resolve the billing period (YYYY-MM). Default to the current period.
+  const now = new Date();
+  const [pY, pM] = parsed.data.period
+    ? parsed.data.period.split('-').map(Number)
+    : [now.getUTCFullYear(), now.getUTCMonth() + 1];
 
-  const coCodeFilter = parsed.data.coCode;
+  // Invoice/DOC date = 1st of the period month; selection window = strictly before the 1st of next month
+  // (i.e. nextDueDate on/before the period's month-end). All at UTC midnight to match stored dates.
+  const invDate       = new Date(Date.UTC(pY, pM - 1, 1));
+  const nextMonthStart = new Date(Date.UTC(pY, pM, 1));
+
+  const coCodes     = parsed.data.productType ? PRODUCT_COCODES[parsed.data.productType] : undefined;
+  const agreementNo = parsed.data.agreementNo || undefined;
 
   // Find due active schedules
   const schedules = await prisma.amcSchedule.findMany({
     where: {
       billingStatus: 'N',
-      nextDueDate: { lte: invDate },
-      ...(coCodeFilter ? { coCode: coCodeFilter } : {}),
+      nextDueDate: { lt: nextMonthStart },
+      ...(coCodes ? { coCode: { in: coCodes } } : {}),
+      ...(agreementNo ? { agreementNo } : {}),
       agreement: { acctClassify: 'NA' },
     },
     include: { agreement: { include: { member: true } } },
@@ -117,6 +163,7 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
   }
 
   let generated = 0;
+  const skipped: { agreementNo: string; membershipNo: string; reason: string }[] = [];
 
   for (const schedule of schedules) {
     const { agreement } = schedule;
@@ -164,6 +211,8 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
                 rate:           rate.rate,
                 billType,
                 coCode:         schedule.coCode,
+                prevNextDueDate:     schedule.nextDueDate,     // snapshot for exact cancel rollback
+                prevLastInvoiceDate: schedule.lastInvoiceDate,
                 updatedAt:      new Date(),
               },
             });
@@ -190,12 +239,18 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
           });
           if (!tier) throw new Error(`No CP rate tier found for totalPoints=${pts}`);
 
-          const amcAmt   = new Prisma.Decimal(pts).mul(tier.amcRatePerPoint);
-          const sfAmt    = amcAmt.mul(tier.sinkingFundPct).div(100);
-          const taxAmt   = amcAmt.mul(tier.gstPct).div(100);
-          const calcSum  = amcAmt.add(sfAmt).add(taxAmt).toDecimalPlaces(2);
+          // amcRatePerPoint is the all-in maintenance rate per point; sinking fund is carved OUT of it
+          // (not added on top). Service tax is 8% of the rounded MAIN_AMC.
+          const ptsDec       = new Prisma.Decimal(pts);
+          const sfPerPoint   = tier.amcRatePerPoint.mul(tier.sinkingFundPct).div(100); // e.g. 0.1 * 2.561
+          const mainPerPoint = tier.amcRatePerPoint.sub(sfPerPoint);                   // e.g. 2.561 - 0.2561
+
+          const amcAmt   = ptsDec.mul(mainPerPoint).toDecimalPlaces(2);       // MAIN_AMC     e.g. 288.11
+          const sfAmt    = ptsDec.mul(sfPerPoint).toDecimalPlaces(2);         // SINKING_FUND e.g. 32.01
+          const taxAmt   = amcAmt.mul(tier.gstPct).div(100).toDecimalPlaces(2); // tax on rounded main: 23.05
+          const calcSum  = amcAmt.add(sfAmt).add(taxAmt).toDecimalPlaces(2);  // e.g. 343.17
           const floored  = new Prisma.Decimal(Math.floor(calcSum.toNumber()));
-          const rounding = floored.sub(calcSum);
+          const rounding = floored.sub(calcSum);                             // e.g. -0.17 (floor to whole RM)
 
           const components: Array<{ component: InvComponent; amount: Prisma.Decimal }> = [
             { component: 'MAIN_AMC',     amount: amcAmt.toDecimalPlaces(2) },
@@ -225,6 +280,8 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
                 totalPoints:    pts,
                 billType,
                 coCode:         '02',
+                prevNextDueDate:     schedule.nextDueDate,     // snapshot for exact cancel rollback
+                prevLastInvoiceDate: schedule.lastInvoiceDate,
                 updatedAt:      new Date(),
               },
             });
@@ -246,19 +303,158 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
         generated++;
       });
     } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
       console.error(`Failed to generate invoice for schedule ${schedule.id}:`, err);
+      skipped.push({ agreementNo: schedule.agreementNo, membershipNo: schedule.membershipNo, reason });
     }
   }
 
   await writeAudit({
     userId: req.user.id,
-    action: `Generated ${generated} invoice set(s) for ${invDate.toISOString().slice(0, 10)}`,
+    action: `Generated ${generated} invoice set(s) for period ${pY}-${String(pM).padStart(2, '0')}`,
     actionType: 'CREATE',
     targetType: 'AmcInvoice',
-    metadata: { invDate: invDate.toISOString(), generated },
+    metadata: {
+      period: `${pY}-${String(pM).padStart(2, '0')}`,
+      invDate: invDate.toISOString(),
+      productType: parsed.data.productType ?? 'ALL',
+      agreementNo: agreementNo ?? 'ALL',
+      generated,
+      skipped: skipped.length,
+    },
   });
 
-  res.json({ message: `Generated invoices for ${generated} agreement(s)`, generated });
+  res.json({ message: `Generated invoices for ${generated} agreement(s)`, generated, skipped });
+}
+
+// ─── cancellation ───────────────────────────────────────────────────────────────
+
+// GET /api/amc/invoices/cancellable?q= — unprocessed invoice sets, searchable by membership/agreement/invoice no
+export async function listCancellableInvoices(req: Request, res: Response): Promise<void> {
+  const q = (req.query.q as string | undefined)?.trim();
+
+  const where: Record<string, unknown> = { isProcessed: false };
+  if (q) {
+    where.OR = [
+      { membershipNo: { contains: q, mode: 'insensitive' } },
+      { agreementNo:  { contains: q, mode: 'insensitive' } },
+      { invNo:        { contains: q, mode: 'insensitive' } },
+    ];
+  }
+
+  // Matched rows -> distinct (scheduleId, invoiceYearSeq) invoice-set keys (cap at 50 sets)
+  const matches = await prisma.amcInvoice.findMany({
+    where, select: { scheduleId: true, invoiceYearSeq: true }, take: 400,
+  });
+  const keyset = new Map<string, { scheduleId: string; invoiceYearSeq: number }>();
+  for (const m of matches) {
+    const k = `${m.scheduleId}::${m.invoiceYearSeq ?? 0}`;
+    if (!keyset.has(k)) keyset.set(k, { scheduleId: m.scheduleId, invoiceYearSeq: m.invoiceYearSeq ?? 0 });
+    if (keyset.size >= 50) break;
+  }
+  if (keyset.size === 0) { res.json({ data: [] }); return; }
+
+  // Fetch the full unprocessed set for each key (so an invNo-only match still returns all components)
+  const keys = [...keyset.values()];
+  const rows = await prisma.amcInvoice.findMany({
+    where: { isProcessed: false, OR: keys.map(k => ({ scheduleId: k.scheduleId, invoiceYearSeq: k.invoiceYearSeq })) },
+    orderBy: [{ invComponent: 'asc' }],
+  });
+
+  // Resolve member names by membershipNo (transfer-safe — membershipNo is on the invoice)
+  const memNos = [...new Set(rows.map(r => r.membershipNo))];
+  const members = await prisma.member.findMany({
+    where: { membershipNo: { in: memNos } }, select: { membershipNo: true, fullName: true },
+  });
+  const nameByMem = new Map(members.map(m => [m.membershipNo, m.fullName]));
+
+  const groups = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const k = `${r.scheduleId}::${r.invoiceYearSeq ?? 0}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k)!.push(r);
+  }
+
+  const data = [...groups.values()].map((set) => {
+    const main  = set.find(i => i.invComponent === 'MAIN_AMC') ?? set[0];
+    const total = set.reduce((s, i) => s.add(i.invAmount), new Prisma.Decimal(0));
+    return {
+      id: main.id, // MAIN_AMC row id — used to cancel the whole set
+      invNo: main.invNo,
+      invNos: set.map(i => i.invNo),
+      agreementNo: main.agreementNo,
+      membershipNo: main.membershipNo,
+      memberName: nameByMem.get(main.membershipNo) ?? '',
+      coCode: main.coCode,
+      invDate: main.invDate,
+      invoiceYearSeq: main.invoiceYearSeq,
+      totalAmount: total.toFixed(2),
+    };
+  });
+  data.sort((a, b) => (b.invDate.getTime() - a.invDate.getTime()) || a.agreementNo.localeCompare(b.agreementNo));
+
+  res.json({ data });
+}
+
+// POST /api/amc/invoices/:id/cancel — cancel a whole unprocessed invoice + roll back its schedule
+export async function cancelInvoice(req: Request, res: Response): Promise<void> {
+  const reason = (req.body?.reason as string | undefined)?.trim() || undefined;
+
+  const invoice = await prisma.amcInvoice.findUnique({
+    where: { id: req.params.id }, include: { schedule: true },
+  });
+  if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
+  if (invoice.isProcessed) { res.status(400).json({ error: 'Cannot cancel a processed invoice' }); return; }
+
+  const yearSeq  = invoice.invoiceYearSeq ?? 0;
+  const siblings = await prisma.amcInvoice.findMany({
+    where: { scheduleId: invoice.scheduleId, invoiceYearSeq: yearSeq },
+  });
+  if (siblings.some(s => s.isProcessed)) {
+    res.status(400).json({ error: 'Cannot cancel: part of this invoice has already been processed' });
+    return;
+  }
+
+  // Restore the schedule to its pre-billing state
+  let restoredNextDue: Date | null = invoice.prevNextDueDate ?? null;
+  if (invoice.prevNextDueDate == null) {
+    // Fallback for invoices generated before the snapshot existed (shouldn't occur for new invoices)
+    const cur = invoice.schedule.nextDueDate;
+    if (cur == null) {
+      res.status(400).json({ error: 'Cannot cancel: missing pre-billing snapshot for a final-year invoice. Please roll back manually.' });
+      return;
+    }
+    restoredNextDue = invoice.coCode === '02' ? subOneYear(cur) : prevLhcDueDate(cur);
+  }
+  const restoredLastInv = invoice.prevLastInvoiceDate ?? null;
+  const invNos = siblings.map(s => s.invNo);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.amcSchedule.update({
+      where: { id: invoice.scheduleId },
+      data: {
+        invoicesIssued:  Math.max(0, yearSeq - 1),
+        billingStatus:   'N',
+        nextDueDate:     restoredNextDue,
+        lastInvoiceDate: restoredLastInv,
+        updatedAt:       new Date(),
+      },
+    });
+    await tx.amcInvoice.deleteMany({ where: { scheduleId: invoice.scheduleId, invoiceYearSeq: yearSeq } });
+    await writeAudit({
+      tx,
+      userId: req.user.id,
+      action: `Cancelled invoice ${invoice.invNo} (${invoice.agreementNo})`,
+      actionType: 'DELETE',
+      targetType: 'AmcInvoice',
+      metadata: {
+        invNos, agreementNo: invoice.agreementNo, membershipNo: invoice.membershipNo,
+        invoiceYearSeq: yearSeq, coCode: invoice.coCode, reason: reason ?? null,
+      },
+    });
+  });
+
+  res.json({ message: `Invoice ${invoice.invNo} cancelled (${invNos.length} line(s) removed)` });
 }
 
 // ─── PDF download ──────────────────────────────────────────────────────────────

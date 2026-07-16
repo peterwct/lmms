@@ -3,7 +3,7 @@ import { clsx } from 'clsx';
 import {
   Users, Building2, ClipboardList, UserSearch,
   FileText, CalendarClock, Receipt, BarChart3,
-  Hotel, Award, LogOut, FileBarChart2,
+  Hotel, Award, LogOut, FileBarChart2, Ban,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -76,6 +76,10 @@ export function Sidebar() {
       { to: '/amc/rates',     label: 'Rate Master', icon: <BarChart3 className="h-4 w-4" /> },
       { to: '/amc/dayend',    label: 'Day-End Files', icon: <ClipboardList className="h-4 w-4" /> },
     );
+    // Invoice Cancellation is a Credit/IT maintenance action
+    if (user?.department.isLocked || user?.department.name === 'Credit') {
+      amcItems.push({ to: '/amc/invoice-cancellation', label: 'Invoice Cancellation', icon: <Ban className="h-4 w-4" /> });
+    }
   }
 
   const pbsItems: NavItem[] = [];

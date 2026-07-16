@@ -15,7 +15,7 @@ function fmtDisplay(d: Date): string { return d.toLocaleDateString('en-MY', { da
 export async function generateDayEnd(req: Request, res: Response): Promise<void> {
   const dateStr = (req.body as { date?: string }).date;
   const runDate = dateStr ? new Date(dateStr) : new Date();
-  runDate.setHours(0, 0, 0, 0);
+  runDate.setUTCHours(0, 0, 0, 0); // normalize to UTC midnight so invDate exact-match finds invoices created at UTC midnight (see invoices.controller); local setHours shifts the day on a UTC+8 server
   const dayStr = fmtDate(runDate);
 
   // Fetch all unprocessed invoices with invDate = runDate grouped by agreementId

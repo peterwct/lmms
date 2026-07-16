@@ -370,6 +370,39 @@ Unique: `[coCode, priceCode, effectiveDate]`.
 ### AmcPricePoints (CP Points Tiers)
 Fields: `coCode` (always "02"), `effectiveDate`, `minPoints`, `maxPoints`, `amcRatePerPoint`, `sinkingFundPct`, `gstPct`, `unitPrice`, `rciPoints`, `isActive`.
 Unique: `[coCode, minPoints, maxPoints, effectiveDate]`.
+Active tiers cover **60–999 points only**; ~15 agreements below 60 pts (e.g. P05679=51) are intentionally
+**unbillable** (business decision — leave excluded, don't widen tiers). Generate surfaces these as skips.
+
+### AmcInvoice
+An invoice = a **set** of rows sharing `scheduleId` + `invoiceYearSeq`, one per `invComponent`
+(`MAIN_AMC`/`SINKING_FUND`/`SERVICE_TAX`/`ROUNDING`), all sharing a 7-digit number with a letter prefix
+(`A`/`K`/`S`/`Y` + seq, e.g. `A1000003`). `isProcessed` flips true when a day-end file consumes it.
+`prevNextDueDate` / `prevLastInvoiceDate` snapshot the schedule's pre-billing state at generation time so
+**Invoice Cancellation** can restore it exactly (see below).
+
+### AMC Invoice Generation
+`POST /api/amc/invoices/generate` (`generateInvoices`, Credit/IT). Body `{ productType: 'CP'|'LHC',
+period: 'YYYY-MM', agreementNo? }`. `CP → coCode 02`, `LHC → coCode 03+15`. **CP billed monthly; LHC only
+Jan & July.** invDate = **1st of the period month** (UTC midnight); selects schedules with
+`nextDueDate < 1st-of-next-month` (due on/before month-end, sweeps overdue) + `billingStatus='N'` +
+`acctClassify='NA'`, optionally scoped to `agreementNo`. All date math uses `Date.UTC` (stored dates are
+UTC midnight; `addOneYear`/`nextLhcDueDate` are UTC to avoid the prev-day-16:00 drift). Per-schedule
+failures (e.g. no rate tier) are collected and returned as `skipped[]` (shown in the modal), not swallowed.
+**CP amount formula:** `amcRatePerPoint` is the **all-in** rate; SF is carved OUT of it, not added on top —
+`MAIN_AMC = pts·(rate − sfFrac·rate)`, `SF = pts·sfFrac·rate`, `TAX = gstFrac·roundedMAIN`, plus a
+`ROUNDING` line flooring the total to a whole ringgit.
+
+### AMC Invoice Cancellation
+`/amc/invoice-cancellation` page + `GET /api/amc/invoices/cancellable?q=` and
+`POST /api/amc/invoices/:id/cancel` (both `requireITorCredit`; Credit/IT-only nav item). Cancels a whole
+**unprocessed** invoice (all components), searchable by membershipNo/agreementNo/invoiceNo. **Processed
+invoices cannot be cancelled** — filtered out of the list and re-checked in the endpoint (400). Cancel runs
+in a transaction: **hard-deletes** the component set and **rolls the schedule back** to its pre-billing
+state — `invoicesIssued = invoiceYearSeq−1`, `billingStatus='N'`, `nextDueDate`/`lastInvoiceDate` restored
+from the invoice's `prevNextDueDate`/`prevLastInvoiceDate` snapshot — so the agreement is billable again.
+Writes a `DELETE` AuditLog (invNos + reason in metadata). Fallback for legacy invoices lacking the snapshot:
+CP → `nextDueDate−1yr`, LHC → previous Jan/Jul; a final-year invoice with no snapshot is refused. This
+automates the manual SQL rollback pattern (delete rows + reverse schedule counters).
 
 ### UserReportAccess
 Per-user report grants. Fields: `userId` (FK → User), `reportKey` (ReportKey enum), `grantedById` (FK → User), `grantedAt`, `updatedAt`.
@@ -484,7 +517,10 @@ GET  /api/agreements?q=&coCode=&...         List/search agreements
 GET  /api/agreements/:id                    Agreement detail + AMC + PBS + invoices
 PATCH /api/agreements/:id/status            Change acctClassify + reason code (suCode/canCode); see "Change Agreement Status" below
 GET  /api/amc/schedules?q=&coCode=&...      AMC billing schedules (search supported)
-POST /api/amc/invoices/generate             Generate AMC invoices
+GET  /api/amc/invoices?q=&coCode=&...        List/search invoices (q = membershipNo/agreementNo/member name; sorted invDate desc, agreementNo, invNo)
+POST /api/amc/invoices/generate             Generate AMC invoices (body: productType 'CP'|'LHC', period 'YYYY-MM', agreementNo?; requireITorCredit). Returns { generated, skipped[] }
+GET  /api/amc/invoices/cancellable?q=        Unprocessed invoice sets, searchable by membershipNo/agreementNo/invNo (requireITorCredit)
+POST /api/amc/invoices/:id/cancel           Cancel a whole unprocessed invoice + roll back its schedule (requireITorCredit; 400 if processed)
 POST /api/amc/dayend/generate               Generate SQL Account day-end file
 GET  /api/amc/rates/lhc                     LHC rate master
 POST /api/amc/rates/lhc                     Add LHC rate
@@ -537,7 +573,8 @@ GET  /api/pbs/reports/variance                     Generate PBS Variance Report 
 | Members | ✅ Done | Member Enquiry (search+sort, URL state), MemberDetail, MemberForm. Agreement links with `transferFlag='TT'` are disabled (strikethrough) on both the list and MemberDetail accordion. Change Status removed from MemberDetail — agreements only. Enquiry uses `GET /api/members/enquiry` (MEMBERS permission) not `/api/agreements`. Agreement number links check `canView('AGREEMENTS')` — plain text when disabled. **Phone/Fax search** (`phone=` param): searches all 9 Member phone/fax fields (`telHome`, `telMobile`, `telOffice`, `telOffice2`, `jaTelHome`, `jaTelOffice`, `jaMobile`, `faxNo`, `faxOffice`) via raw SQL that digit-strips both sides (`regexp_replace(...,'[^0-9]','','g')`) — numbers are stored in mixed formats (`017-6822868` vs `0194714131`), so bare-digit input still matches dashed values. Resolves to member ids → `{ memberId: { in } }` (match set is tiny, no bind-var risk). In `listAgreements` in [agreements.controller.ts](backend/src/controllers/agreements.controller.ts). |
 | Agreements | ✅ Done | Agreements list (search+sort, URL state, defaults LHC-03/Active, default sort agreementDate asc), AgreementDetail. Columns: Agreement No, Membership No/Name, Agreement Date, Expiry Date, Term, AMC, Status. AMC and PBS cards fetched by `coCode + agreementNo` (not FK) to handle duplicate agreementNo across members. |
 | AMC Billing — Schedules | ✅ Done | Schedules (search+sort, URL state, defaults LHC-03/Active). Filters: product, acctClassify (by membershipNo+agreementNo pairs), AMC Next Due Date (exact date, current/future only). Default sort: acctClassify asc (NA first), then nextDueDate asc. |
-| AMC Billing — Invoices | ✅ Done | Invoices, InvoiceDetail |
+| AMC Billing — Invoices | ✅ Done | Invoices (search by membershipNo/agreementNo/name, Clear button, sort invDate desc→agreementNo→invNo), InvoiceDetail. **Generate Invoices** modal: Product Type (CP default / LHC), Period (MM/YYYY, default current), Agreement No (blank=all, shows member name to verify; respects due rule). Selects `nextDueDate <= period month-end`, invDate = 1st of period month. Skipped agreements (e.g. no rate tier) surfaced in the result. See "Generate Invoices" + "AMC Invoice Cancellation" below. |
+| AMC Billing — Invoice Cancellation | ✅ Done | `/amc/invoice-cancellation` (Credit/IT only). Search unprocessed invoices by membershipNo/agreementNo/invoiceNo → Cancel a whole invoice (all A/K/S/Y components) → hard-deletes rows + rolls schedule back to pre-billing state. See "AMC Invoice Cancellation" below. |
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
