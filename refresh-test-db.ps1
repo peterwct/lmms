@@ -104,7 +104,16 @@
     UNLOAD TO 'ps_bookent1.txt' DELIMITER '|'
     SELECT * FROM ps_bookent1;
 
+    UNLOAD TO 'ctrl_billtab.txt' DELIMITER '|'
+    SELECT cocode, last_amcinv FROM ctrl_billtab WHERE cocode IN ('03', '15', '02');
+
     Copy all output files into:  E:\Websites\lmms\migrate\
+
+    NOTE: ctrl_billtab seeds the per-coCode AMC invoice running number
+    (AmcInvoiceCounter). A refresh RESETS it to the Informix value, which is
+    correct for UAT (this refresh also truncates AmcInvoice via the Member
+    CASCADE). Do NOT run a refresh after go-live once the live system has
+    started issuing invoices, or already-used numbers would be reissued.
 #>
 
 param(
@@ -160,7 +169,8 @@ $requiredFiles = @(
     'rci_enrol.txt',
     'csp_mast.txt',
     'booking_ent1.txt',
-    'ps_bookent1.txt'
+    'ps_bookent1.txt',
+    'ctrl_billtab.txt'
 )
 
 $missing = $requiredFiles | Where-Object { -not (Test-Path (Join-Path $migrateDir $_)) }
@@ -280,6 +290,10 @@ Write-Host ("[5/7] Importing booking entitlements (LHC + CP)...") -ForegroundCol
 Invoke-Migration "prisma/migrate-booking-entitlement.ts"    "migrate-booking-entitlement.ts (LHC 03/15)"
 Invoke-Migration "prisma/migrate-cp-booking-entitlement.ts" "migrate-cp-booking-entitlement.ts (CP 02)"
 
+# AMC invoice running number per coCode (independent control table -- no FK).
+# Resets lastInvNo to the Informix ctrl_billtab.last_amcinv baseline.
+Invoke-Migration "prisma/migrate-amc-invoice-counter.ts"    "migrate-amc-invoice-counter.ts (per-coCode running no)"
+
 # ── Step 6: Re-grant schema permissions to lhb_app ───────────────────────────
 # Required whenever tables are dropped/recreated (e.g. prisma migrate reset).
 # Safe to run after every refresh — GRANT is idempotent.
@@ -308,6 +322,7 @@ SELECT
   (SELECT COUNT(*) FROM "Salesperson")        AS salespersons,
   (SELECT COUNT(*) FROM "BookingEntitlement")   AS booking_ent,
   (SELECT COUNT(*) FROM "CpBookingEntitlement") AS cp_booking_ent,
+  (SELECT COUNT(*) FROM "AmcInvoiceCounter")  AS amc_inv_counters,
   (SELECT COUNT(*) FROM "State")              AS states,
   (SELECT COUNT(*) FROM "CancellationReason") AS can_reasons,
   (SELECT COUNT(*) FROM "User")               AS users;

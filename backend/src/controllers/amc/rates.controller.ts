@@ -60,7 +60,7 @@ export async function updateLhcRate(req: Request, res: Response): Promise<void> 
       where: { id },
       data: { ...rest, ...(effectiveDate ? { effectiveDate: new Date(effectiveDate) } : {}), updatedAt: new Date() },
     });
-    await writeAudit({ userId: req.user.id, action: `Updated LHC rate: ${id}`, actionType: 'UPDATE', targetType: 'AmcPrice' });
+    await writeAudit({ userId: req.user.id, action: `Updated LHC rate: coCode=${rate.coCode} priceCode=${rate.priceCode}`, actionType: 'UPDATE', targetType: 'AmcPrice' });
     res.json({ data: rate });
   } catch (e: unknown) {
     if ((e as { code?: string }).code === 'P2025') { res.status(404).json({ error: 'Rate not found' }); }
@@ -85,7 +85,7 @@ export async function toggleLhcRate(req: Request, res: Response): Promise<void> 
   const existing = await prisma.amcPrice.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ error: 'Rate not found' }); return; }
   const rate = await prisma.amcPrice.update({ where: { id }, data: { isActive: !existing.isActive, updatedAt: new Date() } });
-  await writeAudit({ userId: req.user.id, action: `${rate.isActive ? 'Activated' : 'Deactivated'} LHC rate: ${id}`, actionType: 'UPDATE', targetType: 'AmcPrice' });
+  await writeAudit({ userId: req.user.id, action: `${rate.isActive ? 'Activated' : 'Deactivated'} LHC rate: coCode=${rate.coCode} priceCode=${rate.priceCode}`, actionType: 'UPDATE', targetType: 'AmcPrice' });
   res.json({ data: rate });
 }
 
@@ -126,7 +126,7 @@ export async function updateCpRate(req: Request, res: Response): Promise<void> {
       where: { id },
       data: { ...rest, ...(effectiveDate ? { effectiveDate: new Date(effectiveDate) } : {}), updatedAt: new Date() },
     });
-    await writeAudit({ userId: req.user.id, action: `Updated CP rate tier: ${id}`, actionType: 'UPDATE', targetType: 'AmcPricePoints' });
+    await writeAudit({ userId: req.user.id, action: `Updated CP rate tier: ${rate.minPoints}-${rate.maxPoints} pts`, actionType: 'UPDATE', targetType: 'AmcPricePoints' });
     res.json({ data: rate });
   } catch (e: unknown) {
     if ((e as { code?: string }).code === 'P2025') { res.status(404).json({ error: 'Rate tier not found' }); }
@@ -151,6 +151,6 @@ export async function toggleCpRate(req: Request, res: Response): Promise<void> {
   const existing = await prisma.amcPricePoints.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ error: 'Rate tier not found' }); return; }
   const rate = await prisma.amcPricePoints.update({ where: { id }, data: { isActive: !existing.isActive, updatedAt: new Date() } });
-  await writeAudit({ userId: req.user.id, action: `${rate.isActive ? 'Activated' : 'Deactivated'} CP rate tier: ${id}`, actionType: 'UPDATE', targetType: 'AmcPricePoints' });
+  await writeAudit({ userId: req.user.id, action: `${rate.isActive ? 'Activated' : 'Deactivated'} CP rate tier: ${rate.minPoints}-${rate.maxPoints} pts`, actionType: 'UPDATE', targetType: 'AmcPricePoints' });
   res.json({ data: rate });
 }

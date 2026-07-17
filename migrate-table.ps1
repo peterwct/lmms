@@ -15,6 +15,9 @@
       Salesperson       - Salesperson master (migrate-salesperson.ts)
       SuPtReason        - SU/PT reason codes: SuReason seed + Agreement.suCode/canCode backfill
                           (seed-su-reasons.ts + migrate-su-pt-reasons.ts)
+      AmcInvoiceCounter - Per-coCode AMC invoice running number from ctrl_billtab.txt
+                          (migrate-amc-invoice-counter.ts). Upsert; resets lastInvNo to
+                          the Informix value -- do NOT run after go-live.
 
 .PARAMETER DatabaseUrl
     PostgreSQL connection string. Defaults to $env:DATABASE_URL or .env file.
@@ -30,12 +33,13 @@
     .\migrate-table.ps1 -Table SuPtReason                  # SU/PT reason backfill (suCode + canCode overwrite)
     .\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15 only)
     .\migrate-table.ps1 -Table CpBookingEntitlement        # CP point balances per year (CP 02 only; truncates + reimports)
+    .\migrate-table.ps1 -Table AmcInvoiceCounter           # Per-coCode AMC invoice running number (ctrl_billtab.txt)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -158,6 +162,14 @@ $TableConfig = @{
         TruncateSql = @('TRUNCATE "CpBookingEntitlement";')
         RequiredFiles = @('ps_bookent1.txt')
         Scripts = @('prisma/migrate-cp-booking-entitlement.ts')
+    }
+    AmcInvoiceCounter = @{
+        # Small control table -- upsert-by-coCode, no truncate.
+        # WARNING: re-running RESETS lastInvNo to the Informix value. OK for UAT
+        # refreshes; do NOT run after go-live once the live system issues invoices.
+        TruncateSql = @()
+        RequiredFiles = @('ctrl_billtab.txt')
+        Scripts = @('prisma/migrate-amc-invoice-counter.ts')
     }
 }
 

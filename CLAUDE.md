@@ -23,9 +23,10 @@ lmms/
 │   ├── migrate-salesperson.ts  # Salesperson master from csp_mast.txt
 │   ├── migrate-su-pt-reasons.ts  # SU/PT reason backfill from su_trans.txt + pt_trans.txt
 │   ├── migrate-booking-entitlement.ts  # Booking entitlement nights used from booking_ent1.txt (LHC 03/15)
+│   ├── migrate-amc-invoice-counter.ts  # Per-coCode AMC invoice running number from ctrl_billtab.txt (seeds AmcInvoiceCounter)
 │   └── migrations/          # Applied migration history
 ├── refresh-test-db.ps1      # Clears + re-imports all Informix data; use for UAT refreshes and live cutover
-├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule, RciEnrol, SuPtReason)
+├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule, RciEnrol, SuPtReason, AmcInvoiceCounter)
 ├── migrate/                 # Informix UNLOAD export files (not committed)
 │   ├── si_ind_mast.txt
 │   ├── si_cor_mast.txt
@@ -42,6 +43,7 @@ lmms/
 │   ├── su_mast.txt
 │   ├── su_trans.txt
 │   ├── pt_trans.txt
+│   ├── ctrl_billtab.txt
 │   └── state.txt
 ├── backend/                 # Node.js + Express + TypeScript API
 │   └── src/
@@ -218,7 +220,7 @@ $env:DATABASE_URL = "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 .\refresh-test-db.ps1 -DryRun
 ```
 
-The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + Member CASCADE → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → re-grants lhb_app permissions → prints final row counts.
+The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + Member CASCADE (the Member CASCADE also clears AmcInvoice) → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → AMC invoice counter (`ctrl_billtab.txt`, resets `AmcInvoiceCounter` to the Informix baseline) → re-grants lhb_app permissions → prints final row counts.
 
 ### Migrating a single table
 
@@ -237,6 +239,7 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table Salesperson                 # Salesperson master
 .\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15; truncates + reimports)
 .\migrate-table.ps1 -Table CpBookingEntitlement        # CP point balances per year (CP 02; truncates + reimports)
+.\migrate-table.ps1 -Table AmcInvoiceCounter           # Per-coCode AMC invoice running number (ctrl_billtab.txt; upsert, resets to Informix baseline)
 .\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
 
@@ -376,9 +379,24 @@ Active tiers cover **60–999 points only**; ~15 agreements below 60 pts (e.g. P
 ### AmcInvoice
 An invoice = a **set** of rows sharing `scheduleId` + `invoiceYearSeq`, one per `invComponent`
 (`MAIN_AMC`/`SINKING_FUND`/`SERVICE_TAX`/`ROUNDING`), all sharing a 7-digit number with a letter prefix
-(`A`/`K`/`S`/`Y` + seq, e.g. `A1000003`). `isProcessed` flips true when a day-end file consumes it.
+(`A`/`K`/`S`/`Y` + seq, e.g. `A0236678`). The seq comes from `AmcInvoiceCounter` (per coCode; see below),
+zero-padded to 7. `isProcessed` flips true when a day-end file consumes it.
 `prevNextDueDate` / `prevLastInvoiceDate` snapshot the schedule's pre-billing state at generation time so
-**Invoice Cancellation** can restore it exactly (see below).
+**Invoice Cancellation** can restore it exactly (see below). `invNo` is **not** globally unique — numbers
+are unique **per coCode** (coCodes 15 & 02 seed from the same Informix baseline 233610, so identical `invNo`
+strings can exist across coCodes; the `coCode` column disambiguates — no code assumes global uniqueness).
+
+### AmcInvoiceCounter
+Persistent per-coCode AMC invoice running number, seeded from Informix `ctrl_billtab.last_amcinv`
+(`03`=236677, `15`=233610, `02`=233610 as of go-live) so the new system continues numbering where Informix
+left off. Fields: `coCode` (PK — "02"/"03"/"15"), `lastInvNo` (Int, last used number). **Generation**
+advances it once per invoice set (`allocateInvSeq(tx, coCode)` locks the row `FOR UPDATE`, so concurrent
+runs can't mint duplicates; if a coCode has no row it self-initialises from the max existing `invNo` for
+that coCode, else 0). **Cancellation** reverses it *only* when the cancelled set holds the current last
+number for its coCode (reclaim); cancelling an older invoice leaves a voided gap. Seeded/refreshed via
+`prisma/migrate-amc-invoice-counter.ts` (`-Table AmcInvoiceCounter`, or `refresh-test-db.ps1`) from
+`migrate/ctrl_billtab.txt` — **re-running RESETS `lastInvNo` to the Informix value**, correct for UAT
+refreshes (which also truncate `AmcInvoice`) but **must not run after go-live** once live numbers are issued.
 
 ### AMC Invoice Generation
 `POST /api/amc/invoices/generate` (`generateInvoices`, gated by **`requirePermission('AMC_BILLING','edit')`** —
@@ -399,6 +417,11 @@ due date alone excludes them from selection), so a refresh won't reintroduce the
 **CP amount formula:** `amcRatePerPoint` is the **all-in** rate; SF is carved OUT of it, not added on top —
 `MAIN_AMC = pts·(rate − sfFrac·rate)`, `SF = pts·sfFrac·rate`, `TAX = gstFrac·roundedMAIN`, plus a
 `ROUNDING` line flooring the total to a whole ringgit.
+**Invoice number:** the 7-digit running number comes from `AmcInvoiceCounter` per coCode (not a runtime
+`MAX(invNo)`), advanced once per invoice set via `allocateInvSeq(tx, schedule.coCode)` which locks the
+counter row `FOR UPDATE`. Seeded from Informix `ctrl_billtab` (03=236677, 15/02=233610), so the first
+post-cutover 03 invoice is `A0236678` (K/S/Y for the other components). Still zero-padded to 7. See
+**AmcInvoiceCounter** above.
 
 ### AMC Invoice Cancellation
 `/amc/invoice-cancellation` page + `GET /api/amc/invoices/cancellable?q=` and
@@ -412,6 +435,10 @@ from the invoice's `prevNextDueDate`/`prevLastInvoiceDate` snapshot — so the a
 Writes a `DELETE` AuditLog (invNos + reason in metadata). Fallback for legacy invoices lacking the snapshot:
 CP → `nextDueDate−1yr`, LHC → previous Jan/Jul; a final-year invoice with no snapshot is refused. This
 automates the manual SQL rollback pattern (delete rows + reverse schedule counters).
+**Reverses the running number** too: the set's number (`invNo` minus its A/K/S/Y prefix) is reclaimed by
+decrementing `AmcInvoiceCounter.lastInvNo` **only** when it equals the current last number for that coCode
+(row locked `FOR UPDATE`); otherwise the counter is left unchanged and that number stays a voided gap
+(avoids reissuing a number still in use). Audit metadata records `invNum` + `reclaimed` (bool).
 
 ### UserReportAccess
 Per-user report grants. Fields: `userId` (FK → User), `reportKey` (ReportKey enum), `grantedById` (FK → User), `grantedAt`, `updatedAt`.
@@ -479,6 +506,8 @@ Source tables and their column counts (verified from actual export files):
 | `booking_ent1.txt` | Booking entitlement (nights used) | 207 fields pipe-delimited | coCode[0], **membershipNo[1]** (long string e.g. `00002-KL-Y-0001/M/I`), **agreementNo[2]** (short e.g. `00457`) — note the natural-key columns are ordered membershipNo-then-agreementNo, the reverse of intuition. be_year1..50 = c[3..52] (nights used → `nightsUsed`), be_act_night1..50 = c[53..102] (actual nights taken → `actualNights`), be_wk1..50 = c[153..202] (weekend used → `weekendUsed`). Block 3 (c[103..152]) and trailer (c[203..205]) are other categories, ignored. Only coCode 03/15 imported → `BookingEntitlement` (one row per year where any of nights/actual/weekend is non-zero). See `prisma/migrate-booking-entitlement.ts`. |
 
 | `ps_bookent1.txt` | CP booking entitlement (point balances) | 9 cols + trailer, pipe-delimited | psb_cocode[0] (always `02`), psb_memno[1] (e.g. `M00020/I`), psb_agmtno[2] (e.g. `P00020`), psb_useyear[3] (`dd-mm-yyyy` anniversary date), psb_totalpts[4], psb_curusepts[5], psb_advusepts[6], psb_acrusepts[7], **psb_balpts[8]** (balance points — the value the CP card displays). **All rows** imported (a fully-unused future year `balPts` and terminal 0-balance rows are both meaningful) → `CpBookingEntitlement`. `agreementId` left null (natural-key read path). Schema verified in `ps_bookent1.sql`. See `prisma/migrate-cp-booking-entitlement.ts`. |
+
+| `ctrl_billtab.txt` | AMC invoice running number per coCode | 2 cols pipe-delimited | cocode[0], last_amcinv[1]. `UNLOAD TO 'ctrl_billtab.txt' SELECT cocode, last_amcinv FROM ctrl_billtab WHERE cocode IN ('03','15','02');`. Upsert-by-coCode → `AmcInvoiceCounter` (`coCode` PK, `lastInvNo`). Seeds the per-coCode AMC invoice running number so the new system continues where Informix left off. **Re-running RESETS `lastInvNo`** to the Informix value — OK for UAT refresh, must NOT run after go-live. See `prisma/migrate-amc-invoice-counter.ts`. |
 
 Informix date format is `dd-mm-yyyy` — the `d()` helper in migration scripts handles this.
 

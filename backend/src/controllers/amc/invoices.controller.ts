@@ -20,17 +20,35 @@ const PREFIX_MAP: Record<InvComponent, string> = {
   ROUNDING:     'Y',
 };
 
-async function allocateInvSeq(tx: Prisma.TransactionClient): Promise<string> {
-  const result = await tx.$queryRaw<Array<{ max_n: bigint | null }>>`
-    SELECT MAX(
-      CASE WHEN "invNo" ~ '^[AKSY][0-9]{7}$'
-      THEN CAST(SUBSTRING("invNo" FROM 2) AS INTEGER)
-      ELSE 0 END
-    ) AS max_n
-    FROM "AmcInvoice"
+// Allocate the next AMC invoice running number for a coCode from the persistent
+// AmcInvoiceCounter (seeded from Informix ctrl_billtab.last_amcinv). The counter
+// row is locked FOR UPDATE inside the caller's transaction so concurrent generate
+// runs can't mint duplicate numbers. The 7-digit zero-padded value is shared by
+// all components of one invoice set (the letter prefix is added by the caller).
+async function allocateInvSeq(tx: Prisma.TransactionClient, coCode: string): Promise<string> {
+  const rows = await tx.$queryRaw<Array<{ lastInvNo: number }>>`
+    SELECT "lastInvNo" FROM "AmcInvoiceCounter" WHERE "coCode" = ${coCode} FOR UPDATE
   `;
-  const maxN = result[0]?.max_n ? Number(result[0].max_n) : 999999;
-  return String(maxN + 1).padStart(7, '0');
+  let last: number;
+  if (rows.length === 0) {
+    // Unseeded coCode: initialise from the max existing invNo for this coCode (else 0),
+    // then create the counter row so subsequent allocations use it.
+    const m = await tx.$queryRaw<Array<{ max_n: bigint | null }>>`
+      SELECT MAX(
+        CASE WHEN "invNo" ~ '^[AKSY][0-9]+$'
+        THEN CAST(SUBSTRING("invNo" FROM 2) AS INTEGER)
+        ELSE 0 END
+      ) AS max_n
+      FROM "AmcInvoice" WHERE "coCode" = ${coCode}
+    `;
+    last = m[0]?.max_n ? Number(m[0].max_n) : 0;
+    await tx.amcInvoiceCounter.create({ data: { coCode, lastInvNo: last, updatedAt: new Date() } });
+  } else {
+    last = Number(rows[0].lastInvNo);
+  }
+  const next = last + 1;
+  await tx.amcInvoiceCounter.update({ where: { coCode }, data: { lastInvNo: next, updatedAt: new Date() } });
+  return String(next).padStart(7, '0');
 }
 
 // Date math is done in UTC so results land on clean UTC midnight (matching how
@@ -187,7 +205,7 @@ export async function generateInvoices(req: Request, res: Response): Promise<voi
 
     try {
       await prisma.$transaction(async (tx) => {
-        const seq = await allocateInvSeq(tx);
+        const seq = await allocateInvSeq(tx, schedule.coCode);
 
         if (isLhc) {
           // Get latest AMC price for coCode + priceCode
@@ -442,6 +460,9 @@ export async function cancelInvoice(req: Request, res: Response): Promise<void> 
   const restoredLastInv = invoice.prevLastInvoiceDate ?? null;
   const invNos = siblings.map(s => s.invNo);
 
+  // The numeric running number this set consumed (all siblings share it; strip the A/K/S/Y prefix).
+  const invNum = parseInt(invoice.invNo.replace(/^[AKSY]/, ''), 10);
+
   await prisma.$transaction(async (tx) => {
     await tx.amcSchedule.update({
       where: { id: invoice.scheduleId },
@@ -454,6 +475,24 @@ export async function cancelInvoice(req: Request, res: Response): Promise<void> 
       },
     });
     await tx.amcInvoice.deleteMany({ where: { scheduleId: invoice.scheduleId, invoiceYearSeq: yearSeq } });
+
+    // Reverse the running number ONLY when this set holds the current last number for its coCode
+    // (so it's reclaimed for the next generation). Cancelling an older invoice leaves a voided gap
+    // rather than risk reissuing a number still in use.
+    let reclaimed = false;
+    if (!Number.isNaN(invNum)) {
+      const c = await tx.$queryRaw<Array<{ lastInvNo: number }>>`
+        SELECT "lastInvNo" FROM "AmcInvoiceCounter" WHERE "coCode" = ${invoice.coCode} FOR UPDATE
+      `;
+      if (c.length && Number(c[0].lastInvNo) === invNum) {
+        await tx.amcInvoiceCounter.update({
+          where: { coCode: invoice.coCode },
+          data:  { lastInvNo: invNum - 1, updatedAt: new Date() },
+        });
+        reclaimed = true;
+      }
+    }
+
     await writeAudit({
       tx,
       userId: req.user.id,
@@ -463,6 +502,7 @@ export async function cancelInvoice(req: Request, res: Response): Promise<void> 
       metadata: {
         invNos, agreementNo: invoice.agreementNo, membershipNo: invoice.membershipNo,
         invoiceYearSeq: yearSeq, coCode: invoice.coCode, reason: reason ?? null,
+        invNum: Number.isNaN(invNum) ? null : invNum, reclaimed,
       },
     });
   });

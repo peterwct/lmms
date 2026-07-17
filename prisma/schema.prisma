@@ -138,6 +138,17 @@ model AmcInvoice {
   schedule        AmcSchedule  @relation(fields: [scheduleId], references: [id])
 }
 
+// Persistent per-coCode AMC invoice running number. Seeded from Informix
+// ctrl_billtab.last_amcinv (03/15/02) so the new system continues numbering
+// where Informix left off. Advanced on generation, reversed on cancellation
+// (only when the cancelled invoice holds the current last number).
+model AmcInvoiceCounter {
+  coCode    String   @id          // "02", "03", "15"
+  lastInvNo Int                    // last used AMC invoice running number
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+}
+
 model AmcPrice {
   id            String   @id
   coCode        String
