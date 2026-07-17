@@ -82,6 +82,12 @@ export function MemberDetail() {
               <InfoRow label="Home tel."     value={member.telHome} />
               <InfoRow label="Spouse name"   value={member.spouseName} />
               <InfoRow label="TIN"           value={member.tinNumber} />
+              {member.remarks && (
+                <div className="col-span-full">
+                  <dt className="text-xs text-gray-500 uppercase tracking-wide">Note</dt>
+                  <dd className="mt-0.5 text-sm font-medium text-gray-800 whitespace-pre-wrap">{member.remarks}</dd>
+                </div>
+              )}
             </dl>
           </CardBody>
         </Card>
@@ -180,7 +186,6 @@ export function MemberDetail() {
               <InfoRow label="Office tel."    value={member.telOffice} />
               <InfoRow label="Office tel. 2"  value={member.telOffice2} />
               <InfoRow label="Office fax"     value={member.faxOffice} />
-              <InfoRow label="Work nature"    value={member.workNature} />
               {(member.compAdd1 || member.compAdd2 || member.compAdd3) && (
                 <div className="col-span-full">
                   <dt className="text-xs text-gray-500 uppercase tracking-wide">Company address</dt>

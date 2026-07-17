@@ -195,6 +195,9 @@ export function AgreementDetail() {
               const sinkFund  = parseFloat(agmt.sinkFund      ?? '0') || 0;
               const govtTax   = parseFloat(agmt.govtTax       ?? '0') || 0;
               const netPrice  = sellPrice - subFees - sinkFund - govtTax;
+              const totalPts  = Number(agmt.totalPoints) || 0;
+              const isCp      = agmt.coCode === '02';
+              const unitPricePerPoint = isCp && totalPts > 0 ? netPrice / totalPts : null;
               return ([
                 ['Agreement date', format(new Date(agmt.agreementDate), 'dd/MM/yyyy')],
                 ['End date', agmt.endDate ? format(new Date(agmt.endDate), 'dd/MM/yyyy') : '—'],
@@ -202,6 +205,7 @@ export function AgreementDetail() {
                 ['Total points', agmt.totalPoints ?? '—'],
                 ['Certificate No.', agmt.certificateNo || '—'],
                 ['Purchase Price', fmtRM(netPrice || null)],
+                ...(isCp ? [['Unit price / point', fmtRM(unitPricePerPoint)]] as [string, string][] : []),
                 ['Loan Type', agmt.loanType ? `${agmt.loanType} — ${LOAN_TYPE_LABEL[agmt.loanType] ?? agmt.loanType}` : '—'],
                 ['Loan Amount', fmtRM(agmt.loanAmount)],
                 ['Sales branch', agmt.salesBranch || '—'],

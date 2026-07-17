@@ -11,11 +11,11 @@ import { Card, CardHeader, CardBody } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
 import type { Member, State } from '../../types';
 
-type Tab = 'personal' | 'address' | 'employment' | 'joint' | 'corporate';
+type Tab = 'personal' | 'address' | 'employment' | 'joint' | 'corporate' | 'note';
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <div className="col-span-2 border-b pb-1 mt-2">
+    <div className="col-span-full border-b pb-1 mt-2">
       <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{children}</p>
     </div>
   );
@@ -153,6 +153,7 @@ export function MemberForm() {
     { key: 'employment', label: 'Employment',      show: isIndividual },
     { key: 'joint',      label: 'Joint Applicant', show: isIndividual },
     { key: 'corporate',  label: 'Company',         show: !isIndividual },
+    { key: 'note',       label: 'Note',            show: true },
   ];
   const visibleTabs = allTabs.filter(t => t.show);
 
@@ -184,12 +185,12 @@ export function MemberForm() {
 
             {/* ════ PERSONAL ════ */}
             {tab === 'personal' && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 {!isEdit && (
-                  <Input label="Membership No." value={form.membershipNo ?? ''} onChange={setU('membershipNo')} required className="col-span-2" />
+                  <Input label="Membership No." value={form.membershipNo ?? ''} onChange={setU('membershipNo')} required className="col-span-full" />
                 )}
 
-                {/* Member type and full name — read-only in edit mode */}
+                {/* Member type — read-only in edit mode; full name editable */}
                 {isEdit ? (
                   <>
                     <ReadOnlyField label="Member type" value={memberTypeLabel} />
@@ -198,8 +199,8 @@ export function MemberForm() {
                       {['MR', 'MRS', 'MS', 'DR', 'DATO', "DATO'", 'TAN SRI', 'PUAN SRI', 'ENCIK', 'PUAN', 'CIK'].map(s =>
                         <option key={s}>{s}</option>)}
                     </Select>
-                    <div className="col-span-2">
-                      <ReadOnlyField label="Full name" value={form.fullName} />
+                    <div className="col-span-full">
+                      <Input label="Full name" value={form.fullName ?? ''} onChange={setU('fullName')} required />
                     </div>
                   </>
                 ) : (
@@ -213,7 +214,7 @@ export function MemberForm() {
                       {['MR', 'MRS', 'MS', 'DR', 'DATO', "DATO'", 'TAN SRI', 'PUAN SRI', 'ENCIK', 'PUAN', 'CIK'].map(s =>
                         <option key={s}>{s}</option>)}
                     </Select>
-                    <div className="col-span-2">
+                    <div className="col-span-full">
                       <Input label="Full name" value={form.fullName ?? ''} onChange={setU('fullName')} required />
                     </div>
                   </>
@@ -244,6 +245,14 @@ export function MemberForm() {
                   <option value="W">WIDOWED</option>
                 </Select>
 
+                {isIndividual && (
+                  <>
+                    <SectionHeading>Spouse</SectionHeading>
+                    <Input label="Spouse name" value={form.spouseName ?? ''} onChange={setU('spouseName')} />
+                    <Input label="Spouse IC"   value={form.spouseIc   ?? ''} onChange={setU('spouseIc')} />
+                  </>
+                )}
+
                 <SectionHeading>Contact</SectionHeading>
                 <Input label="Email"     type="email" value={form.email     ?? ''} onChange={setEmail('email')} />
                 <Input label="Mobile"               value={form.telMobile  ?? ''} onChange={setU('telMobile')} />
@@ -253,11 +262,6 @@ export function MemberForm() {
                 <Input label="Branch code"            value={form.branchCode    ?? ''} onChange={setU('branchCode')} />
                 <Input label="Subscription category"  value={form.subsCategory  ?? ''} onChange={setU('subsCategory')} />
                 <Input label="TIN number"             value={form.tinNumber     ?? ''} onChange={setU('tinNumber')} placeholder="e.g. C1234567890" />
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
-                  <textarea className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    rows={2} value={form.remarks ?? ''} onChange={setPlain('remarks')} />
-                </div>
               </div>
             )}
 
@@ -295,11 +299,6 @@ export function MemberForm() {
                   <Input label="Company name" value={form.companyName ?? ''} onChange={setU('companyName')} />
                 </div>
                 <Input label="Designation"     value={form.designation ?? ''} onChange={setU('designation')} />
-                <Select label="Nature of work" value={form.workNature ?? ''} onChange={set('workNature')}>
-                  <option value="">—</option>
-                  <option value="E">EMPLOYED</option>
-                  <option value="O">OWN BUSINESS</option>
-                </Select>
                 <Input label="Office tel. 1" value={form.telOffice  ?? ''} onChange={setU('telOffice')} />
                 <Input label="Office tel. 2" value={form.telOffice2 ?? ''} onChange={setU('telOffice2')} />
                 <Input label="Office fax"    value={form.faxOffice  ?? ''} onChange={setU('faxOffice')} />
@@ -313,10 +312,6 @@ export function MemberForm() {
                 <Input label="City / State"   value={form.compCityState ?? ''} onChange={setU('compCityState')} />
                 <Input label="Postcode"       value={form.compPostcode  ?? ''} onChange={setU('compPostcode')} />
                 <StateSelect label="State" value={form.compStateCode ?? ''} onChange={handleStateChange('compStateCode', 'compCityState')} states={states} />
-
-                <SectionHeading>Spouse</SectionHeading>
-                <Input label="Spouse name" value={form.spouseName ?? ''} onChange={setU('spouseName')} />
-                <Input label="Spouse IC"   value={form.spouseIc   ?? ''} onChange={setU('spouseIc')} />
               </div>
             )}
 
@@ -374,6 +369,15 @@ export function MemberForm() {
                 <Input label="Tel. 1"              value={form.telHome   ?? ''} onChange={setU('telHome')} />
                 <Input label="Tel. 2"              value={form.telMobile ?? ''} onChange={setU('telMobile')} />
                 <Input label="Fax"                 value={form.faxNo     ?? ''} onChange={setU('faxNo')} />
+              </div>
+            )}
+
+            {/* ════ NOTE ════ */}
+            {tab === 'note' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
+                <textarea className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={5} value={form.remarks ?? ''} onChange={setPlain('remarks')} />
               </div>
             )}
 
