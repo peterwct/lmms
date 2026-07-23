@@ -11,11 +11,11 @@ import { Modal } from '../../components/ui/Modal';
 import { PageSpinner } from '../../components/ui/Spinner';
 import type { AppModule, Permission, Department } from '../../types';
 
-const MODULES: AppModule[] = ['ADMIN', 'MEMBERS', 'AGREEMENTS', 'AMC_BILLING', 'RESORT_BOOKING', 'ENTITLEMENTS', 'PBS_SCHEME'];
+const MODULES: AppModule[] = ['ADMIN', 'MEMBERS', 'AGREEMENTS', 'AMC_BILLING', 'RESORT_BOOKING', 'ENTITLEMENTS', 'PBS_SCHEME', 'RESORTS_SETUP'];
 const MODULE_LABELS: Record<AppModule, string> = {
   ADMIN: 'Admin', MEMBERS: 'Members', AGREEMENTS: 'Agreements',
   AMC_BILLING: 'AMC Billing', RESORT_BOOKING: 'Resort Booking', ENTITLEMENTS: 'Entitlements',
-  PBS_SCHEME: 'Zurich PBS',
+  PBS_SCHEME: 'Zurich PBS', RESORTS_SETUP: 'Resorts Setup',
 };
 
 type PermMap = Record<AppModule, Omit<Permission, 'module'>>;

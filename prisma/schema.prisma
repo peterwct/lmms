@@ -405,6 +405,52 @@ model Salesperson {
   updatedAt DateTime
 }
 
+model Resort {
+  id               String    @id
+  resortCode       String    @unique
+  coCode           String
+  shortName        String?
+  resortName       String
+  rciCode          String?
+  rciAffiliate     String?
+  lockOnOff        String?
+  resortMgmt       String?
+  contactPerson    String?
+  add1             String?
+  add2             String?
+  add3             String?
+  city             String?
+  state            String?
+  country          String?
+  telNo            String?
+  faxNo            String?
+  checkInTime      String?
+  checkOutTime     String?
+  status           String    @default("A")
+  paymt            String?
+  lockStatus       String?
+  legacyCreateUser String?
+  legacyCreateDate DateTime?
+  legacyModUser    String?
+  legacyModDate    DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime
+  infoLines        ResortInfoLine[]
+}
+
+model ResortInfoLine {
+  id        String             @id
+  resortId  String
+  resort    Resort             @relation(fields: [resortId], references: [id], onDelete: Cascade)
+  category  ResortInfoCategory
+  seq       Int
+  text      String
+  createdAt DateTime           @default(now())
+  updatedAt DateTime
+
+  @@unique([resortId, category, seq])
+}
+
 model SuReason {
   code        String      @id
   description String
@@ -467,6 +513,14 @@ enum AppModule {
   RESORT_BOOKING
   ENTITLEMENTS
   PBS_SCHEME
+  RESORTS_SETUP
+}
+
+enum ResortInfoCategory {
+  GETTING_THERE
+  RESORT_FACILITY
+  PLACE_OF_INTEREST
+  UNIT_AMENITY
 }
 
 enum AuditActionType {

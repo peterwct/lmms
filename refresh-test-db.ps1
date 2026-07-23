@@ -107,6 +107,12 @@
     UNLOAD TO 'ctrl_billtab.txt' DELIMITER '|'
     SELECT cocode, last_amcinv FROM ctrl_billtab WHERE cocode IN ('03', '15', '02');
 
+    UNLOAD TO 'resort_mast.txt' DELIMITER '|'
+    SELECT * FROM resort_mast WHERE re_resort_status = 'A' AND re_cocode IN ('03', '15', '02');
+
+    UNLOAD TO 'ps_resort_info.txt' DELIMITER '|'
+    SELECT * FROM ps_resort_info;
+
     Copy all output files into:  E:\Websites\lmms\migrate\
 
     NOTE: ctrl_billtab seeds the per-coCode AMC invoice running number
@@ -170,7 +176,9 @@ $requiredFiles = @(
     'csp_mast.txt',
     'booking_ent1.txt',
     'ps_bookent1.txt',
-    'ctrl_billtab.txt'
+    'ctrl_billtab.txt',
+    'resort_mast.txt',
+    'ps_resort_info.txt'
 )
 
 $missing = $requiredFiles | Where-Object { -not (Test-Path (Join-Path $migrateDir $_)) }
@@ -197,7 +205,7 @@ Write-Host "  Will CLEAR and RELOAD:"
 Write-Host "    Member, Agreement, Nominee"
 Write-Host "    AmcSchedule, AmcInvoice"
 Write-Host "    PbsScheme, PbsClaim (Zurich Payback)"
-Write-Host "    Salesperson"
+Write-Host "    Salesperson, Resort"
 Write-Host "    BookingEntitlement (LHC 03/15), CpBookingEntitlement (CP 02)"
 Write-Host ""
 Write-Host "  Will PRESERVE:"
@@ -261,7 +269,7 @@ Write-Host ""
 Write-Host ("[1/7] Clearing Informix data tables...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
-TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "Member" CASCADE;
+TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "ResortInfoLine", "Resort", "Member" CASCADE;
 "@
 
 # ── Step 2: Core member + agreement import ────────────────────────────────────
@@ -277,10 +285,14 @@ Invoke-Migration "prisma/migrate-maa-mem.ts"       "migrate-maa-mem.ts"
 Invoke-Migration "prisma/migrate-maa-claim.ts"     "migrate-maa-claim.ts"
 Invoke-Migration "prisma/migrate-rci-enrol.ts"     "migrate-rci-enrol.ts"
 
-# ── Step 4: Salesperson ──────────────────────────────────────────────────────
+# ── Step 4: Salesperson + Resort master ──────────────────────────────────────
+# NOTE: post-go-live, resorts are maintained in MMS (Resorts Setup CRUD) --
+# re-importing resort_mast.txt clobbers any edits made through the app.
 Write-Host ""
-Write-Host ("[4/7] Importing salespersons...") -ForegroundColor Yellow
+Write-Host ("[4/7] Importing salespersons and resorts...") -ForegroundColor Yellow
 Invoke-Migration "prisma/migrate-salesperson.ts"   "migrate-salesperson.ts"
+Invoke-Migration "prisma/migrate-resorts.ts"       "migrate-resorts.ts"
+Invoke-Migration "prisma/migrate-resort-info.ts"   "migrate-resort-info.ts"
 
 # ── Step 5: Booking entitlements (LHC nights used + CP point balances) ───────
 # Depends on agreements existing (step 2): migrate-booking-entitlement.ts resolves
@@ -320,6 +332,8 @@ SELECT
   (SELECT COUNT(*) FROM "PbsClaim")           AS pbs_claims,
   (SELECT COUNT(*) FROM "AmcInvoice")         AS amc_invoices,
   (SELECT COUNT(*) FROM "Salesperson")        AS salespersons,
+  (SELECT COUNT(*) FROM "Resort")             AS resorts,
+  (SELECT COUNT(*) FROM "ResortInfoLine")     AS resort_info_lines,
   (SELECT COUNT(*) FROM "BookingEntitlement")   AS booking_ent,
   (SELECT COUNT(*) FROM "CpBookingEntitlement") AS cp_booking_ent,
   (SELECT COUNT(*) FROM "AmcInvoiceCounter")  AS amc_inv_counters,

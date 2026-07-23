@@ -24,6 +24,8 @@ lmms/
 │   ├── migrate-su-pt-reasons.ts  # SU/PT reason backfill from su_trans.txt + pt_trans.txt
 │   ├── migrate-booking-entitlement.ts  # Booking entitlement nights used from booking_ent1.txt (LHC 03/15)
 │   ├── migrate-amc-invoice-counter.ts  # Per-coCode AMC invoice running number from ctrl_billtab.txt (seeds AmcInvoiceCounter)
+│   ├── migrate-resorts.ts   # Resort master from resort_mast.txt (Resorts Setup module)
+│   ├── migrate-resort-info.ts  # Resort info lines from ps_resort_info.txt (normalized into ResortInfoLine)
 │   └── migrations/          # Applied migration history
 ├── refresh-test-db.ps1      # Clears + re-imports all Informix data; use for UAT refreshes and live cutover
 ├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule, RciEnrol, SuPtReason, AmcInvoiceCounter)
@@ -44,6 +46,8 @@ lmms/
 │   ├── su_trans.txt
 │   ├── pt_trans.txt
 │   ├── ctrl_billtab.txt
+│   ├── resort_mast.txt
+│   ├── ps_resort_info.txt
 │   └── state.txt
 ├── backend/                 # Node.js + Express + TypeScript API
 │   └── src/
@@ -220,7 +224,7 @@ $env:DATABASE_URL = "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 .\refresh-test-db.ps1 -DryRun
 ```
 
-The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + Member CASCADE (the Member CASCADE also clears AmcInvoice) → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → AMC invoice counter (`ctrl_billtab.txt`, resets `AmcInvoiceCounter` to the Informix baseline) → re-grants lhb_app permissions → prints final row counts.
+The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + Resort + Member CASCADE (the Member CASCADE also clears AmcInvoice) → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons + resorts → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → AMC invoice counter (`ctrl_billtab.txt`, resets `AmcInvoiceCounter` to the Informix baseline) → re-grants lhb_app permissions → prints final row counts.
 
 ### Migrating a single table
 
@@ -240,6 +244,7 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15; truncates + reimports)
 .\migrate-table.ps1 -Table CpBookingEntitlement        # CP point balances per year (CP 02; truncates + reimports)
 .\migrate-table.ps1 -Table AmcInvoiceCounter           # Per-coCode AMC invoice running number (ctrl_billtab.txt; upsert, resets to Informix baseline)
+.\migrate-table.ps1 -Table Resort                      # Resort master + info (resort_mast.txt + ps_resort_info.txt; truncates + reimports — post-go-live clobbers CRUD edits)
 .\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
 
@@ -480,6 +485,39 @@ Acc = `refYear − 1`, Curr = `refYear`, Ad1..Ad5 = `refYear + 1..5`. Returned a
 `cpEntitlementBalance: { label, year, bal: number|null }[]`. Card hidden for CP `TM` and when no `ref`
 row exists. See the CP Entitlement Balance card in Agreement Detail.
 
+### Resort
+Resort master for the **Resorts Setup** module. 7 records from `resort_mast.txt` (Informix `resort_mast`,
+filtered `re_resort_status='A'` + `re_cocode IN ('03','15','02')` at export). Fields: `resortCode` (unique,
+e.g. `L-10016`, `CP-PBR`), `coCode`, `shortName`, `resortName`, `rciAffiliate` (from `re_rci_aff` — RCI
+affiliation indicator; `Y` pairs with a populated `rciCode`), `rciCode` (RCI resort no.), `lockOnOff`
+(from `re_lock_onoff` — resort's rooms have the lock-on/lock-off feature: one apartment splits/combines
+as Sleep2/Sleep4/Sleep6; used by reservation/booking later), `paymt` (Y/N chars stored as-is),
+`resortMgmt`, `contactPerson`, `add1-3`, `city`, `state`,
+`country`, `telNo`, `faxNo`, `checkInTime`/`checkOutTime` (free-text e.g. `2PM - 10PM` / `12PM` —
+**not from Informix**, business-supplied; baked into `CHECK_TIMES` in `migrate-resorts.ts` so re-imports
+keep them), `status` (`A`=Active/`U`=Inactive), `lockStatus`, `legacyCreateUser/Date`,
+`legacyModUser/Date`. **`re_exc_reg` and `re_rci_release` intentionally NOT migrated** (business decision;
+note the applied migration `20260722090000` renamed the column `rciRelease`→`rciAffiliate` and contains a
+now-obsolete GC/LDBR UPDATE — left untouched because editing applied migrations breaks Prisma checksums;
+the re-import supersedes it).
+Full CRUD at `/resorts/setup` under `RESORTS_SETUP` matrix permission (view/create/edit/delete +
+status toggle; `resortCode` immutable after create; delete is hard delete — no FKs reference Resort yet).
+Post-go-live resorts are maintained in MMS — re-running `migrate-table.ps1 -Table Resort` truncates and
+clobbers app edits.
+
+### ResortInfoLine
+Normalized resort information lines from Informix `ps_resort_info` (wide 38-col table → one row per
+line). 199 lines from `ps_resort_info.txt` across all 7 resorts. Fields: `resortId` (FK → Resort.id, **onDelete: Cascade** — safe FK, resortCode is genuinely
+unique), `category` (`ResortInfoCategory` enum: `GETTING_THERE`(10 slots) / `RESORT_FACILITY`(10) /
+`PLACE_OF_INTEREST`(6) / `UNIT_AMENITY`(6) — slot counts are import provenance only), `seq` (original
+Informix slot number on import — blank print-separator slots are skipped but gaps preserve ordering;
+CRUD saves renumber 1..n), `text`. Unique: `[resortId, category, seq]`. **Editing is free-form**
+(remark-style): the legacy per-line 35-char width and slot caps are NOT enforced — instead a
+**400-character total cap per category** (`INFO_MAX_CHARS` in `resorts.controller.ts`, mirrored in the
+tab editor with `maxLength` + live counter). Legacy audit
+cols `psri_usercreate/datecreate/usermodify/datemodify` + `psri_lockstatus` not migrated (all empty).
+Edited via the 4 tabs on Resort Detail (`/resorts/setup/:id`), replace-all-per-category transaction.
+
 ### State
 39 records from `state.txt`. Fields: `code` (PK, 2-digit), `name`. Served via `GET /api/states`.
 
@@ -506,6 +544,10 @@ Source tables and their column counts (verified from actual export files):
 | `booking_ent1.txt` | Booking entitlement (nights used) | 207 fields pipe-delimited | coCode[0], **membershipNo[1]** (long string e.g. `00002-KL-Y-0001/M/I`), **agreementNo[2]** (short e.g. `00457`) — note the natural-key columns are ordered membershipNo-then-agreementNo, the reverse of intuition. be_year1..50 = c[3..52] (nights used → `nightsUsed`), be_act_night1..50 = c[53..102] (actual nights taken → `actualNights`), be_wk1..50 = c[153..202] (weekend used → `weekendUsed`). Block 3 (c[103..152]) and trailer (c[203..205]) are other categories, ignored. Only coCode 03/15 imported → `BookingEntitlement` (one row per year where any of nights/actual/weekend is non-zero). See `prisma/migrate-booking-entitlement.ts`. |
 
 | `ps_bookent1.txt` | CP booking entitlement (point balances) | 9 cols + trailer, pipe-delimited | psb_cocode[0] (always `02`), psb_memno[1] (e.g. `M00020/I`), psb_agmtno[2] (e.g. `P00020`), psb_useyear[3] (`dd-mm-yyyy` anniversary date), psb_totalpts[4], psb_curusepts[5], psb_advusepts[6], psb_acrusepts[7], **psb_balpts[8]** (balance points — the value the CP card displays). **All rows** imported (a fully-unused future year `balPts` and terminal 0-balance rows are both meaningful) → `CpBookingEntitlement`. `agreementId` left null (natural-key read path). Schema verified in `ps_bookent1.sql`. See `prisma/migrate-cp-booking-entitlement.ts`. |
+
+| `resort_mast.txt` | Resort master | 26 cols pipe-delimited | re_resort_code[0], re_cocode[1], re_short_name[2], re_resort_name[3], **re_exc_reg[4] + re_rci_release[7] skipped**, re_rci_aff[5] (→ `rciAffiliate`), re_rci_code[6], re_lock_onoff[8] (lock-on/lock-off: apartment splits as Sleep2/4/6), re_resort_mgmt[9], re_contact_person[10], re_add1-3[11-13], re_city[14], re_state[15], re_country[16], re_telno[17], re_faxno[18], re_resort_status[19], re_paymt[20], re_create_user/date[21-22], re_mod_user/date[23-24], re_lock_status[25]. `UNLOAD TO 'resort_mast.txt' SELECT * FROM resort_mast WHERE re_resort_status = 'A' AND re_cocode IN ('03','15','02');` → `Resort`. See `prisma/migrate-resorts.ts`. |
+
+| `ps_resort_info.txt` | Resort info (4 blocks of print lines) | 38 cols pipe-delimited | psri_resort_code[0], psri_get_there1-10[1-10], psri_res_fac1-10[11-20], psri_pl_int1-6[21-26], psri_unit_amen1-6[27-32], legacy audit[33-36] + lockstatus[37] skipped (all empty). `UNLOAD TO 'ps_resort_info.txt' SELECT * FROM ps_resort_info;` → `ResortInfoLine` (one row per non-empty slot; slot no. = `seq`). See `prisma/migrate-resort-info.ts`. |
 
 | `ctrl_billtab.txt` | AMC invoice running number per coCode | 2 cols pipe-delimited | cocode[0], last_amcinv[1]. `UNLOAD TO 'ctrl_billtab.txt' SELECT cocode, last_amcinv FROM ctrl_billtab WHERE cocode IN ('03','15','02');`. Upsert-by-coCode → `AmcInvoiceCounter` (`coCode` PK, `lastInvNo`). Seeds the per-coCode AMC invoice running number so the new system continues where Informix left off. **Re-running RESETS `lastInvNo`** to the Informix value — OK for UAT refresh, must NOT run after go-live. See `prisma/migrate-amc-invoice-counter.ts`. |
 
@@ -585,6 +627,13 @@ GET  /api/reports/expiry-summary                    Generate expiry summary PDF/
 GET  /api/reports/access/:userId                    Get user's report access list (IT only)
 POST /api/reports/access/:userId/:reportKey         Grant report access (IT only)
 DELETE /api/reports/access/:userId/:reportKey       Revoke report access (IT only)
+GET  /api/resorts?q=                        Resort master list (q = code/name/short name; RESORTS_SETUP view)
+GET  /api/resorts/:id                       Resort detail + info grouped by category (RESORTS_SETUP view)
+POST /api/resorts                           Create resort (RESORTS_SETUP create)
+PUT  /api/resorts/:id/info                  Replace one info category's lines (body: category, lines[]; RESORTS_SETUP edit)
+PUT  /api/resorts/:id                       Update resort (resortCode immutable; RESORTS_SETUP edit)
+PATCH /api/resorts/:id/toggle               Toggle resort status A/U (RESORTS_SETUP edit)
+DELETE /api/resorts/:id                     Delete resort (RESORTS_SETUP delete)
 GET  /api/pbs?q=&coCode=&acctClassify=&schemeType=&claimIndc=  PBS scheme list (search+filters)
 GET  /api/pbs/:id                                  PBS scheme detail + claims
 PUT  /api/pbs/:id                                  Update PBS scheme (certNo, schemeType, remark)
@@ -616,6 +665,7 @@ GET  /api/pbs/reports/variance                     Generate PBS Variance Report 
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
+| Resorts Setup | 🔨 In progress | New `RESORTS_SETUP` AppModule (seed defaults: IT+Resort Ops FULL, Member Services VIEW, Finance/Credit NONE). Landing page `/resorts` (PBS-style menu, sidebar group "Resorts"). Function 1 done: **Resorts Setup** (`/resorts/setup`) — Resort master CRUD (list+search, add/edit modal shared via `ResortFormModal.tsx`, status toggle A/U, delete; buttons gated by canCreate/canEdit/canDelete; Eye icon on every row → detail). **Resort Detail** (`/resorts/setup/:id`) — details card + Edit + 4 info tabs (Getting There / Resort Facilities / Places of Interest / Unit Amenities) from `ResortInfoLine`; per-tab single-textarea editor, remark-style free text (400 chars total per category, validated client+server, no auto-uppercase — legacy print lines are mixed-case). Remaining 4 functions are disabled placeholders: Apartments/Units & Bedroom Types, Units Availability by Dates, Public & School Holidays, CP Seasons & Points. |
 | Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done. PBS Pay By Month/Year (`/pbs/pay-by-month`) done: Excel with 2 worksheets (monthly + yearly summary), tabbed preview. PBS Claim Report (`/pbs/claim-report`) done: Excel with 2 worksheets (non-ND claims + ND claims), tabbed preview. Not In PBS Report (`/pbs/not-in-pbs`) done: text file output matching Informix format, preview table. PBS Variance Report (`/pbs/variance`) done: Excel comparing rightful vs Zurich scheme type, preview with variance highlighting. All PBS reports use per-user `requireReportAccess` (not department permission); menu items hidden when not granted. Remaining: Proforma, Certificate Tracking, Auto Transfer, 1 report (PBS Report). |
 
 ## Navigation / permissions

@@ -18,6 +18,11 @@
       AmcInvoiceCounter - Per-coCode AMC invoice running number from ctrl_billtab.txt
                           (migrate-amc-invoice-counter.ts). Upsert; resets lastInvNo to
                           the Informix value -- do NOT run after go-live.
+      Resort            - Resort master + resort info (migrate-resorts.ts from
+                          resort_mast.txt + migrate-resort-info.ts from
+                          ps_resort_info.txt). Truncates + reimports both.
+                          Post-go-live resorts are maintained in MMS -- re-running
+                          clobbers any edits made in the app.
 
 .PARAMETER DatabaseUrl
     PostgreSQL connection string. Defaults to $env:DATABASE_URL or .env file.
@@ -34,12 +39,13 @@
     .\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15 only)
     .\migrate-table.ps1 -Table CpBookingEntitlement        # CP point balances per year (CP 02 only; truncates + reimports)
     .\migrate-table.ps1 -Table AmcInvoiceCounter           # Per-coCode AMC invoice running number (ctrl_billtab.txt)
+    .\migrate-table.ps1 -Table Resort                      # Resort master (resort_mast.txt; truncates + reimports)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Resort')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -170,6 +176,14 @@ $TableConfig = @{
         TruncateSql = @()
         RequiredFiles = @('ctrl_billtab.txt')
         Scripts = @('prisma/migrate-amc-invoice-counter.ts')
+    }
+    Resort = @{
+        # Master data. Post-go-live resorts are maintained in MMS -- re-running
+        # truncates and clobbers any edits made through the Resorts Setup CRUD.
+        # Leaf table truncated explicitly (TRUNCATE CASCADE unreliable).
+        TruncateSql = @('TRUNCATE "ResortInfoLine", "Resort";')
+        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt')
+        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts')
     }
 }
 

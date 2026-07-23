@@ -1,4 +1,4 @@
-export type AppModule = 'ADMIN' | 'MEMBERS' | 'AGREEMENTS' | 'AMC_BILLING' | 'RESORT_BOOKING' | 'ENTITLEMENTS' | 'PBS_SCHEME';
+export type AppModule = 'ADMIN' | 'MEMBERS' | 'AGREEMENTS' | 'AMC_BILLING' | 'RESORT_BOOKING' | 'ENTITLEMENTS' | 'PBS_SCHEME' | 'RESORTS_SETUP';
 export type ReportKey = 'MEMBER_REPORT' | 'AGREEMENT_REPORT' | 'EXPIRY_REPORT' | 'EXPIRING_MEMBER_REPORT' | 'REMAINING_VALUE_REPORT' | 'EXPIRY_SUMMARY_REPORT' | 'PBS_PAY_BY_MONTH_REPORT' | 'PBS_CLAIM_REPORT' | 'PBS_NOT_IN_PBS_REPORT' | 'PBS_VARIANCE_REPORT' | 'PBS_AUTO_TRANSFER';
 export type UserStatus = 'ACTIVE' | 'SUSPENDED';
 export type MemberStatus = 'ACTIVE' | 'SUSPENDED' | 'CLOSED' | 'DECEASED' | 'TRANSFERRED';
@@ -114,6 +114,44 @@ export interface SuReason {
 export interface State {
   code: string;
   name: string;
+}
+
+export interface Resort {
+  id: string;
+  resortCode: string;
+  coCode: string;
+  shortName: string | null;
+  resortName: string;
+  rciCode: string | null;
+  rciAffiliate: string | null;
+  lockOnOff: string | null;
+  resortMgmt: string | null;
+  contactPerson: string | null;
+  add1: string | null;
+  add2: string | null;
+  add3: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  telNo: string | null;
+  faxNo: string | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  status: string;
+  paymt: string | null;
+  lockStatus: string | null;
+  legacyCreateUser: string | null;
+  legacyCreateDate: string | null;
+  legacyModUser: string | null;
+  legacyModDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ResortInfoCategory = 'GETTING_THERE' | 'RESORT_FACILITY' | 'PLACE_OF_INTEREST' | 'UNIT_AMENITY';
+
+export interface ResortDetail extends Resort {
+  info: Record<ResortInfoCategory, string[]>;
 }
 
 export interface PbsScheme {

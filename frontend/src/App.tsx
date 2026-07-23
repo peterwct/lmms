@@ -32,6 +32,9 @@ import { PbsClaimReport } from './pages/pbs/PbsClaimReport';
 import { PbsNotInPbsReport } from './pages/pbs/PbsNotInPbsReport';
 import { PbsVarianceReport } from './pages/pbs/PbsVarianceReport';
 import { PbsAutoTransfer } from './pages/pbs/PbsAutoTransfer';
+import { ResortsSetup } from './pages/resorts/ResortsSetup';
+import { ResortMaster } from './pages/resorts/ResortMaster';
+import { ResortDetail } from './pages/resorts/ResortDetail';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -79,6 +82,9 @@ export default function App() {
               <Route path="pbs/claim-report"     element={<PbsClaimReport />} />
               <Route path="pbs/not-in-pbs"       element={<PbsNotInPbsReport />} />
               <Route path="pbs/pay-by-month"     element={<PbsPayByMonthReport />} />
+              <Route path="resorts"             element={<ResortsSetup />} />
+              <Route path="resorts/setup"       element={<ResortMaster />} />
+              <Route path="resorts/setup/:id"   element={<ResortDetail />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />

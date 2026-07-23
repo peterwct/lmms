@@ -3,7 +3,7 @@ import { clsx } from 'clsx';
 import {
   Users, Building2, ClipboardList, UserSearch,
   FileText, CalendarClock, Receipt, BarChart3,
-  Hotel, Award, LogOut, FileBarChart2, Ban,
+  Hotel, Award, LogOut, FileBarChart2, Ban, Palmtree,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -85,6 +85,9 @@ export function Sidebar() {
   const pbsItems: NavItem[] = [];
   if (canView('PBS_SCHEME')) pbsItems.push({ to: '/pbs', label: 'Payback Scheme', icon: <Award className="h-4 w-4" /> });
 
+  const resortItems: NavItem[] = [];
+  if (canView('RESORTS_SETUP')) resortItems.push({ to: '/resorts', label: 'Resorts Setup', icon: <Palmtree className="h-4 w-4" /> });
+
   const comingSoon: NavItem[] = [];
   if (canView('RESORT_BOOKING')) comingSoon.push({ to: '/resort-booking', label: 'Resort Booking', icon: <Hotel className="h-4 w-4" />, soon: true });
 
@@ -102,6 +105,7 @@ export function Sidebar() {
         {memberItems.length > 0   && <NavGroup title="Members"      items={memberItems} />}
         {amcItems.length > 0      && <NavGroup title="AMC Billing"  items={amcItems} />}
         {pbsItems.length > 0      && <NavGroup title="Zurich PBS"    items={pbsItems} />}
+        {resortItems.length > 0   && <NavGroup title="Resorts"      items={resortItems} />}
         {reportItems.length > 0   && <NavGroup title="Reports"      items={reportItems} />}
         {comingSoon.length > 0    && <NavGroup title="Coming Soon"  items={comingSoon} />}
       </nav>

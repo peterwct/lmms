@@ -26,6 +26,7 @@ import reportsRoutes     from './routes/reports';
 import pbsRoutes         from './routes/pbs';
 import cancellationReasonRoutes from './routes/cancellationReasons';
 import suReasonRoutes    from './routes/suReasons';
+import resortRoutes      from './routes/resorts';
 
 // Member-scoped sub-routes
 import { authenticate, requirePasswordChanged } from './middleware/auth';
@@ -58,6 +59,7 @@ app.use('/api/reports',           reportsRoutes);
 app.use('/api/pbs',              pbsRoutes);
 app.use('/api/cancellation-reasons', cancellationReasonRoutes);
 app.use('/api/su-reasons',        suReasonRoutes);
+app.use('/api/resorts',           resortRoutes);
 
 // ─── Member-scoped agreement + AMC routes ─────────────────────────────────────
 app.get(

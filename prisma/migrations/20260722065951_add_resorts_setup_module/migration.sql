@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "AppModule" ADD VALUE 'RESORTS_SETUP';
