@@ -113,6 +113,9 @@
     UNLOAD TO 'ps_resort_info.txt' DELIMITER '|'
     SELECT * FROM ps_resort_info;
 
+    UNLOAD TO 'apt_mast.txt' DELIMITER '|'
+    SELECT apt_code, apt_resort_code, apt_rci_reserved, apt_unit_type, apt_occupancy FROM apt_mast;
+
     Copy all output files into:  E:\Websites\lmms\migrate\
 
     NOTE: ctrl_billtab seeds the per-coCode AMC invoice running number
@@ -178,7 +181,8 @@ $requiredFiles = @(
     'ps_bookent1.txt',
     'ctrl_billtab.txt',
     'resort_mast.txt',
-    'ps_resort_info.txt'
+    'ps_resort_info.txt',
+    'apt_mast.txt'
 )
 
 $missing = $requiredFiles | Where-Object { -not (Test-Path (Join-Path $migrateDir $_)) }
@@ -269,7 +273,7 @@ Write-Host ""
 Write-Host ("[1/7] Clearing Informix data tables...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
-TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "ResortInfoLine", "Resort", "Member" CASCADE;
+TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "Member" CASCADE;
 "@
 
 # ── Step 2: Core member + agreement import ────────────────────────────────────
@@ -293,6 +297,7 @@ Write-Host ("[4/7] Importing salespersons and resorts...") -ForegroundColor Yell
 Invoke-Migration "prisma/migrate-salesperson.ts"   "migrate-salesperson.ts"
 Invoke-Migration "prisma/migrate-resorts.ts"       "migrate-resorts.ts"
 Invoke-Migration "prisma/migrate-resort-info.ts"   "migrate-resort-info.ts"
+Invoke-Migration "prisma/migrate-resort-units.ts"  "migrate-resort-units.ts"
 
 # ── Step 5: Booking entitlements (LHC nights used + CP point balances) ───────
 # Depends on agreements existing (step 2): migrate-booking-entitlement.ts resolves
@@ -334,6 +339,8 @@ SELECT
   (SELECT COUNT(*) FROM "Salesperson")        AS salespersons,
   (SELECT COUNT(*) FROM "Resort")             AS resorts,
   (SELECT COUNT(*) FROM "ResortInfoLine")     AS resort_info_lines,
+  (SELECT COUNT(*) FROM "ApartmentType")      AS apartment_types,
+  (SELECT COUNT(*) FROM "ResortUnit")         AS resort_units,
   (SELECT COUNT(*) FROM "BookingEntitlement")   AS booking_ent,
   (SELECT COUNT(*) FROM "CpBookingEntitlement") AS cp_booking_ent,
   (SELECT COUNT(*) FROM "AmcInvoiceCounter")  AS amc_inv_counters,

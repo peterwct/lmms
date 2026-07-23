@@ -154,6 +154,49 @@ export interface ResortDetail extends Resort {
   info: Record<ResortInfoCategory, string[]>;
 }
 
+export type LockType = 'LM' | 'LS' | 'LN';
+
+export interface ApartmentType {
+  id: string;
+  resortId: string;
+  resortCode: string;
+  apartmentType: string;
+  description: string | null;
+  lockType: LockType;
+  createdAt: string;
+  updatedAt: string;
+  resort: {
+    shortName: string | null;
+    resortName: string;
+    lockOnOff: string | null;
+    coCode: string;
+  };
+}
+
+export interface ResortUnit {
+  id: string;
+  resortId: string;
+  resortCode: string;
+  unitNo: string;
+  apartmentType: string;
+  occupancy: number | null;
+  rciReserved: string;
+  createdAt: string;
+  updatedAt: string;
+  resort: {
+    shortName: string | null;
+    resortName: string;
+    coCode: string;
+  };
+}
+
+export interface ResortUnitList {
+  data: ResortUnit[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface PbsScheme {
   id: string;
   agreementId: string;

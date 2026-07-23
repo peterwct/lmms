@@ -189,6 +189,19 @@ if (-not $SkipFrontend) {
 Step "5. Stopping PM2 backend ..."
 Remote "pm2 stop lhb-mms-backend" {
     pm2 stop lhb-mms-backend 2>$null
+    # Wait until the backend really releases port 3001 -- a lingering node process
+    # keeps the Prisma query-engine DLL locked and prisma generate fails with EPERM.
+    for ($i = 0; $i -lt 10; $i++) {
+        $conn = Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue
+        if (-not $conn) { break }
+        Start-Sleep -Seconds 1
+    }
+    $conn = Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue
+    if ($conn) {
+        Write-Warning ("Port 3001 still in use after pm2 stop (PID " + $conn[0].OwningProcess + ") - killing it so prisma generate does not hit a locked DLL")
+        Stop-Process -Id $conn[0].OwningProcess -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+    }
 }
 
 # ── 5b. npm install (optional) ────────────────────────────────────────────────
@@ -213,7 +226,10 @@ if ($MigrateDb) {
         $plainPw = (New-Object System.Management.Automation.PSCredential('postgres', $pw)).GetNetworkCredential().Password
         $encPw = [uri]::EscapeDataString($plainPw)
         $env:DATABASE_URL = "postgresql://postgres:$encPw@localhost:5432/lhb_mms"
-        npx prisma migrate deploy 2>$null
+        # cmd /c with 2>&1 captures stderr as plain text (PS 5.1 would wrap it in
+        # NativeCommandError records) so the real Prisma error is shown on failure
+        $out = cmd /c "npx prisma migrate deploy 2>&1"
+        $out | ForEach-Object { Write-Host "      $_" }
         if ($LASTEXITCODE -ne 0) { throw "prisma migrate deploy failed (exit $LASTEXITCODE)" }
     } @($RemotePath, $pgPassword)
 
@@ -235,7 +251,10 @@ if ($SchemaChanged -or $MigrateDb) {
     Remote "prisma generate" {
         param($p)
         Set-Location $p
-        npx prisma generate 2>$null
+        # cmd /c with 2>&1 captures stderr as plain text (PS 5.1 would wrap it in
+        # NativeCommandError records) so the real Prisma error is shown on failure
+        $out = cmd /c "npx prisma generate 2>&1"
+        $out | ForEach-Object { Write-Host "      $_" }
         if ($LASTEXITCODE -ne 0) { throw "prisma generate failed (exit $LASTEXITCODE)" }
     } @($RemotePath)
 }

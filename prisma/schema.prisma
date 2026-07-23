@@ -49,11 +49,11 @@ model Agreement {
   outstdDoc              Boolean             @default(false)
   docDescription         String?
   legacyCreatedAt        DateTime?
-  createdAt              DateTime            @default(now())
-  updatedAt              DateTime
+  createdAt              DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime @db.Timestamptz(3)
   govtTax                Decimal?            @db.Decimal(12, 2)
   legacyModifiedAt       DateTime?
-  statusChangeDate       DateTime?
+  statusChangeDate       DateTime? @db.Timestamptz(3)
   statusChangeUser       String?
   sinkFund               Decimal?            @db.Decimal(12, 2)
   salespersonCode        String?
@@ -77,8 +77,8 @@ model BookingEntitlement {
   nightsUsed   Int       @default(0)
   actualNights Int       @default(0)
   weekendUsed  Int       @default(0)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @db.Timestamptz(3)
   agreement    Agreement @relation(fields: [agreementId], references: [id])
 
   @@unique([coCode, agreementNo, membershipNo, yearSeq])
@@ -97,9 +97,8 @@ model CpBookingEntitlement {
   advUsePts    Int      @default(0)
   acrusePts    Int      @default(0)
   balPts       Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime
-
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @db.Timestamptz(3)
   @@unique([coCode, membershipNo, agreementNo, useYear])
   @@index([coCode, membershipNo, agreementNo])
 }
@@ -124,16 +123,16 @@ model AmcInvoice {
   billType        BillType
   coCode          String
   isProcessed     Boolean      @default(false)
-  processedAt     DateTime?
+  processedAt     DateTime? @db.Timestamptz(3)
   prevNextDueDate     DateTime? // schedule.nextDueDate before this invoice advanced it (for exact cancel rollback)
   prevLastInvoiceDate DateTime? // schedule.lastInvoiceDate before this invoice advanced it
-  printDate       DateTime?
+  printDate       DateTime? @db.Timestamptz(3)
   printUser       String?
   printCount      Int          @default(0)
   newFlag         String?
   legacyCreatedAt DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @db.Timestamptz(3)
   agreement       Agreement    @relation(fields: [agreementId], references: [id])
   schedule        AmcSchedule  @relation(fields: [scheduleId], references: [id])
 }
@@ -145,8 +144,8 @@ model AmcInvoice {
 model AmcInvoiceCounter {
   coCode    String   @id          // "02", "03", "15"
   lastInvNo Int                    // last used AMC invoice running number
-  createdAt DateTime @default(now())
-  updatedAt DateTime
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @db.Timestamptz(3)
 }
 
 model AmcPrice {
@@ -161,8 +160,8 @@ model AmcPrice {
   totalAmount   Decimal  @db.Decimal(12, 2)
   amountInWords String?
   rate          Decimal  @default(1) @db.Decimal(8, 4)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @db.Timestamptz(3)
   isActive      Boolean  @default(true)
 
   @@unique([coCode, priceCode, effectiveDate])
@@ -179,8 +178,8 @@ model AmcPricePoints {
   gstPct          Decimal  @db.Decimal(6, 2)
   unitPrice       Decimal? @db.Decimal(12, 2)
   rciPoints       Int?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @db.Timestamptz(3)
   isActive        Boolean  @default(true)
 
   @@unique([coCode, minPoints, maxPoints, effectiveDate])
@@ -200,8 +199,8 @@ model AmcSchedule {
   priceCode       String?
   billingStatus   BillingStatus @default(N)
   legacyCreatedAt DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @db.Timestamptz(3)
   invoices        AmcInvoice[]
   agreement       Agreement     @relation(fields: [agreementId], references: [id])
 }
@@ -214,7 +213,7 @@ model AuditLog {
   targetType String?
   targetId   Int?
   metadata   Json?
-  createdAt  DateTime        @default(now())
+  createdAt  DateTime        @default(now()) @db.Timestamptz(3)
   user       User            @relation(fields: [userId], references: [id])
 }
 
@@ -224,7 +223,7 @@ model CancellationReason {
   category    String
   type        String?
   status      String      @default("A")
-  createdAt   DateTime    @default(now())
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
   agreements  Agreement[]
 }
 
@@ -233,7 +232,7 @@ model Department {
   name        String                 @unique
   description String?
   isLocked    Boolean                @default(false)
-  createdAt   DateTime               @default(now())
+  createdAt   DateTime               @default(now()) @db.Timestamptz(3)
   permissions DeptModulePermission[]
   users       User[]
 }
@@ -321,8 +320,8 @@ model Member {
   status            MemberStatus @default(ACTIVE)
   legacyCreatedAt   DateTime?
   legacyModifiedAt  DateTime?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime
+  createdAt         DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @db.Timestamptz(3)
   faxNo             String?
   faxOffice         String?
   telOffice2        String?
@@ -364,8 +363,8 @@ model PbsScheme {
   pbsIndc     Boolean   @default(false)
   claimIndc   Boolean   @default(false)
   remark      String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @db.Timestamptz(3)
   agreement   Agreement @relation(fields: [agreementId], references: [id])
   claims      PbsClaim[]
 }
@@ -390,8 +389,8 @@ model PbsClaim {
   claimType     String?
   claimRemark   String?
   trustPaidDate DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @db.Timestamptz(3)
   pbsScheme     PbsScheme @relation(fields: [pbsSchemeId], references: [id])
 }
 
@@ -401,8 +400,8 @@ model Salesperson {
   name      String
   branch    String?
   status    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @db.Timestamptz(3)
 }
 
 model Resort {
@@ -433,9 +432,11 @@ model Resort {
   legacyCreateDate DateTime?
   legacyModUser    String?
   legacyModDate    DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @db.Timestamptz(3)
   infoLines        ResortInfoLine[]
+  apartmentTypes   ApartmentType[]
+  units            ResortUnit[]
 }
 
 model ResortInfoLine {
@@ -445,16 +446,42 @@ model ResortInfoLine {
   category  ResortInfoCategory
   seq       Int
   text      String
-  createdAt DateTime           @default(now())
-  updatedAt DateTime
-
+  createdAt DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @db.Timestamptz(3)
   @@unique([resortId, category, seq])
+}
+
+model ApartmentType {
+  id            String   @id
+  resortId      String
+  resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
+  resortCode    String   // denormalized natural key (Resort.resortCode is unique + immutable)
+  apartmentType String
+  description   String?
+  lockType      String   @default("LN") // LM=Master Unit, LS=Split Unit, LN=Normal Unit
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @db.Timestamptz(3)
+  @@unique([resortCode, apartmentType])
+}
+
+model ResortUnit {
+  id            String   @id
+  resortId      String
+  resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
+  resortCode    String   // denormalized natural key
+  unitNo        String   // apt_code — e.g. "3227/3228", "1.12A"
+  apartmentType String   // apt_unit_type — validated against ApartmentType (no hard FK; type is renamable)
+  occupancy     Int?     // apt_occupancy
+  rciReserved   String   @default("N") // apt_rci_reserved Y/N
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @db.Timestamptz(3)
+  @@unique([resortCode, unitNo])
 }
 
 model SuReason {
   code        String      @id
   description String
-  createdAt   DateTime    @default(now())
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
   agreements  Agreement[]
 }
 
@@ -473,12 +500,12 @@ model User {
   mustChangePwd  Boolean            @default(true)
   status         UserStatus         @default(ACTIVE)
   departmentId   Int
-  lastLoginAt    DateTime?
+  lastLoginAt    DateTime? @db.Timestamptz(3)
   failedAttempts Int                @default(0)
-  lockedAt       DateTime?
+  lockedAt       DateTime? @db.Timestamptz(3)
   sessionToken   String?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @db.Timestamptz(3)
   auditLogs      AuditLog[]
   department     Department         @relation(fields: [departmentId], references: [id])
   reportAccess   UserReportAccess[] @relation("userReports")
@@ -490,8 +517,8 @@ model UserReportAccess {
   userId      Int
   reportKey   ReportKey
   grantedById Int
-  grantedAt   DateTime  @default(now())
-  updatedAt   DateTime
+  grantedAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @db.Timestamptz(3)
   user        User      @relation("userReports", fields: [userId], references: [id])
   grantedBy   User      @relation("grantedReports", fields: [grantedById], references: [id])
 

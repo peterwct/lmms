@@ -63,6 +63,21 @@ const d = (s: string | undefined): Date | null => {
   return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
 };
 
+// Business-supplied apartment types per resort (not from an UNLOAD file) — 2026-07-23.
+// lockType: LM=Master Unit, LS=Split Unit, LN=Normal Unit. Only lock-on/lock-off
+// resorts (lockOnOff='Y', currently CP-PBR) use LM/LS; everything else is LN.
+const APARTMENT_TYPES: { resortCode: string; apartmentType: string; description: string; lockType: string }[] = [
+  { resortCode: 'CP-PBR',  apartmentType: 'SLEEP6', description: 'MAXIMUM 6 PAX ONLY',            lockType: 'LM' },
+  { resortCode: 'CP-PBR',  apartmentType: 'SLEEP4', description: 'MAX 4 PAX ONLY',                lockType: 'LS' },
+  { resortCode: 'CP-PBR',  apartmentType: 'SLEEP2', description: 'MAX 2 PAX ONLY',                lockType: 'LS' },
+  { resortCode: 'L-10016', apartmentType: '2BR',    description: '2 BEDROOM APARTMENT',           lockType: 'LN' },
+  { resortCode: 'L-10024', apartmentType: '3BR',    description: '3 BEDROOM APARTMENT',           lockType: 'LN' },
+  { resortCode: 'L-10025', apartmentType: '3BR',    description: '3 BEDROOM APARTMENT',           lockType: 'LN' },
+  { resortCode: 'L-10026', apartmentType: '2BR',    description: '2 BEDROOM APARTMENT',           lockType: 'LN' },
+  { resortCode: 'L-101',   apartmentType: '1BR',    description: '1 BEDROOM APT',                 lockType: 'LN' },
+  { resortCode: 'L-103A',  apartmentType: '3BR',    description: 'MAXI 6 PAX INCLUDING CHILDREN', lockType: 'LN' },
+];
+
 // Business-supplied check-in/check-out times (not in resort_mast) — 2026-07-23
 const CHECK_TIMES: Record<string, { checkIn: string; checkOut: string }> = {
   'CP-PBR':  { checkIn: '2PM - 11PM', checkOut: '12PM' },
@@ -145,6 +160,24 @@ async function main() {
   }
 
   console.log(`\n  OK Resorts: ${total} inserted, ${skipped} skipped`);
+
+  // Apartment types (business-supplied, keyed by resortCode) — resolve FK then insert
+  if (!DRY_RUN) {
+    const resorts = await prisma.resort.findMany({ select: { id: true, resortCode: true } });
+    const idByCode = new Map(resorts.map(r => [r.resortCode, r.id]));
+    const atBatch = APARTMENT_TYPES
+      .filter(a => idByCode.has(a.resortCode))
+      .map(a => ({
+        id:         randomUUID(),
+        updatedAt:  new Date(),
+        resortId:   idByCode.get(a.resortCode)!,
+        ...a,
+      }));
+    await prisma.apartmentType.createMany({ data: atBatch, skipDuplicates: true });
+    console.log(`  OK Apartment types: ${atBatch.length} inserted (of ${APARTMENT_TYPES.length})`);
+  } else {
+    console.log(`  Apartment types (dry run): ${APARTMENT_TYPES.length} pending`);
+  }
 
   if (!DRY_RUN) {
     const count = await prisma.resort.count();

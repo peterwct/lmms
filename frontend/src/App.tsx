@@ -35,6 +35,8 @@ import { PbsAutoTransfer } from './pages/pbs/PbsAutoTransfer';
 import { ResortsSetup } from './pages/resorts/ResortsSetup';
 import { ResortMaster } from './pages/resorts/ResortMaster';
 import { ResortDetail } from './pages/resorts/ResortDetail';
+import { ApartmentTypes } from './pages/resorts/ApartmentTypes';
+import { ResortUnits } from './pages/resorts/ResortUnits';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -85,6 +87,8 @@ export default function App() {
               <Route path="resorts"             element={<ResortsSetup />} />
               <Route path="resorts/setup"       element={<ResortMaster />} />
               <Route path="resorts/setup/:id"   element={<ResortDetail />} />
+              <Route path="resorts/apartment-types" element={<ApartmentTypes />} />
+              <Route path="resorts/units"       element={<ResortUnits />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />

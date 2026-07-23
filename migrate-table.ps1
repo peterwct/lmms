@@ -45,7 +45,7 @@
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Resort')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Resort', 'ResortUnit')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -180,10 +180,17 @@ $TableConfig = @{
     Resort = @{
         # Master data. Post-go-live resorts are maintained in MMS -- re-running
         # truncates and clobbers any edits made through the Resorts Setup CRUD.
-        # Leaf table truncated explicitly (TRUNCATE CASCADE unreliable).
-        TruncateSql = @('TRUNCATE "ResortInfoLine", "Resort";')
-        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt')
-        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts')
+        # Leaf tables truncated explicitly (TRUNCATE CASCADE unreliable).
+        TruncateSql = @('TRUNCATE "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
+        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_mast.txt')
+        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-resort-units.ts')
+    }
+    ResortUnit = @{
+        # Apartments/Units register (apt_mast.txt partial export: 5 of 15 cols).
+        # Post-go-live units are maintained in MMS -- re-running clobbers CRUD edits.
+        TruncateSql = @('TRUNCATE "ResortUnit";')
+        RequiredFiles = @('apt_mast.txt')
+        Scripts = @('prisma/migrate-resort-units.ts')
     }
 }
 
