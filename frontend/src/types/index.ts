@@ -197,6 +197,70 @@ export interface ResortUnitList {
   pageSize: number;
 }
 
+export interface AptBlock {
+  id: string;
+  resortId: string;
+  resortCode: string;
+  unitNo: string;
+  apartmentType: string | null;
+  startDate: string;
+  endDate: string;
+  blockNo: number | null;
+  createdAt: string;
+  updatedAt: string;
+  resort: {
+    shortName: string | null;
+    resortName: string;
+    coCode: string;
+  };
+}
+
+export interface AptBlockList {
+  data: AptBlock[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface ResAvailDay {
+  date: string;
+  actNight: number;
+  balNight: number;
+}
+
+export interface AptBlockAvailability {
+  resortCode: string;
+  unitNo: string;
+  apartmentType: string | null;
+  startDate: string;
+  endDate: string;
+  data: ResAvailDay[];
+}
+
+export interface AvailabilityChartCol {
+  date: string;
+  dow: string;
+  dom: number;
+  weekend: boolean;
+}
+
+export interface AvailabilityChartRow {
+  resortCode: string;
+  shortName: string | null;
+  apartmentType: string;
+  coCode: string;
+  label: string;
+  cells: number[];
+}
+
+export interface AvailabilityChart {
+  product: 'LHC' | 'CP';
+  startDate: string;
+  days: number;
+  dates: AvailabilityChartCol[];
+  rows: AvailabilityChartRow[];
+}
+
 export interface PbsScheme {
   id: string;
   agreementId: string;

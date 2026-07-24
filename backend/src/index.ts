@@ -29,6 +29,7 @@ import suReasonRoutes    from './routes/suReasons';
 import resortRoutes      from './routes/resorts';
 import apartmentTypeRoutes from './routes/apartmentTypes';
 import resortUnitRoutes  from './routes/resortUnits';
+import aptBlockRoutes    from './routes/aptBlocks';
 
 // Member-scoped sub-routes
 import { authenticate, requirePasswordChanged } from './middleware/auth';
@@ -64,6 +65,7 @@ app.use('/api/su-reasons',        suReasonRoutes);
 app.use('/api/resorts',           resortRoutes);
 app.use('/api/apartment-types',   apartmentTypeRoutes);
 app.use('/api/resort-units',      resortUnitRoutes);
+app.use('/api/apt-blocks',        aptBlockRoutes);
 
 // ─── Member-scoped agreement + AMC routes ─────────────────────────────────────
 app.get(

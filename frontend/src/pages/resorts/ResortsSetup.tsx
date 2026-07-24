@@ -15,8 +15,8 @@ interface ResortsMenuItem {
 const SETUP_ITEMS: ResortsMenuItem[] = [
   { num: 1, label: 'Resorts Setup',                          to: '/resorts/setup',        icon: <Hotel className="h-4 w-4" />, enabled: true },
   { num: 2, label: 'Apartment Types Setup',                  to: '/resorts/apartment-types', icon: <BedDouble className="h-4 w-4" />, enabled: true },
-  { num: 3, label: 'Apartments/Units Setup',                 to: '/resorts/units',        icon: <DoorOpen className="h-4 w-4" />, enabled: true },
-  { num: 4, label: 'Units Availability Setup by Dates',      to: '/resorts/availability', icon: <CalendarRange className="h-4 w-4" /> },
+  { num: 3, label: "Apartment's Unit Setup",                 to: '/resorts/units',        icon: <DoorOpen className="h-4 w-4" />, enabled: true },
+  { num: 4, label: 'Units Availability Setup by Dates',      to: '/resorts/availability', icon: <CalendarRange className="h-4 w-4" />, enabled: true },
   { num: 5, label: 'Public & School Holidays Setup',         to: '/resorts/holidays',     icon: <CalendarDays className="h-4 w-4" /> },
   { num: 6, label: "CP's Seasons & Points Setup",            to: '/resorts/seasons',      icon: <Sun className="h-4 w-4" /> },
 ];

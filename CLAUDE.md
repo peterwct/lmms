@@ -27,6 +27,8 @@ lmms/
 │   ├── migrate-resorts.ts   # Resort master from resort_mast.txt (Resorts Setup module) + business-supplied ApartmentType seed rows
 │   ├── migrate-resort-info.ts  # Resort info lines from ps_resort_info.txt (normalized into ResortInfoLine)
 │   ├── migrate-resort-units.ts # Resort units from apt_mast.txt (Apartments/Units Setup; 5-col partial export)
+│   ├── migrate-res-avail.ts # Per-day availability grid from res_avail_mast.txt (Units Availability by Dates; cols 0-4, chunked)
+│   ├── migrate-apt-block.ts # Availability input blocks from apt_block.txt (Units Availability by Dates; cols 0-4, apartmentType derived from ResortUnit)
 │   └── migrations/          # Applied migration history
 ├── refresh-test-db.ps1      # Clears + re-imports all Informix data; use for UAT refreshes and live cutover
 ├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule, RciEnrol, SuPtReason, AmcInvoiceCounter)
@@ -50,6 +52,8 @@ lmms/
 │   ├── resort_mast.txt
 │   ├── ps_resort_info.txt
 │   ├── apt_mast.txt
+│   ├── res_avail_mast.txt
+│   ├── apt_block.txt
 │   └── state.txt
 ├── backend/                 # Node.js + Express + TypeScript API
 │   └── src/
@@ -227,7 +231,7 @@ $env:DATABASE_URL = "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 .\refresh-test-db.ps1 -DryRun
 ```
 
-The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + Resort + Member CASCADE (the Member CASCADE also clears AmcInvoice) → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons + resorts → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → AMC invoice counter (`ctrl_billtab.txt`, resets `AmcInvoiceCounter` to the Informix baseline) → re-grants lhb_app permissions → prints final row counts.
+The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + AptBlock + ResAvailMast + Resort + Member CASCADE (the Member CASCADE also clears AmcInvoice) → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons + resorts (master + info + units + `res_avail_mast.txt` availability grid + `apt_block.txt` blocks) → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → AMC invoice counter (`ctrl_billtab.txt`, resets `AmcInvoiceCounter` to the Informix baseline) → re-grants lhb_app permissions → prints final row counts.
 
 ### Migrating a single table
 
@@ -247,8 +251,10 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15; truncates + reimports)
 .\migrate-table.ps1 -Table CpBookingEntitlement        # CP point balances per year (CP 02; truncates + reimports)
 .\migrate-table.ps1 -Table AmcInvoiceCounter           # Per-coCode AMC invoice running number (ctrl_billtab.txt; upsert, resets to Informix baseline)
-.\migrate-table.ps1 -Table Resort                      # Resort master + info + units (resort_mast.txt + ps_resort_info.txt + apt_mast.txt; truncates + reimports — post-go-live clobbers CRUD edits)
+.\migrate-table.ps1 -Table Resort                      # Resort master + info + units + availability grid + blocks (resort_mast.txt + ps_resort_info.txt + apt_mast.txt + res_avail_mast.txt + apt_block.txt; truncates + reimports — post-go-live clobbers CRUD edits)
 .\migrate-table.ps1 -Table ResortUnit                  # Resort units only (apt_mast.txt; truncates + reimports — post-go-live clobbers CRUD edits)
+.\migrate-table.ps1 -Table ResAvailMast                # Per-day availability grid only (res_avail_mast.txt; truncates + reimports — post-go-live clobbers CRUD edits)
+.\migrate-table.ps1 -Table AptBlock                    # Availability blocks only (apt_block.txt; needs ResortUnit present for apartmentType lookup; truncates + reimports — clobbers CRUD edits)
 .\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
 
@@ -552,6 +558,43 @@ Seeded via `prisma/migrate-resort-units.ts` (`migrate-table.ps1 -Table ResortUni
 `-Table Resort` and `refresh-test-db.ps1` — post-go-live re-import clobbers CRUD edits).
 CRUD at `/api/resort-units` under `RESORTS_SETUP` matrix permission.
 
+### AptBlock (Units Availability input record)
+The input record for the **Units Availability Setup by Dates** function (`/resorts/availability`).
+One row per (resort, unit, date-range) block — this is what staff CRUD. 3,539 rows from `apt_block.txt`
+(cols `[0..4]` migrated: resortCode, unitNo, startDate, endDate, blockNo — create-user/col5 + audit
+cols NOT migrated). Fields: `resortId` (FK → Resort.id, Cascade), `resortCode`, `unitNo` (incl. compound
+lock-off codes like `3005/3006`), `apartmentType` (derived from ResortUnit at CRUD time; **null** for
+migrated rows whose unit isn't in the partial `apt_mast` export — 59 such rows), `startDate`/`endDate`
+(plain TIMESTAMP UTC-midnight business dates), `blockNo` (Int?, per-unit running block number).
+Unique: `[resortCode, unitNo, startDate, endDate]`. **`resortCode`/`unitNo`/`apartmentType` immutable
+after create** (move = delete + re-add; edit changes only the dates). Seeded via
+`prisma/migrate-apt-block.ts` (`migrate-table.ps1 -Table AptBlock`, bundled into `-Table Resort` +
+`refresh-test-db.ps1` — runs after `migrate-resort-units.ts` since it needs ResortUnit for the type
+lookup). CRUD at `/api/apt-blocks` under `RESORTS_SETUP` matrix. **Each save maintains the ResAvailMast
+grid** (see below).
+
+### ResAvailMast (Units Availability generated per-day grid)
+The **generated** per-day availability grid consumed by (future) booking — NOT edited directly; it is
+maintained automatically when AptBlock rows are created/edited/deleted. Keyed by (resort, apartment type,
+date). 94,876 rows from `res_avail_mast.txt` (cols `[0..4]` migrated: resortCode, apartmentType, date,
+actNight, balNight — relNight/col5 + lockStatus NOT migrated). Fields: `resortId` (FK → Resort.id,
+Cascade), `resortCode`, `apartmentType`, `date` (plain TIMESTAMP UTC-midnight), `actNight` (**count of
+units of that apartment type available that day** — aggregate across all units of the type), `balNight`
+(act minus bookings). Unique: `[resortCode, apartmentType, date]` (matches Informix `ram_idx1`). Verified:
+L-101/1BR/2027-01-01 → act=3 = the 3 blocks for units 4/6/18. Seeded via `prisma/migrate-res-avail.ts`
+(chunked `createMany`, 5k). Direct load on import — NOT regenerated from AptBlock at migration time.
+
+**Grid sync on AptBlock CRUD** (`applyDelta` in `apt-blocks.controller.ts`, all in one transaction,
+interactive-txn timeout bumped to 120s for multi-year blocks, `MAX_RANGE_DAYS=3660` guard):
+- **Create** → for each day in `[start,end]`, upsert `(resort, apartmentType, date)` with `actNight+1,
+  balNight+1` (creates `1/1` if absent).
+- **Delete** → each day `actNight-1, balNight-1` (row deleted when act reaches 0; balNight clamped ≥0 so a
+  booked day can't go negative).
+- **Edit** (dates only) → reverse the old range (`-1`) then apply the new range (`+1`); days in both are
+  net-zero, so only added/dropped days change.
+- **Overlap guard:** a new/edited block whose range overlaps an existing block for the same
+  `(resortCode, unitNo)` is rejected (409).
+
 ### State
 39 records from `state.txt`. Fields: `code` (PK, 2-digit), `name`. Served via `GET /api/states`.
 
@@ -584,6 +627,10 @@ Source tables and their column counts (verified from actual export files):
 | `apt_mast.txt` | Resort units (Apartments/Units register) | 5 cols pipe-delimited (deliberately partial export of the 15-col `apt_mast` — dates/audit/lock_status skipped) | apt_code[0] (→ `unitNo`; compound lock-off codes `3227/3228`, dotted `1.12A`), apt_resort_code[1], apt_rci_reserved[2] (Y/N), apt_unit_type[3] (matches `ApartmentType.apartmentType`), apt_occupancy[4]. `UNLOAD TO 'apt_mast.txt' DELIMITER '\|' SELECT apt_code, apt_resort_code, apt_rci_reserved, apt_unit_type, apt_occupancy FROM apt_mast;` → `ResortUnit` (unique `[resortCode, unitNo]` — apt_code NOT globally unique). See `prisma/migrate-resort-units.ts`. |
 
 | `ps_resort_info.txt` | Resort info (4 blocks of print lines) | 38 cols pipe-delimited | psri_resort_code[0], psri_get_there1-10[1-10], psri_res_fac1-10[11-20], psri_pl_int1-6[21-26], psri_unit_amen1-6[27-32], legacy audit[33-36] + lockstatus[37] skipped (all empty). `UNLOAD TO 'ps_resort_info.txt' SELECT * FROM ps_resort_info;` → `ResortInfoLine` (one row per non-empty slot; slot no. = `seq`). See `prisma/migrate-resort-info.ts`. |
+
+| `res_avail_mast.txt` | Resort availability (per-day grid) | 7 cols pipe-delimited; only [0..4] migrated | ram_resort_code[0] (→ `resortCode`), ram_apt_type[1] (→ `apartmentType`), ram_date[2] (`dd-mm-yyyy` → UTC midnight), ram_act_night[3] (→ `actNight`), ram_bal_night[4] (→ `balNight`). **ram_rel_night[5] + ram_lock_status[6] NOT migrated.** `UNLOAD TO 'res_avail_mast.txt' DELIMITER '\|' SELECT * FROM res_avail_mast;` → `ResAvailMast` (unique `[resortCode, apartmentType, date]`; 94,876 rows, chunked). See `prisma/migrate-res-avail.ts`. |
+
+| `apt_block.txt` | Availability input blocks | 10 cols pipe-delimited; only [0..4] migrated | resort_code[0], apt_code[1] (→ `unitNo`, incl. `3005/3006`), start_date[2], end_date[3] (`dd-mm-yyyy` → UTC midnight), block_no[4] (→ `blockNo`). **create-user[5], create-date[6], 'new'[7], blank[8], lock_status[9] NOT migrated.** `apartmentType` derived by ResortUnit lookup (null when unit absent from `apt_mast` export). `UNLOAD TO 'apt_block.txt' DELIMITER '\|' SELECT * FROM apt_block;` → `AptBlock` (unique `[resortCode, unitNo, startDate, endDate]`; 3,539 rows). See `prisma/migrate-apt-block.ts`. |
 
 | `ctrl_billtab.txt` | AMC invoice running number per coCode | 2 cols pipe-delimited | cocode[0], last_amcinv[1]. `UNLOAD TO 'ctrl_billtab.txt' SELECT cocode, last_amcinv FROM ctrl_billtab WHERE cocode IN ('03','15','02');`. Upsert-by-coCode → `AmcInvoiceCounter` (`coCode` PK, `lastInvNo`). Seeds the per-coCode AMC invoice running number so the new system continues where Informix left off. **Re-running RESETS `lastInvNo`** to the Informix value — OK for UAT refresh, must NOT run after go-live. See `prisma/migrate-amc-invoice-counter.ts`. |
 
@@ -678,6 +725,12 @@ GET  /api/resort-units?q=&resortCode=&page=&pageSize=  Unit list, paginated (RES
 POST /api/resort-units                      Create unit (RESORTS_SETUP create; apartmentType must exist for the resort)
 PUT  /api/resort-units/:id                  Update unit (resortCode immutable; RESORTS_SETUP edit)
 DELETE /api/resort-units/:id                Delete unit (RESORTS_SETUP delete)
+GET  /api/apt-blocks?q=&resortCode=&page=&pageSize=  Availability block list, paginated, sorted startDate desc (RESORTS_SETUP view)
+GET  /api/apt-blocks/availability-chart?product=LHC|CP&date=&days=  Resort Availability chart: ResAvailMast pivoted resort×date, cell=balNight (LHC=coCode 03 only; CP=02; RESORTS_SETUP view)
+GET  /api/apt-blocks/:id/availability       Per-day grid (date/act/bal) for a block's resort+type over its date range (RESORTS_SETUP view)
+POST /api/apt-blocks                        Create block + generate ResAvailMast day rows (RESORTS_SETUP create; 409 on overlap, 400 if unit/type mismatch)
+PUT  /api/apt-blocks/:id                    Edit block dates + re-sync grid (resortCode/unitNo/type immutable; RESORTS_SETUP edit; 409 on overlap)
+DELETE /api/apt-blocks/:id                  Delete block + reverse its grid contribution (RESORTS_SETUP delete)
 GET  /api/pbs?q=&coCode=&acctClassify=&schemeType=&claimIndc=  PBS scheme list (search+filters)
 GET  /api/pbs/:id                                  PBS scheme detail + claims
 PUT  /api/pbs/:id                                  Update PBS scheme (certNo, schemeType, remark)
@@ -709,7 +762,7 @@ GET  /api/pbs/reports/variance                     Generate PBS Variance Report 
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
-| Resorts Setup | 🔨 In progress | New `RESORTS_SETUP` AppModule (seed defaults: IT+Resort Ops FULL, Member Services VIEW, Finance/Credit NONE). Landing page `/resorts` (PBS-style menu, sidebar group "Resorts"). Function 1 done: **Resorts Setup** (`/resorts/setup`) — Resort master CRUD (list+search, add/edit modal shared via `ResortFormModal.tsx`, status toggle A/U, delete; buttons gated by canCreate/canEdit/canDelete; Eye icon on every row → detail). **Resort Detail** (`/resorts/setup/:id`) — details card + Edit + 4 info tabs (Getting There / Resort Facilities / Places of Interest / Unit Amenities) from `ResortInfoLine`; per-tab single-textarea editor, remark-style free text (400 chars total per category, validated client+server, no auto-uppercase — legacy print lines are mixed-case). Function 2 done: **Apartment Types Setup** (`/resorts/apartment-types`) — `ApartmentType` CRUD (list+search, add/edit modal, delete; resort picker from Resort master, lockType Select disabled/forced-LN unless resort `lockOnOff='Y'`; 9 business-supplied seed rows via `migrate-resorts.ts`). Function 3 done: **Apartments/Units Setup** (`/resorts/units`) — `ResortUnit` CRUD (paginated list with resort filter + search, add/edit modal with apartment-type dropdown restricted to the selected resort's types, RCI Reserved checkbox; 481 rows from `apt_mast.txt`). Remaining 3 functions are disabled placeholders: Units Availability by Dates, Public & School Holidays, CP Seasons & Points. |
+| Resorts Setup | 🔨 In progress | New `RESORTS_SETUP` AppModule (seed defaults: IT+Resort Ops FULL, Member Services VIEW, Finance/Credit NONE). Landing page `/resorts` (PBS-style menu, sidebar group "Resorts"). Function 1 done: **Resorts Setup** (`/resorts/setup`) — Resort master CRUD (list+search, add/edit modal shared via `ResortFormModal.tsx`, status toggle A/U, delete; buttons gated by canCreate/canEdit/canDelete; Eye icon on every row → detail). **Resort Detail** (`/resorts/setup/:id`) — details card + Edit + 4 info tabs (Getting There / Resort Facilities / Places of Interest / Unit Amenities) from `ResortInfoLine`; per-tab single-textarea editor, remark-style free text (400 chars total per category, validated client+server, no auto-uppercase — legacy print lines are mixed-case). Function 2 done: **Apartment Types Setup** (`/resorts/apartment-types`) — `ApartmentType` CRUD (list+search, add/edit modal, delete; resort picker from Resort master, lockType Select disabled/forced-LN unless resort `lockOnOff='Y'`; 9 business-supplied seed rows via `migrate-resorts.ts`). Function 3 done: **Apartments/Units Setup** (`/resorts/units`) — `ResortUnit` CRUD (paginated list with resort filter + search, add/edit modal with apartment-type dropdown restricted to the selected resort's types, RCI Reserved checkbox; 481 rows from `apt_mast.txt`). Function 4 done: **Units Availability Setup by Dates** (`/resorts/availability`) — block-centric CRUD over `AptBlock` (paginated list sorted startDate desc, cascade add form Resort→ApartmentType→Unit→start/end dates, styled delete-confirm modal). Each save auto-maintains the generated `ResAvailMast` per-day grid (`act/bal +1` per day on create, `-1` on delete, reverse-then-apply on edit; overlap-guarded 409). Per-row Eye icon → modal of the block's day grid. Header **Resorts Availability** button opens a **draggable, non-modal** popup (`DraggableWindow.tsx`) = ResAvailMast pivoted resort×date, cell=balNight (red ≤2, weekends highlighted), Product Type LHC (coCode 03 only)/CP, date + `<<`/`>>` 15-day paging. Remaining 2 functions are disabled placeholders: Public & School Holidays, CP Seasons & Points. |
 | Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done. PBS Pay By Month/Year (`/pbs/pay-by-month`) done: Excel with 2 worksheets (monthly + yearly summary), tabbed preview. PBS Claim Report (`/pbs/claim-report`) done: Excel with 2 worksheets (non-ND claims + ND claims), tabbed preview. Not In PBS Report (`/pbs/not-in-pbs`) done: text file output matching Informix format, preview table. PBS Variance Report (`/pbs/variance`) done: Excel comparing rightful vs Zurich scheme type, preview with variance highlighting. All PBS reports use per-user `requireReportAccess` (not department permission); menu items hidden when not granted. Remaining: Proforma, Certificate Tracking, Auto Transfer, 1 report (PBS Report). |
 
 ## Navigation / permissions

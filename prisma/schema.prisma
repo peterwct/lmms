@@ -437,6 +437,8 @@ model Resort {
   infoLines        ResortInfoLine[]
   apartmentTypes   ApartmentType[]
   units            ResortUnit[]
+  aptBlocks        AptBlock[]
+  resAvail         ResAvailMast[]
 }
 
 model ResortInfoLine {
@@ -476,6 +478,41 @@ model ResortUnit {
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @db.Timestamptz(3)
   @@unique([resortCode, unitNo])
+}
+
+// Units Availability Setup by Dates — the input record (apt_block.txt).
+// One row per (resort, unit, date-range) block. Staff CRUD this; each save
+// expands into per-day ResAvailMast rows. Post-go-live re-import clobbers CRUD edits.
+model AptBlock {
+  id            String   @id
+  resortId      String
+  resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
+  resortCode    String   // denormalized natural key
+  unitNo        String   // apt_code — incl. compound lock-off codes like "3005/3006"
+  apartmentType String?  // derived from ResortUnit at CRUD time; null for migrated rows whose unit isn't in apt_mast
+  startDate     DateTime // UTC midnight (business date)
+  endDate       DateTime // UTC midnight (business date)
+  blockNo       Int?     // col[4] per-unit running block number (migrated only)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @db.Timestamptz(3)
+  @@unique([resortCode, unitNo, startDate, endDate])
+}
+
+// Units Availability Setup by Dates — the generated per-day grid (res_avail_mast.txt).
+// Keyed by (resort, apartment type, date). actNight = count of units of that type
+// available that day; balNight = act minus bookings. relNight/lockStatus not migrated.
+model ResAvailMast {
+  id            String   @id
+  resortId      String
+  resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
+  resortCode    String
+  apartmentType String
+  date          DateTime // UTC midnight (business date)
+  actNight      Int
+  balNight      Int
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @db.Timestamptz(3)
+  @@unique([resortCode, apartmentType, date])
 }
 
 model SuReason {

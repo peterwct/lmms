@@ -39,13 +39,15 @@
     .\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15 only)
     .\migrate-table.ps1 -Table CpBookingEntitlement        # CP point balances per year (CP 02 only; truncates + reimports)
     .\migrate-table.ps1 -Table AmcInvoiceCounter           # Per-coCode AMC invoice running number (ctrl_billtab.txt)
-    .\migrate-table.ps1 -Table Resort                      # Resort master (resort_mast.txt; truncates + reimports)
+    .\migrate-table.ps1 -Table Resort                      # Resort master + info + units + availability + blocks (truncates + reimports)
+    .\migrate-table.ps1 -Table ResAvailMast                # Per-day availability grid only (res_avail_mast.txt; truncates + reimports)
+    .\migrate-table.ps1 -Table AptBlock                    # Availability blocks only (apt_block.txt; truncates + reimports)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Resort', 'ResortUnit')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Resort', 'ResortUnit', 'AptBlock', 'ResAvailMast')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -181,9 +183,9 @@ $TableConfig = @{
         # Master data. Post-go-live resorts are maintained in MMS -- re-running
         # truncates and clobbers any edits made through the Resorts Setup CRUD.
         # Leaf tables truncated explicitly (TRUNCATE CASCADE unreliable).
-        TruncateSql = @('TRUNCATE "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
-        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_mast.txt')
-        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-resort-units.ts')
+        TruncateSql = @('TRUNCATE "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
+        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_mast.txt', 'res_avail_mast.txt', 'apt_block.txt')
+        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-resort-units.ts', 'prisma/migrate-res-avail.ts', 'prisma/migrate-apt-block.ts')
     }
     ResortUnit = @{
         # Apartments/Units register (apt_mast.txt partial export: 5 of 15 cols).
@@ -191,6 +193,20 @@ $TableConfig = @{
         TruncateSql = @('TRUNCATE "ResortUnit";')
         RequiredFiles = @('apt_mast.txt')
         Scripts = @('prisma/migrate-resort-units.ts')
+    }
+    ResAvailMast = @{
+        # Per-day availability grid (res_avail_mast.txt, cols 0-4). Generated table --
+        # post-go-live it is maintained via the Units Availability CRUD; re-running clobbers edits.
+        TruncateSql = @('TRUNCATE "ResAvailMast";')
+        RequiredFiles = @('res_avail_mast.txt')
+        Scripts = @('prisma/migrate-res-avail.ts')
+    }
+    AptBlock = @{
+        # Availability blocks / input records (apt_block.txt, cols 0-4). Needs ResortUnit
+        # present for the apartmentType lookup. Post-go-live re-import clobbers CRUD edits.
+        TruncateSql = @('TRUNCATE "AptBlock";')
+        RequiredFiles = @('apt_block.txt')
+        Scripts = @('prisma/migrate-apt-block.ts')
     }
 }
 

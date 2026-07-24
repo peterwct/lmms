@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { ApartmentType, Resort, ResortDetail, ResortInfoCategory, ResortUnit, ResortUnitList } from '../types';
+import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, Resort, ResortDetail, ResortInfoCategory, ResortUnit, ResortUnitList } from '../types';
 
 export const resortsApi = {
   list:   (q?: string) => api.get<{ data: Resort[] }>('/resorts', { params: q ? { q } : undefined }),
@@ -18,6 +18,17 @@ export const resortUnitsApi = {
   create: (data: Record<string, unknown>) => api.post<{ data: ResortUnit }>('/resort-units', data),
   update: (id: string, data: Record<string, unknown>) => api.put<{ data: ResortUnit }>(`/resort-units/${id}`, data),
   remove: (id: string) => api.delete(`/resort-units/${id}`),
+};
+
+export const aptBlocksApi = {
+  list: (params: { q?: string; resortCode?: string; page?: number; pageSize?: number }) =>
+    api.get<AptBlockList>('/apt-blocks', { params }),
+  create: (data: Record<string, unknown>) => api.post<{ data: AptBlock }>('/apt-blocks', data),
+  update: (id: string, data: Record<string, unknown>) => api.put<{ data: AptBlock }>(`/apt-blocks/${id}`, data),
+  remove: (id: string) => api.delete(`/apt-blocks/${id}`),
+  availability: (id: string) => api.get<AptBlockAvailability>(`/apt-blocks/${id}/availability`),
+  chart: (params: { product: 'LHC' | 'CP'; date: string; days?: number }) =>
+    api.get<AvailabilityChart>('/apt-blocks/availability-chart', { params }),
 };
 
 export const apartmentTypesApi = {
