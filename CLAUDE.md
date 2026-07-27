@@ -13,6 +13,8 @@ lmms/
 │   ├── seed-states.ts       # 39 Malaysian state codes from migrate/state.txt
 │   ├── seed-cancellation-reasons.ts  # 46 cancellation codes from migrate/agmt_can_cate.txt
 │   ├── seed-su-reasons.ts   # 28 suspension reason codes from migrate/su_mast.txt
+│   ├── seed-public-holidays.ts  # 12 business-supplied 2026 public holidays (Public Holidays Setup; no Informix file, idempotent upsert)
+│   ├── seed-school-holidays.ts  # 4 business-supplied 2026 school holiday ranges (School Holidays Setup; no Informix file, idempotent upsert)
 │   ├── migrate-informix.ts  # Full Informix → PostgreSQL migration (run once)
 │   ├── migrate-maa-mem.ts   # PBS (Zurich Payback Scheme) migration from maa_mem.txt
 │   ├── migrate-maa-claim.ts # PBS Claims migration from maa_claim.txt
@@ -669,6 +671,67 @@ month-end and leap years are exact — verified against raw SQL incl. Feb 2028.
 > record on `L-10016/1.1B` restored `ResAvailMast` to values identical to the raw export for every day,
 > including 2026-08-07/08 which carry a pre-existing Informix booking (`act=20, bal=15`).
 
+### PublicHoliday
+National public holiday calendar for the **Public Holidays Setup** function (`/resorts/holidays`).
+**No Informix source** — the 12 rows for 2026 are business-supplied and baked into
+`prisma/seed-public-holidays.ts` (like `APARTMENT_TYPES` in `migrate-resorts.ts`). Fields:
+`holidayDate` (plain TIMESTAMP UTC-midnight business date), `year` (Int — **always derived
+server-side** from `holidayDate`, never accepted from the client, so it cannot drift),
+`description`. Unique: `[holidayDate, description]` — blocks exact duplicates while still
+allowing two different holidays on one date. Indexed on `year`.
+
+**Global scope — no resort or state column.** Holidays are nationwide; Malaysian state-specific
+holidays are deliberately out of scope (business decision).
+
+**Dates are stored exactly as supplied.** Several seed rows are the *eve* of the gazetted date
+(Labour Day 30/04, National Day 30/08, Christmas 24/12) — this is intentional, not a typo, so
+don't "correct" them on re-seed.
+
+**Clone by year** (`POST /api/public-holidays/clone`, body `{ sourceYear }`): copies every holiday
+of `sourceYear` into **`sourceYear + 1`** on the same month/day, then staff edit each row to the
+real gazetted date (lunar and Islamic holidays shift annually). Refuses with **409** if the target
+year already holds any rows — a second click must not duplicate rows or silently discard dates that
+have already been corrected; **404** if the source year is empty. A 29-Feb source date rolls to
+1 Mar in a non-leap target year (acceptable — every cloned date is reviewed anyway).
+
+The seed **upserts** on the compound unique, so re-running only tops up missing rows. `PublicHoliday`
+is **not** truncated by `refresh-test-db.ps1` (no FK to Resort) — the refresh calls the seed to top it
+up and leaves corrected dates alone. CRUD at `/api/public-holidays` under `RESORTS_SETUP` matrix
+permission (clone requires `create`).
+
+### SchoolHoliday
+School break **date ranges** for the **School Holidays Setup** function (`/resorts/school-holidays`).
+**No Informix source** — the 4 rows for 2026 are business-supplied and baked into
+`prisma/seed-school-holidays.ts`. Fields: `academicYear` (Int), `startDate`/`endDate` (plain TIMESTAMP
+UTC-midnight business dates), `description`. Unique: `[academicYear, description]` — one
+"TERM 1 SCHOOL HOLIDAYS" per academic year; that compound index also serves `academicYear`-only
+lookups as a prefix, so there is **no separate `@@index`** (unlike `PublicHoliday`, whose unique key
+starts with the date).
+
+**Global scope — no resort or state column**, same as `PublicHoliday` (state-group Kumpulan A/B
+variants are deliberately out of scope).
+
+**`academicYear` is editable, NOT derived from the dates** — a Malaysian session can run past the
+calendar boundary, so a January break can legitimately belong to the previous academic year. The form
+pre-fills it from the start date's year *only while the field is still blank* (a default, not an
+override). Contrast `PublicHoliday.year`, which **is** always derived server-side.
+
+**Overlap guard:** a record whose range overlaps another in the **same academic year** is rejected
+with **409** (`hasOverlap()` in `school-holidays.controller.ts`, same shape as the AptBlock /
+ResortMaintenance guards but keyed on `academicYear` instead of `(resortCode, unitNo)`). `endDate <
+startDate` returns 400. Update merges the payload over the stored row *before* re-running both checks,
+passing its own id as `excludeId`.
+
+**Clone by academic year** (`POST /api/school-holidays/clone`, body `{ sourceYear }`): copies every
+range of `sourceYear` into **`sourceYear + 1`**, shifting **both** ends by one year on the same
+month/day (`getUTCFullYear() + 1` per date, so a range crossing 31 Dec stays intact), then staff correct
+each range. Refuses with **409** if the target academic year already holds rows; **404** if the source
+year is empty. Same reasoning as the PublicHoliday clone.
+
+The seed **upserts** on the compound unique. `SchoolHoliday` is **not** truncated by
+`refresh-test-db.ps1` (no FK to Resort) — the refresh calls the seed to top it up. CRUD at
+`/api/school-holidays` under `RESORTS_SETUP` matrix permission (clone requires `create`).
+
 ### State
 39 records from `state.txt`. Fields: `code` (PK, 2-digit), `name`. Served via `GET /api/states`.
 
@@ -847,6 +910,18 @@ GET  /api/resort-maintenance/:id/availability  Per-day grid (date/act/bal) for a
 POST /api/resort-maintenance                Create record + decrement ResAvailMast.balNight per day (RESORTS_SETUP create; 409 on overlap, 400 if unit not registered)
 PUT  /api/resort-maintenance/:id            Edit dates + remarks, re-sync grid (resortCode/unitNo/type immutable; RESORTS_SETUP edit; 409 on overlap)
 DELETE /api/resort-maintenance/:id          Delete record + restore its balNight contribution (RESORTS_SETUP delete)
+GET  /api/public-holidays?q=&year=          Public holiday list, sorted holidayDate asc; q searches the holiday name (RESORTS_SETUP view)
+GET  /api/public-holidays/years             Distinct years present in the calendar, newest first — feeds the Year dropdown (RESORTS_SETUP view)
+POST /api/public-holidays/clone             Clone a year's holidays to sourceYear+1, same month/day (body: sourceYear; RESORTS_SETUP create; 409 if target year non-empty, 404 if source empty)
+POST /api/public-holidays                   Create holiday (RESORTS_SETUP create; 409 on duplicate date+name)
+PUT  /api/public-holidays/:id               Update holiday date and/or name; re-derives year (RESORTS_SETUP edit)
+DELETE /api/public-holidays/:id             Delete holiday (RESORTS_SETUP delete)
+GET  /api/school-holidays?q=&academicYear=  School holiday list, sorted startDate asc; q searches the name (RESORTS_SETUP view)
+GET  /api/school-holidays/years             Distinct academic years, newest first — feeds the Academic Year dropdown (RESORTS_SETUP view)
+POST /api/school-holidays/clone             Clone an academic year's ranges to sourceYear+1, both ends same month/day (body: sourceYear; RESORTS_SETUP create; 409 if target year non-empty, 404 if source empty)
+POST /api/school-holidays                   Create school holiday (RESORTS_SETUP create; 400 if end<start, 409 on overlap within the academic year)
+PUT  /api/school-holidays/:id               Update academic year / dates / name; re-checks order + overlap (RESORTS_SETUP edit)
+DELETE /api/school-holidays/:id             Delete school holiday (RESORTS_SETUP delete)
 GET  /api/pbs?q=&coCode=&acctClassify=&schemeType=&claimIndc=  PBS scheme list (search+filters)
 GET  /api/pbs/:id                                  PBS scheme detail + claims
 PUT  /api/pbs/:id                                  Update PBS scheme (certNo, schemeType, remark)
@@ -878,7 +953,7 @@ GET  /api/pbs/reports/variance                     Generate PBS Variance Report 
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
-| Resorts Setup | 🔨 In progress | New `RESORTS_SETUP` AppModule (seed defaults: IT+Resort Ops FULL, Member Services VIEW, Finance/Credit NONE). Landing page `/resorts` (PBS-style menu, sidebar group "Resorts"). Function 1 done: **Resorts Setup** (`/resorts/setup`) — Resort master CRUD (list+search, add/edit modal shared via `ResortFormModal.tsx`, status toggle A/U, delete; buttons gated by canCreate/canEdit/canDelete; Eye icon on every row → detail). **Resort Detail** (`/resorts/setup/:id`) — details card + Edit + 4 info tabs (Getting There / Resort Facilities / Places of Interest / Unit Amenities) from `ResortInfoLine`; per-tab single-textarea editor, remark-style free text (400 chars total per category, validated client+server, no auto-uppercase — legacy print lines are mixed-case). Function 2 done: **Apartment Types Setup** (`/resorts/apartment-types`) — `ApartmentType` CRUD (list+search, add/edit modal, delete; resort picker from Resort master, lockType Select disabled/forced-LN unless resort `lockOnOff='Y'`; 9 business-supplied seed rows via `migrate-resorts.ts`). Function 3 done: **Apartments/Units Setup** (`/resorts/units`) — `ResortUnit` CRUD (paginated list with resort filter + search, add/edit modal with apartment-type dropdown restricted to the selected resort's types, RCI Reserved checkbox; 481 rows from `apt_mast.txt`). Function 4 done: **Units Availability Setup by Dates** (`/resorts/availability`) — block-centric CRUD over `AptBlock` (paginated list sorted startDate desc, cascade add form Resort→ApartmentType→Unit→start/end dates, styled delete-confirm modal). Each save auto-maintains the generated `ResAvailMast` per-day grid (`act/bal +1` per day on create, `-1` on delete, reverse-then-apply on edit; overlap-guarded 409). Per-row Eye icon → modal of the block's day grid. Header **Resorts Availability** button opens a **draggable, non-modal** popup (`DraggableWindow.tsx`) = ResAvailMast pivoted resort×date, cell=balNight (red ≤2, weekends highlighted), Product Type LHC (coCode 03 only)/CP, date + `<<`/`>>` 15-day paging; the chart lives in the shared `components/ResortAvailabilityChart.tsx` so both Function 4 and Function 5 render it. Function 5 done: **Resorts Maintenance** (`/resorts/maintenance`) — `ResortMaintenance` CRUD (paginated list sorted startDate desc with resort filter + **Month/Year period filter** + search incl. reason, 2-level add cascade Resort→Unit with the apartment type shown in the option label and derived server-side, remarks/reason field, styled delete-confirm modal, per-row Eye icon → day grid, same **Resorts Availability** popup button). Each save maintains `ResAvailMast.balNight` only (`-1` per day on create, `+1` on delete, reverse-then-apply on edit; `actNight` never touched, rows never created/deleted; overlap-guarded 409) — so the availability chart needed no change. 7,327 rows from `resmt.txt`. Remaining 2 functions are disabled placeholders (now items 6-7): Public & School Holidays, CP Seasons & Points. |
+| Resorts Setup | 🔨 In progress | New `RESORTS_SETUP` AppModule (seed defaults: IT+Resort Ops FULL, Member Services VIEW, Finance/Credit NONE). Landing page `/resorts` (PBS-style menu, sidebar group "Resorts"). Function 1 done: **Resorts Setup** (`/resorts/setup`) — Resort master CRUD (list+search, add/edit modal shared via `ResortFormModal.tsx`, status toggle A/U, delete; buttons gated by canCreate/canEdit/canDelete; Eye icon on every row → detail). **Resort Detail** (`/resorts/setup/:id`) — details card + Edit + 4 info tabs (Getting There / Resort Facilities / Places of Interest / Unit Amenities) from `ResortInfoLine`; per-tab single-textarea editor, remark-style free text (400 chars total per category, validated client+server, no auto-uppercase — legacy print lines are mixed-case). Function 2 done: **Apartment Types Setup** (`/resorts/apartment-types`) — `ApartmentType` CRUD (list+search, add/edit modal, delete; resort picker from Resort master, lockType Select disabled/forced-LN unless resort `lockOnOff='Y'`; 9 business-supplied seed rows via `migrate-resorts.ts`). Function 3 done: **Apartments/Units Setup** (`/resorts/units`) — `ResortUnit` CRUD (paginated list with resort filter + search, add/edit modal with apartment-type dropdown restricted to the selected resort's types, RCI Reserved checkbox; 481 rows from `apt_mast.txt`). Function 4 done: **Units Availability Setup by Dates** (`/resorts/availability`) — block-centric CRUD over `AptBlock` (paginated list sorted startDate desc, cascade add form Resort→ApartmentType→Unit→start/end dates, styled delete-confirm modal). Each save auto-maintains the generated `ResAvailMast` per-day grid (`act/bal +1` per day on create, `-1` on delete, reverse-then-apply on edit; overlap-guarded 409). Per-row Eye icon → modal of the block's day grid. Header **Resorts Availability** button opens a **draggable, non-modal** popup (`DraggableWindow.tsx`) = ResAvailMast pivoted resort×date, cell=balNight (red ≤2, weekends highlighted), Product Type LHC (coCode 03 only)/CP, date + `<<`/`>>` 15-day paging; the chart lives in the shared `components/ResortAvailabilityChart.tsx` so both Function 4 and Function 5 render it. Function 5 done: **Resorts Maintenance** (`/resorts/maintenance`) — `ResortMaintenance` CRUD (paginated list sorted startDate desc with resort filter + **Month/Year period filter** + search incl. reason, 2-level add cascade Resort→Unit with the apartment type shown in the option label and derived server-side, remarks/reason field, styled delete-confirm modal, per-row Eye icon → day grid, same **Resorts Availability** popup button). Each save maintains `ResAvailMast.balNight` only (`-1` per day on create, `+1` on delete, reverse-then-apply on edit; `actNight` never touched, rows never created/deleted; overlap-guarded 409) — so the availability chart needed no change. 7,327 rows from `resmt.txt`. Function 6 done: **Public Holidays Setup** (`/resorts/holidays`, renamed from "Public & School Holidays Setup" — school holidays dropped) — `PublicHoliday` CRUD (list sorted by date with Year filter + holiday-name search, add/edit modal with a date picker, `ConfirmDeleteModal`), plus a **Clone to next year** sub-function that copies a year's holidays to year+1 on the same month/day for staff to correct. Global calendar — no resort/state scope, so no availability-grid interaction. 12 business-supplied 2026 rows via `prisma/seed-public-holidays.ts`. Function 7 done: **School Holidays Setup** (`/resorts/school-holidays`) — `SchoolHoliday` CRUD, the date-**range** sibling of Public Holidays (list sorted by start date with Academic Year filter + name search + a derived inclusive Days column, add/edit modal, `ConfirmDeleteModal`), plus the same **Clone to next year** sub-function shifting both ends by a year. `academicYear` is **editable** (pre-filled from the start date only while blank) since a session can cross the calendar boundary; overlapping ranges within an academic year are rejected 409. 4 business-supplied 2026 rows via `prisma/seed-school-holidays.ts`. Remaining 1 function is a disabled placeholder (now item 8): CP Seasons & Points. |
 | Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done. PBS Pay By Month/Year (`/pbs/pay-by-month`) done: Excel with 2 worksheets (monthly + yearly summary), tabbed preview. PBS Claim Report (`/pbs/claim-report`) done: Excel with 2 worksheets (non-ND claims + ND claims), tabbed preview. Not In PBS Report (`/pbs/not-in-pbs`) done: text file output matching Informix format, preview table. PBS Variance Report (`/pbs/variance`) done: Excel comparing rightful vs Zurich scheme type, preview with variance highlighting. All PBS reports use per-user `requireReportAccess` (not department permission); menu items hidden when not granted. Remaining: Proforma, Certificate Tracking, Auto Transfer, 1 report (PBS Report). |
 
 ## Navigation / permissions

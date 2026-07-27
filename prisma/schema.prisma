@@ -539,6 +539,37 @@ model ResortMaintenance {
   @@unique([resortCode, unitNo, startDate])
 }
 
+// Public Holidays (Resorts Setup fn 6) — business-supplied national holiday calendar.
+// No Informix source. Global: holidays are nationwide, not per-resort or per-state.
+// Cloned forward a year at a time (same month/day) and then corrected by staff, since
+// lunar/Islamic holidays shift annually.
+model PublicHoliday {
+  id          String   @id
+  holidayDate DateTime // UTC midnight (business date)
+  year        Int      // derived server-side from holidayDate; drives the filter + clone
+  description String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @db.Timestamptz(3)
+  @@unique([holidayDate, description])
+  @@index([year])
+}
+
+// School Holidays (Resorts Setup fn 7) — business-supplied national school break
+// calendar. No Informix source. Global: no resort or state scope. Filed under an
+// academic year (editable, NOT derived from the dates) because a session can cross
+// the calendar boundary. Cloned forward a year at a time and then corrected by staff.
+model SchoolHoliday {
+  id           String   @id
+  academicYear Int      // editable; the form pre-fills it from startDate's year
+  startDate    DateTime // UTC midnight (business date)
+  endDate      DateTime // UTC midnight (business date)
+  description  String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @db.Timestamptz(3)
+  // Also serves academicYear-only lookups as an index prefix — no separate @@index needed
+  @@unique([academicYear, description])
+}
+
 model SuReason {
   code        String      @id
   description String

@@ -229,6 +229,7 @@ Write-Host "  Will PRESERVE:"
 Write-Host "    User, Department, DeptModulePermission"
 Write-Host "    State, CancellationReason"
 Write-Host "    AmcPrice, AmcPricePoints"
+Write-Host "    PublicHoliday, SchoolHoliday (topped up by upsert, existing rows kept)"
 Write-Host ("=" * 62)
 Write-Host ""
 
@@ -319,6 +320,12 @@ Invoke-Migration "prisma/migrate-apt-block.ts"     "migrate-apt-block.ts"
 # only -- res_avail_mast.txt already has maintenance deducted from bal_night, so this
 # script deliberately applies NO per-day grid deltas (that happens on app CRUD only).
 Invoke-Migration "prisma/migrate-maintenance.ts"   "migrate-maintenance.ts"
+# Public Holidays. Business-supplied (no Informix file) and NOT truncated above --
+# there is no FK to Resort. The seed upserts, so this only tops up missing rows and
+# leaves dates staff have already corrected alone.
+Invoke-Migration "prisma/seed-public-holidays.ts"  "seed-public-holidays.ts"
+# School Holidays. Same deal -- business-supplied, no FK, upsert-only top-up.
+Invoke-Migration "prisma/seed-school-holidays.ts"  "seed-school-holidays.ts"
 
 # ── Step 5: Booking entitlements (LHC nights used + CP point balances) ───────
 # Depends on agreements existing (step 2): migrate-booking-entitlement.ts resolves
@@ -365,6 +372,8 @@ SELECT
   (SELECT COUNT(*) FROM "ResAvailMast")       AS res_avail,
   (SELECT COUNT(*) FROM "AptBlock")           AS apt_blocks,
   (SELECT COUNT(*) FROM "ResortMaintenance")  AS maintenance,
+  (SELECT COUNT(*) FROM "PublicHoliday")      AS public_holidays,
+  (SELECT COUNT(*) FROM "SchoolHoliday")      AS school_holidays,
   (SELECT COUNT(*) FROM "BookingEntitlement")   AS booking_ent,
   (SELECT COUNT(*) FROM "CpBookingEntitlement") AS cp_booking_ent,
   (SELECT COUNT(*) FROM "AmcInvoiceCounter")  AS amc_inv_counters,

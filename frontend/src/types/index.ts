@@ -266,6 +266,37 @@ export interface AptBlockAvailability {
 // Same shape as AptBlockAvailability — the per-day grid for a maintenance record's range
 export type ResortMaintenanceAvailability = AptBlockAvailability;
 
+// Public Holidays (Resorts Setup fn 6) — global calendar, no resort/state scope
+export interface PublicHoliday {
+  id: string;
+  holidayDate: string;   // ISO string, UTC midnight
+  year: number;          // derived server-side from holidayDate
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicHolidayCloneResult {
+  sourceYear: number;
+  targetYear: number;
+  created: number;
+}
+
+// School Holidays (Resorts Setup fn 7) — global calendar of date ranges, filed under
+// an academic year (editable, not derived — a session can cross the calendar boundary)
+export interface SchoolHoliday {
+  id: string;
+  academicYear: number;
+  startDate: string;   // ISO string, UTC midnight
+  endDate: string;     // ISO string, UTC midnight
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Same shape as the public-holiday clone result
+export type SchoolHolidayCloneResult = PublicHolidayCloneResult;
+
 export interface AvailabilityChartCol {
   date: string;
   dow: string;

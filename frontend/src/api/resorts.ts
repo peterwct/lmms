@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList } from '../types';
+import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, PublicHoliday, PublicHolidayCloneResult, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, SchoolHoliday, SchoolHolidayCloneResult } from '../types';
 
 export const resortsApi = {
   list:   (q?: string) => api.get<{ data: Resort[] }>('/resorts', { params: q ? { q } : undefined }),
@@ -39,6 +39,28 @@ export const resortMaintenanceApi = {
   update: (id: string, data: Record<string, unknown>) => api.put<{ data: ResortMaintenance }>(`/resort-maintenance/${id}`, data),
   remove: (id: string) => api.delete(`/resort-maintenance/${id}`),
   availability: (id: string) => api.get<ResortMaintenanceAvailability>(`/resort-maintenance/${id}/availability`),
+};
+
+export const publicHolidaysApi = {
+  list: (params: { q?: string; year?: number }) =>
+    api.get<{ data: PublicHoliday[] }>('/public-holidays', { params }),
+  years:  () => api.get<{ data: number[] }>('/public-holidays/years'),
+  create: (data: Record<string, unknown>) => api.post<{ data: PublicHoliday }>('/public-holidays', data),
+  update: (id: string, data: Record<string, unknown>) => api.put<{ data: PublicHoliday }>(`/public-holidays/${id}`, data),
+  remove: (id: string) => api.delete(`/public-holidays/${id}`),
+  // Copies a year's holidays to sourceYear + 1 on the same month/day
+  clone: (data: { sourceYear: number }) => api.post<{ data: PublicHolidayCloneResult }>('/public-holidays/clone', data),
+};
+
+export const schoolHolidaysApi = {
+  list: (params: { q?: string; academicYear?: number }) =>
+    api.get<{ data: SchoolHoliday[] }>('/school-holidays', { params }),
+  years:  () => api.get<{ data: number[] }>('/school-holidays/years'),
+  create: (data: Record<string, unknown>) => api.post<{ data: SchoolHoliday }>('/school-holidays', data),
+  update: (id: string, data: Record<string, unknown>) => api.put<{ data: SchoolHoliday }>(`/school-holidays/${id}`, data),
+  remove: (id: string) => api.delete(`/school-holidays/${id}`),
+  // Copies an academic year's breaks to sourceYear + 1, same month/day on both ends
+  clone: (data: { sourceYear: number }) => api.post<{ data: SchoolHolidayCloneResult }>('/school-holidays/clone', data),
 };
 
 export const apartmentTypesApi = {
