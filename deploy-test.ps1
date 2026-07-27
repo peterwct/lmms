@@ -102,15 +102,36 @@ if ($trusted -notmatch [regex]::Escape($RemoteHost) -and $trusted -ne '*') {
 Step "1. Connecting to $RemoteHost ..."
 $session = $null
 if (-not $DryRun) {
-    $cred = Get-Credential -UserName $RemoteUser -Message "Enter password for $RemoteUser@$RemoteHost"
+    # Qualify the username with the host. Both machines are workgroup (not domain)
+    # members and we connect by IP, so a bare "Administrator" leaves the client with
+    # no account context to negotiate against -- it stalls and eventually fails with
+    # WinRMOperationTimeout instead of a clean "Access is denied". "HOST\User" forces
+    # local-account NTLM, which is what TrustedHosts enables. Pass -RemoteUser with a
+    # "\" or "@" already in it to override.
+    $credUser = if ($RemoteUser -match '[\\@]') { $RemoteUser } else { "$RemoteHost\$RemoteUser" }
+    $cred = Get-Credential -UserName $credUser -Message "Enter password for $credUser"
     try {
         $session = New-PSSession -ComputerName $RemoteHost -Credential $cred -ErrorAction Stop
         Ok "Connected."
     } catch {
         Write-Host "`n  [ERROR] Cannot connect to $RemoteHost via WinRM." -ForegroundColor Red
-        Write-Host "  Make sure you have run the one-time setup on the test server (see script header)." -ForegroundColor Yellow
+        Write-Host "  Transport is usually fine -- check these in order:" -ForegroundColor Yellow
+        Write-Host "    1. Username must be host-qualified: $RemoteHost\$RemoteUser (not bare '$RemoteUser')" -ForegroundColor White
+        Write-Host "    2. Leaked shells from earlier aborted deploys can exhaust the server's" -ForegroundColor White
+        Write-Host "       shell quota and cause a timeout. On the test server (RDP), run:" -ForegroundColor White
+        Write-Host "         Get-WSManInstance -ResourceURI shell -Enumerate | ForEach-Object { Remove-WSManInstance -ResourceURI shell -SelectorSet @{ShellId=`$_.ShellId} }" -ForegroundColor White
+        Write-Host "    3. Confirm the service answers:  Test-WSMan -ComputerName $RemoteHost" -ForegroundColor White
+        Write-Host "    4. One-time server setup (see script header) if this is a new machine." -ForegroundColor White
         throw
     }
+}
+
+# Always tear the remote shell down, even if a later step throws. Without this a
+# failed deploy leaks a shell on the server; enough of them exhaust MaxShellsPerUser
+# and every subsequent New-PSSession times out.
+trap {
+    if ($session) { Remove-PSSession $session -ErrorAction SilentlyContinue; $session = $null }
+    break
 }
 
 # psql needs the postgres superuser password up front (for the GRANT step below).

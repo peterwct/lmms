@@ -21,9 +21,10 @@ interface Props {
   open: boolean;
   resort: Resort | null;   // null = add mode
   onClose: () => void;
+  onSaved?: (saved: Resort, mode: 'add' | 'edit') => void;
 }
 
-export function ResortFormModal({ open, resort, onClose }: Props) {
+export function ResortFormModal({ open, resort, onClose, onSaved }: Props) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [error, setError] = useState('');
@@ -60,9 +61,10 @@ export function ResortFormModal({ open, resort, onClose }: Props) {
         ? resortsApi.update(resort.id, payload)
         : resortsApi.create({ resortCode, ...payload });
     },
-    onSuccess: () => {
+    onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['resorts'] });
       if (resort) qc.invalidateQueries({ queryKey: ['resort', resort.id] });
+      onSaved?.(r.data.data, resort ? 'edit' : 'add');
       onClose();
     },
     onError: (err) => setError(apiError(err)),

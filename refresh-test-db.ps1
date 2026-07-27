@@ -123,6 +123,9 @@
     UNLOAD TO 'apt_block.txt' DELIMITER '|'
     SELECT * FROM apt_block;
 
+    UNLOAD TO 'resmt.txt' DELIMITER '|'
+    SELECT * FROM resmt where rm_resort_code in ("CP-PBR", "L-10016", "L-10024", "L-10025", "L-10026", "L-101", "L-103A");
+
     Copy all output files into:  E:\Websites\lmms\migrate\
 
     NOTE: ctrl_billtab seeds the per-coCode AMC invoice running number
@@ -191,7 +194,8 @@ $requiredFiles = @(
     'ps_resort_info.txt',
     'apt_mast.txt',
     'res_avail_mast.txt',
-    'apt_block.txt'
+    'apt_block.txt',
+    'resmt.txt'
 )
 
 $missing = $requiredFiles | Where-Object { -not (Test-Path (Join-Path $migrateDir $_)) }
@@ -218,7 +222,7 @@ Write-Host "  Will CLEAR and RELOAD:"
 Write-Host "    Member, Agreement, Nominee"
 Write-Host "    AmcSchedule, AmcInvoice"
 Write-Host "    PbsScheme, PbsClaim (Zurich Payback)"
-Write-Host "    Salesperson, Resort"
+Write-Host "    Salesperson, Resort, ResortMaintenance"
 Write-Host "    BookingEntitlement (LHC 03/15), CpBookingEntitlement (CP 02)"
 Write-Host ""
 Write-Host "  Will PRESERVE:"
@@ -282,7 +286,7 @@ Write-Host ""
 Write-Host ("[1/7] Clearing Informix data tables...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
-TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "Member" CASCADE;
+TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "Member" CASCADE;
 "@
 
 # ── Step 2: Core member + agreement import ────────────────────────────────────
@@ -311,6 +315,10 @@ Invoke-Migration "prisma/migrate-resort-units.ts"  "migrate-resort-units.ts"
 # present for the apartmentType lookup, so it runs after migrate-resort-units.
 Invoke-Migration "prisma/migrate-res-avail.ts"     "migrate-res-avail.ts"
 Invoke-Migration "prisma/migrate-apt-block.ts"     "migrate-apt-block.ts"
+# Resorts Maintenance. Also needs ResortUnit for the apartmentType lookup. Loads rows
+# only -- res_avail_mast.txt already has maintenance deducted from bal_night, so this
+# script deliberately applies NO per-day grid deltas (that happens on app CRUD only).
+Invoke-Migration "prisma/migrate-maintenance.ts"   "migrate-maintenance.ts"
 
 # ── Step 5: Booking entitlements (LHC nights used + CP point balances) ───────
 # Depends on agreements existing (step 2): migrate-booking-entitlement.ts resolves
@@ -356,6 +364,7 @@ SELECT
   (SELECT COUNT(*) FROM "ResortUnit")         AS resort_units,
   (SELECT COUNT(*) FROM "ResAvailMast")       AS res_avail,
   (SELECT COUNT(*) FROM "AptBlock")           AS apt_blocks,
+  (SELECT COUNT(*) FROM "ResortMaintenance")  AS maintenance,
   (SELECT COUNT(*) FROM "BookingEntitlement")   AS booking_ent,
   (SELECT COUNT(*) FROM "CpBookingEntitlement") AS cp_booking_ent,
   (SELECT COUNT(*) FROM "AmcInvoiceCounter")  AS amc_inv_counters,

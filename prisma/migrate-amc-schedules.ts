@@ -39,7 +39,10 @@ import * as readline from 'readline';
 
 const prisma  = new PrismaClient();
 const MIGRATE = path.join(__dirname, '..', 'migrate');
-const BATCH   = 500;
+// Keep small — BATCH=500 blew the PostgreSQL server's "CachedPlan" memory context
+// (SQLSTATE 53200 "out of memory") on the stock-config test server. Same failure and
+// reasoning as migrate-informix.ts; see the BATCH comment there.
+const BATCH   = Number(process.env.MIGRATE_BATCH) || 100;
 const DRY_RUN = process.argv.includes('--dry-run');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

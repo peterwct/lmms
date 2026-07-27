@@ -32,7 +32,11 @@ import * as readline from 'readline';
 const prisma = new PrismaClient();
 const MIGRATE_DIR = path.join(__dirname, '..', 'migrate');
 const DELIM = '|';
-const BATCH = 1000;
+// 1000 and 500 both blew the server's "CachedPlan" memory context (SQLSTATE 53200)
+// on the stock-config test server — this is the largest table in the migration
+// (279k rows), so it accumulates the most before hitting the ceiling.
+// See the BATCH comment in migrate-informix.ts.
+const BATCH = Number(process.env.MIGRATE_BATCH) || 100;
 const DRY_RUN = process.argv.includes('--dry-run');
 
 const t = (s: string | undefined): string | null =>

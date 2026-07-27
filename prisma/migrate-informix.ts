@@ -30,7 +30,15 @@ import * as readline from 'readline';
 const prisma = new PrismaClient();
 const MIGRATE_DIR = path.join(__dirname, '..', 'migrate');
 const DELIM = '|';
-const BATCH = 500;
+// Rows per createMany. Keep this small: Member is 68 columns wide, so BATCH=500
+// produced a 34,000-parameter INSERT whose *plan* exhausted the PostgreSQL server's
+// "CachedPlan" memory context (SQLSTATE 53200 "out of memory", failing a few batches
+// in — with plan_cache_mode=auto the server attempts a generic plan after ~5
+// executions, and for a statement that wide it is enormous). The test server runs a
+// stock PG18 config (shared_buffers 128MB), which is where this first bit.
+// Verified on 199.1.1.32: 500 fails at ~7-11k rows, 50 and 100 complete.
+// Override for a one-off run with $env:MIGRATE_BATCH.
+const BATCH = Number(process.env.MIGRATE_BATCH) || 100;
 const DRY_RUN = process.argv.includes('--dry-run');
 const ONLY_FLAG = process.argv.find(a => a.startsWith('--only='))?.split('=')[1]
   ?? (process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : undefined);
@@ -553,7 +561,8 @@ async function main() {
     console.log(`  |  Members (IND)      30,446   ${String(mInd).padStart(8)}            |`);
     console.log(`  |  Members (COR)       1,527   ${String(mCor).padStart(8)}            |`);
     console.log(`  |  Agreements         33,406   ${String(agmt).padStart(8)}            |`);
-    console.log(`  |  Nominees           27,469   ${String(nom).padStart(8)}            |`);
+    // ~40,463 since the 3rd nominee (e_loc_* cols) was added — the old 27,469 was the 2-nominee era
+    console.log(`  |  Nominees           40,463   ${String(nom).padStart(8)}            |`);
     console.log('  +-------------------------------------------------+');
   } else {
     console.log(`\n  DRY RUN totals:`);

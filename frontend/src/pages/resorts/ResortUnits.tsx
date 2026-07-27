@@ -9,6 +9,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Modal } from '../../components/ui/Modal';
+import { ResultDialog } from '../../components/ui/ResultDialog';
+import { ConfirmDeleteModal } from '../../components/ui/ConfirmDeleteModal';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { Pagination } from '../../components/ui/Pagination';
@@ -25,10 +27,10 @@ interface ModalProps {
   resorts: Resort[];
   apartmentTypes: ApartmentType[];
   onClose: () => void;
-  onCreated: (unit: ResortUnit) => void;   // add mode only — lets the list focus the new unit
+  onSaved: (unit: ResortUnit, mode: 'add' | 'edit') => void;   // add mode also lets the list focus the new unit
 }
 
-function ResortUnitFormModal({ open, unit, resorts, apartmentTypes, onClose, onCreated }: ModalProps) {
+function ResortUnitFormModal({ open, unit, resorts, apartmentTypes, onClose, onSaved }: ModalProps) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [error, setError] = useState('');
@@ -62,7 +64,7 @@ function ResortUnitFormModal({ open, unit, resorts, apartmentTypes, onClose, onC
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['resort-units'] });
-      if (!unit) onCreated(r.data.data);
+      onSaved(r.data.data, unit ? 'edit' : 'add');
       onClose();
     },
     onError: (err) => setError(apiError(err)),
@@ -158,6 +160,9 @@ export function ResortUnits() {
   const [searchInput, setSearchInput] = useState(q);
 
   const [modal, setModal] = useState<{ open: boolean; unit: ResortUnit | null }>({ open: false, unit: null });
+  const [deleteTarget, setDeleteTarget] = useState<ResortUnit | null>(null);
+  const [delErr, setDelErr] = useState('');
+  const [result, setResult] = useState<string | null>(null);
 
   const setParams = (next: { q?: string; resort?: string; page?: number }) => {
     const p: Record<string, string> = {};
@@ -192,7 +197,13 @@ export function ResortUnits() {
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => resortUnitsApi.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['resort-units'] }),
+    onSuccess: (_res, id) => {
+      const gone = list?.data.find(u => u.id === id);
+      qc.invalidateQueries({ queryKey: ['resort-units'] });
+      setDeleteTarget(null);
+      if (gone) setResult(`Unit deleted — ${gone.unitNo} (${gone.apartmentType}) of ${gone.resortCode}.`);
+    },
+    onError: (err) => setDelErr(apiError(err)),
   });
 
   const doSearch = (e: React.FormEvent) => {
@@ -287,7 +298,7 @@ export function ResortUnits() {
                           )}
                           {canDelete('RESORTS_SETUP') && (
                             <button
-                              onClick={() => { if (window.confirm(`Delete unit ${u.unitNo} of ${u.resortCode}?`)) deleteMut.mutate(u.id); }}
+                              onClick={() => { setDelErr(''); setDeleteTarget(u); }}
                               title="Delete" className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -321,7 +332,32 @@ export function ResortUnits() {
         resorts={resorts ?? []}
         apartmentTypes={apartmentTypes ?? []}
         onClose={() => setModal({ open: false, unit: null })}
-        onCreated={focusCreated}
+        onSaved={(u, mode) => {
+          if (mode === 'add') focusCreated(u);
+          setResult(
+            mode === 'add'
+              ? `Unit added — ${u.unitNo} (${u.apartmentType}) of ${u.resortCode}.`
+              : `Unit updated — ${u.unitNo} (${u.apartmentType}) of ${u.resortCode}.`
+          );
+        }}
+      />
+
+      <ResultDialog message={result} onClose={() => setResult(null)} />
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title="Delete unit?"
+        description="This permanently removes the unit from the resort's register. This cannot be undone."
+        rows={deleteTarget ? [
+          { label: 'Resort',         value: <><span className="font-mono font-medium">{deleteTarget.resortCode}</span> — {deleteTarget.resort.resortName}</> },
+          { label: 'Unit no',        value: <span className="font-mono font-medium">{deleteTarget.unitNo}</span> },
+          { label: 'Apartment type', value: deleteTarget.apartmentType },
+        ] : []}
+        error={delErr}
+        loading={deleteMut.isPending}
+        confirmLabel="Delete unit"
+        onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
+        onClose={() => setDeleteTarget(null)}
       />
     </div>
   );

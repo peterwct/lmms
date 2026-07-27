@@ -42,12 +42,13 @@
     .\migrate-table.ps1 -Table Resort                      # Resort master + info + units + availability + blocks (truncates + reimports)
     .\migrate-table.ps1 -Table ResAvailMast                # Per-day availability grid only (res_avail_mast.txt; truncates + reimports)
     .\migrate-table.ps1 -Table AptBlock                    # Availability blocks only (apt_block.txt; truncates + reimports)
+    .\migrate-table.ps1 -Table ResortMaintenance           # Maintenance register only (resmt.txt; truncates + reimports)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Resort', 'ResortUnit', 'AptBlock', 'ResAvailMast')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Resort', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -183,9 +184,9 @@ $TableConfig = @{
         # Master data. Post-go-live resorts are maintained in MMS -- re-running
         # truncates and clobbers any edits made through the Resorts Setup CRUD.
         # Leaf tables truncated explicitly (TRUNCATE CASCADE unreliable).
-        TruncateSql = @('TRUNCATE "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
-        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_mast.txt', 'res_avail_mast.txt', 'apt_block.txt')
-        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-resort-units.ts', 'prisma/migrate-res-avail.ts', 'prisma/migrate-apt-block.ts')
+        TruncateSql = @('TRUNCATE "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
+        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_mast.txt', 'res_avail_mast.txt', 'apt_block.txt', 'resmt.txt')
+        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-resort-units.ts', 'prisma/migrate-res-avail.ts', 'prisma/migrate-apt-block.ts', 'prisma/migrate-maintenance.ts')
     }
     ResortUnit = @{
         # Apartments/Units register (apt_mast.txt partial export: 5 of 15 cols).
@@ -207,6 +208,15 @@ $TableConfig = @{
         TruncateSql = @('TRUNCATE "AptBlock";')
         RequiredFiles = @('apt_block.txt')
         Scripts = @('prisma/migrate-apt-block.ts')
+    }
+    ResortMaintenance = @{
+        # Maintenance register (resmt.txt, cols 0-5). Needs ResortUnit present for the
+        # apartmentType lookup. Does NOT adjust ResAvailMast -- res_avail_mast.txt was
+        # exported with maintenance already deducted from bal_night, so re-applying the
+        # per-day deltas here would double-count. Post-go-live re-import clobbers CRUD edits.
+        TruncateSql = @('TRUNCATE "ResortMaintenance";')
+        RequiredFiles = @('resmt.txt')
+        Scripts = @('prisma/migrate-maintenance.ts')
     }
 }
 

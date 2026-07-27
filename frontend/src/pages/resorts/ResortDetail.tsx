@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
+import { ResultDialog } from '../../components/ui/ResultDialog';
 import { ProductBadge } from '../../components/ProductBadge';
 import { ResortFormModal } from './ResortFormModal';
 import type { ResortInfoCategory } from '../../types';
@@ -50,6 +51,7 @@ export function ResortDetail() {
   const [editingTab, setEditingTab] = useState(false);
   const [text, setText] = useState('');
   const [error, setError] = useState('');
+  const [result, setResult] = useState<string | null>(null);
 
   const { data: resort, isLoading } = useQuery({
     queryKey: ['resort', id],
@@ -59,9 +61,11 @@ export function ResortDetail() {
 
   const saveInfoMut = useMutation({
     mutationFn: (lines: string[]) => resortsApi.saveInfo(id!, { category: tab, lines }),
-    onSuccess: () => {
+    onSuccess: (_res, lines) => {
       setEditingTab(false);
       qc.invalidateQueries({ queryKey: ['resort', id] });
+      const label = INFO_TABS.find(t => t.key === tab)?.label ?? 'Resort info';
+      setResult(`${label} updated — ${lines.length} line${lines.length === 1 ? '' : 's'} saved for ${resort?.resortCode ?? 'this resort'}.`);
     },
     onError: (err) => setError(apiError(err)),
   });
@@ -212,7 +216,14 @@ export function ResortDetail() {
         </CardBody>
       </Card>
 
-      <ResortFormModal open={editModal} resort={resort} onClose={() => setEditModal(false)} />
+      <ResortFormModal
+        open={editModal}
+        resort={resort}
+        onClose={() => setEditModal(false)}
+        onSaved={(r) => setResult(`Resort updated — ${r.resortCode} — ${r.resortName}.`)}
+      />
+
+      <ResultDialog message={result} onClose={() => setResult(null)} />
     </div>
   );
 }

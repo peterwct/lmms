@@ -439,6 +439,7 @@ model Resort {
   units            ResortUnit[]
   aptBlocks        AptBlock[]
   resAvail         ResAvailMast[]
+  maintenance      ResortMaintenance[]
 }
 
 model ResortInfoLine {
@@ -500,7 +501,8 @@ model AptBlock {
 
 // Units Availability Setup by Dates — the generated per-day grid (res_avail_mast.txt).
 // Keyed by (resort, apartment type, date). actNight = count of units of that type
-// available that day; balNight = act minus bookings. relNight/lockStatus not migrated.
+// registered for that day; balNight = act minus maintenance minus bookings.
+// relNight/lockStatus not migrated.
 model ResAvailMast {
   id            String   @id
   resortId      String
@@ -513,6 +515,28 @@ model ResAvailMast {
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @db.Timestamptz(3)
   @@unique([resortCode, apartmentType, date])
+}
+
+// Resorts Maintenance (resmt.txt) — a unit withdrawn from the booking pool for
+// housekeeping / buffer / repair over a date range. Each save decrements the
+// generated ResAvailMast grid's balNight for the unit's apartment type
+// (actNight untouched — the unit still exists, it just isn't bookable).
+// The migration does NOT apply those deltas: res_avail_mast.txt was exported
+// with maintenance already deducted from ram_bal_night.
+model ResortMaintenance {
+  id            String   @id
+  resortId      String
+  resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
+  resortCode    String   // denormalized natural key
+  unitNo        String   // rm_apt_code — incl. compound lock-off codes like "3231/3232"
+  apartmentType String?  // derived from ResortUnit at CRUD time; null for rows whose unit isn't in the apt_mast export
+  startDate     DateTime // rm_checkin  — UTC midnight (business date)
+  endDate       DateTime // rm_checkout — UTC midnight (business date)
+  remarks       String?  // rm_remarks — reason (BUFFER / HOUSEKEEPING / UPGRADING / ...)
+  serialNo      Int?     // rm_serial_no (migrated only)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @db.Timestamptz(3)
+  @@unique([resortCode, unitNo, startDate])
 }
 
 model SuReason {

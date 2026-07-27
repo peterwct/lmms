@@ -222,6 +222,32 @@ export interface AptBlockList {
   pageSize: number;
 }
 
+export interface ResortMaintenance {
+  id: string;
+  resortId: string;
+  resortCode: string;
+  unitNo: string;
+  apartmentType: string | null;
+  startDate: string;
+  endDate: string;
+  remarks: string | null;
+  serialNo: number | null;
+  createdAt: string;
+  updatedAt: string;
+  resort: {
+    shortName: string | null;
+    resortName: string;
+    coCode: string;
+  };
+}
+
+export interface ResortMaintenanceList {
+  data: ResortMaintenance[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface ResAvailDay {
   date: string;
   actNight: number;
@@ -236,6 +262,9 @@ export interface AptBlockAvailability {
   endDate: string;
   data: ResAvailDay[];
 }
+
+// Same shape as AptBlockAvailability — the per-day grid for a maintenance record's range
+export type ResortMaintenanceAvailability = AptBlockAvailability;
 
 export interface AvailabilityChartCol {
   date: string;

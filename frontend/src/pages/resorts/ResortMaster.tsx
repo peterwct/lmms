@@ -3,9 +3,12 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Plus, Eye, ToggleLeft, ToggleRight, Trash2, Search } from 'lucide-react';
 import { resortsApi } from '../../api/resorts';
+import { apiError } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { ResultDialog } from '../../components/ui/ResultDialog';
+import { ConfirmDeleteModal } from '../../components/ui/ConfirmDeleteModal';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { ProductBadge } from '../../components/ProductBadge';
@@ -21,20 +24,34 @@ export function ResortMaster() {
   const [searchInput, setSearchInput] = useState(q);
 
   const [modal, setModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Resort | null>(null);
+  const [delErr, setDelErr] = useState('');
+  const [result, setResult] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
   const { data: resorts, isLoading } = useQuery({
     queryKey: ['resorts', q],
     queryFn: () => resortsApi.list(q || undefined).then(r => r.data.data),
   });
 
+  // Status toggle gets no success dialog on purpose — the badge flips in place, which
+  // is feedback enough, and a dialog per click would be tedious. It DOES need an error
+  // surface though: without one a failed toggle looked like the click never registered.
   const toggleMut = useMutation({
     mutationFn: (id: string) => resortsApi.toggle(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['resorts'] }),
+    onError: (err) => setFailure(`Could not change the resort status. ${apiError(err)}`),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => resortsApi.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['resorts'] }),
+    onSuccess: (_res, id) => {
+      const gone = resorts?.find(r => r.id === id);
+      qc.invalidateQueries({ queryKey: ['resorts'] });
+      setDeleteTarget(null);
+      if (gone) setResult(`Resort deleted — ${gone.resortCode} — ${gone.resortName}.`);
+    },
+    onError: (err) => setDelErr(apiError(err)),
   });
 
   const openAdd = () => setModal(true);
@@ -121,7 +138,7 @@ export function ResortMaster() {
                         )}
                         {canDelete('RESORTS_SETUP') && (
                           <button
-                            onClick={() => { if (window.confirm(`Delete resort ${r.resortCode} — ${r.resortName}?`)) deleteMut.mutate(r.id); }}
+                            onClick={() => { setDelErr(''); setDeleteTarget(r); }}
                             title="Delete" className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -139,7 +156,31 @@ export function ResortMaster() {
         )}
       </Card>
 
-      <ResortFormModal open={modal} resort={null} onClose={() => setModal(false)} />
+      <ResortFormModal
+        open={modal}
+        resort={null}
+        onClose={() => setModal(false)}
+        onSaved={(r) => setResult(`Resort added — ${r.resortCode} — ${r.resortName}.`)}
+      />
+
+      <ResultDialog message={result} onClose={() => setResult(null)} />
+      <ResultDialog message={failure} onClose={() => setFailure(null)} variant="error" />
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title="Delete resort?"
+        description="This permanently deletes the resort along with its info lines, apartment types, units, availability and maintenance records. This cannot be undone."
+        rows={deleteTarget ? [
+          { label: 'Code',  value: <span className="font-mono font-medium">{deleteTarget.resortCode}</span> },
+          { label: 'Name',  value: deleteTarget.resortName },
+          { label: 'Short', value: deleteTarget.shortName ?? '—' },
+        ] : []}
+        error={delErr}
+        loading={deleteMut.isPending}
+        confirmLabel="Delete resort"
+        onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

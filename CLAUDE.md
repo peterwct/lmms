@@ -29,6 +29,7 @@ lmms/
 │   ├── migrate-resort-units.ts # Resort units from apt_mast.txt (Apartments/Units Setup; 5-col partial export)
 │   ├── migrate-res-avail.ts # Per-day availability grid from res_avail_mast.txt (Units Availability by Dates; cols 0-4, chunked)
 │   ├── migrate-apt-block.ts # Availability input blocks from apt_block.txt (Units Availability by Dates; cols 0-4, apartmentType derived from ResortUnit)
+│   ├── migrate-maintenance.ts # Maintenance register from resmt.txt (Resorts Maintenance; cols 0-5, NO grid deltas — see ResortMaintenance)
 │   └── migrations/          # Applied migration history
 ├── refresh-test-db.ps1      # Clears + re-imports all Informix data; use for UAT refreshes and live cutover
 ├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule, RciEnrol, SuPtReason, AmcInvoiceCounter)
@@ -54,6 +55,7 @@ lmms/
 │   ├── apt_mast.txt
 │   ├── res_avail_mast.txt
 │   ├── apt_block.txt
+│   ├── resmt.txt
 │   └── state.txt
 ├── backend/                 # Node.js + Express + TypeScript API
 │   └── src/
@@ -209,6 +211,30 @@ Set-Item WSMan:\localhost\Client\TrustedHosts -Value "199.1.1.32" -Force  # trus
 
 > **`prisma migrate deploy` runs as the `postgres` superuser, not `lhb_app`.** Step 6a sets `$env:DATABASE_URL` to a `postgresql://postgres:...@localhost:5432/lhb_mms` URL (password from the same `Read-Host` prompt used for the GRANT step) before calling `migrate deploy`. This is required because `lhb_app` has only DML grants (no `CREATE`, and isn't the table owner), so any migration doing `CREATE TABLE` / adding a FK to a postgres-owned table / `ALTER`ing an existing table fails with `permission denied for schema public` (SQLSTATE 42501). If a migrate deploy ever fails mid-way it is recorded as failed and blocks future deploys (P3009) — clear it with `prisma migrate resolve --rolled-back <migration_name>` (run as postgres) before retrying.
 
+**WinRM connection failures** (`New-PSSession ... WinRMOperationTimeout / PSSessionOpenFailed`):
+Diagnose before touching firewall rules — the transport is usually fine. Run, in order:
+
+```powershell
+Test-NetConnection 199.1.1.32 -Port 5985   # TcpTestSucceeded True  => port open
+Test-WSMan -ComputerName 199.1.1.32        # returns wsmid/ProtocolVersion => service healthy
+```
+
+If both pass, the problem is **authentication**, not networking, and it shows up as a *timeout* rather
+than "Access is denied". Two causes, both fixed in `deploy-test.ps1` on 2026-07-27:
+- **Bare username.** Dev machine and test server are both workgroup (not domain) members and the script
+  connects by IP, so a bare `Administrator` gives the client no account context to negotiate against —
+  it stalls until timeout. The script now qualifies it as `199.1.1.32\Administrator`, forcing local-account
+  NTLM (which is what TrustedHosts enables). Pass `-RemoteUser` containing `\` or `@` to override.
+- **Leaked remote shells.** `Remove-PSSession` used to run only on the success path, so any mid-script
+  failure (`$ErrorActionPreference = 'Stop'`) leaked a shell on the server. Enough of them exhaust
+  `MaxShellsPerUser` and every later `New-PSSession` times out. A `trap` now tears the session down on
+  any terminating error. To clear existing leaks, RDP to the server and either restart the service
+  (`Restart-Service WinRM`, simplest — drops all shells) or enumerate and remove them:
+  ```powershell
+  Get-WSManInstance -ResourceURI shell -Enumerate |
+    ForEach-Object { Remove-WSManInstance -ResourceURI shell -SelectorSet @{ShellId=$_.ShellId} }
+  ```
+
 **PowerShell 5.1 script quirks** (already fixed in `deploy-test.ps1`, keep in mind for future edits):
 - Non-ASCII characters (`—`, `→`, etc.) in string literals cause parse errors — PowerShell 5.1 reads scripts as Windows-1252 by default; UTF-8 multi-byte sequences for those chars include `0x94` which maps to a smart-quote (`"`) and prematurely closes the string. Use only ASCII in string literals; non-ASCII is safe in comments.
 - Do not name a function parameter `$args` — it shadows PowerShell's built-in automatic variable and silently receives `$null` instead of the passed value.
@@ -231,7 +257,7 @@ $env:DATABASE_URL = "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 .\refresh-test-db.ps1 -DryRun
 ```
 
-The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + AptBlock + ResAvailMast + Resort + Member CASCADE (the Member CASCADE also clears AmcInvoice) → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons + resorts (master + info + units + `res_avail_mast.txt` availability grid + `apt_block.txt` blocks) → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → AMC invoice counter (`ctrl_billtab.txt`, resets `AmcInvoiceCounter` to the Informix baseline) → re-grants lhb_app permissions → prints final row counts.
+The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + ResortMaintenance + AptBlock + ResAvailMast + Resort + Member CASCADE (the Member CASCADE also clears AmcInvoice) → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons + resorts (master + info + units + `res_avail_mast.txt` availability grid + `apt_block.txt` blocks + `resmt.txt` maintenance) → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → AMC invoice counter (`ctrl_billtab.txt`, resets `AmcInvoiceCounter` to the Informix baseline) → re-grants lhb_app permissions → prints final row counts.
 
 ### Migrating a single table
 
@@ -255,6 +281,7 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table ResortUnit                  # Resort units only (apt_mast.txt; truncates + reimports — post-go-live clobbers CRUD edits)
 .\migrate-table.ps1 -Table ResAvailMast                # Per-day availability grid only (res_avail_mast.txt; truncates + reimports — post-go-live clobbers CRUD edits)
 .\migrate-table.ps1 -Table AptBlock                    # Availability blocks only (apt_block.txt; needs ResortUnit present for apartmentType lookup; truncates + reimports — clobbers CRUD edits)
+.\migrate-table.ps1 -Table ResortMaintenance           # Maintenance register only (resmt.txt; needs ResortUnit for apartmentType lookup; applies NO ResAvailMast deltas; truncates + reimports — clobbers CRUD edits)
 .\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
 
@@ -579,8 +606,11 @@ maintained automatically when AptBlock rows are created/edited/deleted. Keyed by
 date). 94,876 rows from `res_avail_mast.txt` (cols `[0..4]` migrated: resortCode, apartmentType, date,
 actNight, balNight — relNight/col5 + lockStatus NOT migrated). Fields: `resortId` (FK → Resort.id,
 Cascade), `resortCode`, `apartmentType`, `date` (plain TIMESTAMP UTC-midnight), `actNight` (**count of
-units of that apartment type available that day** — aggregate across all units of the type), `balNight`
-(act minus bookings). Unique: `[resortCode, apartmentType, date]` (matches Informix `ram_idx1`). Verified:
+units of that apartment type registered that day** — aggregate across all units of the type), `balNight`
+(**act minus maintenance minus bookings** — verified against the raw exports: L-10016/2BR/2026-07-27 has
+act=20 from 20 `apt_block` units, 4 `resmt` maintenance units, bal=16; across all 10,063 future-dated grid
+rows `act − maintenance == bal` holds for 8,079, the residual gap being genuine Informix reservations).
+Unique: `[resortCode, apartmentType, date]` (matches Informix `ram_idx1`). Verified:
 L-101/1BR/2027-01-01 → act=3 = the 3 blocks for units 4/6/18. Seeded via `prisma/migrate-res-avail.ts`
 (chunked `createMany`, 5k). Direct load on import — NOT regenerated from AptBlock at migration time.
 
@@ -594,6 +624,50 @@ interactive-txn timeout bumped to 120s for multi-year blocks, `MAX_RANGE_DAYS=36
   net-zero, so only added/dropped days change.
 - **Overlap guard:** a new/edited block whose range overlaps an existing block for the same
   `(resortCode, unitNo)` is rejected (409).
+
+### ResortMaintenance
+The input record for the **Resorts Maintenance** function (`/resorts/maintenance`) — one row per
+(resort, unit, date-range) withdrawing that unit from the booking pool for housekeeping / buffer /
+upgrading / repairs. 7,327 rows from `resmt.txt` (cols `[0..5]` migrated; `rm_user_name`,
+`rm_sys_date`, `rm_lock_status` NOT migrated — lock_status is `U` on all 13,396 source rows).
+Fields: `resortId` (FK → Resort.id, Cascade), `resortCode`, `unitNo` (incl. compound lock-off codes
+like `3231/3232` and dotted codes like `3.9B`), `apartmentType` (derived from ResortUnit at CRUD time;
+**null** for 291 migrated rows whose unit isn't in the partial `apt_mast` export — all historic, none
+current/future), `startDate`/`endDate` (plain TIMESTAMP UTC-midnight business dates), `remarks`
+(the reason — BUFFER 1699 / UPGRADING 1453 / BLOCKED 900 / HOUSEKEEPING 892 / MAINTENANCE 885 / …),
+`serialNo` (`rm_serial_no`, migrated only). Unique: `[resortCode, unitNo, startDate]` (matches Informix
+`rm_idx1`). **`resortCode`/`unitNo`/`apartmentType` immutable after create** (move = delete + re-add;
+edit changes only dates + remarks). Seeded via `prisma/migrate-maintenance.ts`
+(`migrate-table.ps1 -Table ResortMaintenance`, bundled into `-Table Resort` + `refresh-test-db.ps1` —
+runs after `migrate-resort-units.ts` since it needs ResortUnit for the type lookup). CRUD at
+`/api/resort-maintenance` under `RESORTS_SETUP` matrix.
+
+**Grid sync on ResortMaintenance CRUD** (`applyMaintDelta` in `resort-maintenance.controller.ts`, one
+transaction, same 120s timeout + `MAX_RANGE_DAYS=3660` guard as AptBlock). Differs from `applyDelta` in
+three ways: **`actNight` is never touched** (the unit still exists, it just isn't bookable), grid rows are
+**never created or deleted**, and a day with no grid row is skipped (the unit isn't in the pool then, so
+there's nothing to reduce).
+- **Create** → each day in `[start,end]`: `balNight-1`, floored at 0.
+- **Delete** → each day `balNight+1`, ceilinged at `actNight`.
+- **Edit** (dates + remarks) → reverse the old range (`+1`) then apply the new range (`-1`); days in both
+  net to zero.
+- **Overlap guard:** a new/edited record overlapping an existing one for the same `(resortCode, unitNo)`
+  is rejected (409).
+- **The availability chart needs no maintenance-specific code** — it reads `balNight`, which grid-sync
+  keeps correct.
+
+**Month/Year period filter** (`periodFilter()` in `resort-maintenance.controller.ts`): matches records
+whose range **overlaps** the period (`startDate <= periodEnd AND endDate >= periodStart`), not just those
+starting in it — a block running Jun–Dec is correctly "under maintenance in August". `year` alone means
+the whole year; `month` (1-12) narrows it; **`month` without `year` is ignored** (and the UI disables the
+Month select until a Year is picked). Period end is computed as `Date.UTC(year, month, 1) − 1 day`, so
+month-end and leap years are exact — verified against raw SQL incl. Feb 2028.
+
+> **The migration deliberately applies NO grid deltas.** `res_avail_mast.txt` was exported from Informix
+> with maintenance already deducted from `ram_bal_night`, so re-applying the per-day deltas at import
+> would double-count. Deltas happen only on app CRUD. Verified end-to-end: create → edit → delete of a
+> record on `L-10016/1.1B` restored `ResAvailMast` to values identical to the raw export for every day,
+> including 2026-08-07/08 which carry a pre-existing Informix booking (`act=20, bal=15`).
 
 ### State
 39 records from `state.txt`. Fields: `code` (PK, 2-digit), `name`. Served via `GET /api/states`.
@@ -632,9 +706,45 @@ Source tables and their column counts (verified from actual export files):
 
 | `apt_block.txt` | Availability input blocks | 10 cols pipe-delimited; only [0..4] migrated | resort_code[0], apt_code[1] (→ `unitNo`, incl. `3005/3006`), start_date[2], end_date[3] (`dd-mm-yyyy` → UTC midnight), block_no[4] (→ `blockNo`). **create-user[5], create-date[6], 'new'[7], blank[8], lock_status[9] NOT migrated.** `apartmentType` derived by ResortUnit lookup (null when unit absent from `apt_mast` export). `UNLOAD TO 'apt_block.txt' DELIMITER '\|' SELECT * FROM apt_block;` → `AptBlock` (unique `[resortCode, unitNo, startDate, endDate]`; 3,539 rows). See `prisma/migrate-apt-block.ts`. |
 
+| `resmt.txt` | Resorts Maintenance register | 9 cols pipe-delimited (+ trailing empty field, so `NF=10`); only [0..5] migrated | rm_serial_no[0] (→ `serialNo`), rm_resort_code[1], rm_apt_code[2] (→ `unitNo`, incl. `3231/3232` and `3.9B`), rm_checkin[3] (→ `startDate`), rm_checkout[4] (→ `endDate`) (`dd-mm-yyyy` → UTC midnight), rm_remarks[5] (→ `remarks`, the reason). **rm_user_name[6], rm_sys_date[7], rm_lock_status[8] NOT migrated** (lock_status is `U` on all 13,396 rows). `apartmentType` derived by ResortUnit lookup (null when the unit isn't registered — 291 rows, all historic). `UNLOAD TO 'resmt.txt' DELIMITER '\|' SELECT * FROM resmt WHERE rm_resort_code IN ("CP-PBR","L-10016","L-10024","L-10025","L-10026","L-101","L-103A");` → `ResortMaintenance` (unique `[resortCode, unitNo, startDate]` = Informix `rm_idx1`). The UNLOAD is **filtered to the 7 active resorts** (same as `apt_mast.txt`) → **7,327 rows**. An unfiltered export yields 13,396; the extra 6,069 reference retired resort codes (L-10020 3122, L-10027 1626, L-10013 426, L-103 378, …) absent from `Resort`, so the FK can't be satisfied — the script skips them with a summary WARN rather than failing, so either export works. **Applies NO `ResAvailMast` deltas** — the grid export already has maintenance deducted. See `prisma/migrate-maintenance.ts`. |
+
 | `ctrl_billtab.txt` | AMC invoice running number per coCode | 2 cols pipe-delimited | cocode[0], last_amcinv[1]. `UNLOAD TO 'ctrl_billtab.txt' SELECT cocode, last_amcinv FROM ctrl_billtab WHERE cocode IN ('03','15','02');`. Upsert-by-coCode → `AmcInvoiceCounter` (`coCode` PK, `lastInvNo`). Seeds the per-coCode AMC invoice running number so the new system continues where Informix left off. **Re-running RESETS `lastInvNo`** to the Informix value — OK for UAT refresh, must NOT run after go-live. See `prisma/migrate-amc-invoice-counter.ts`. |
 
 Informix date format is `dd-mm-yyyy` — the `d()` helper in migration scripts handles this.
+
+### createMany batch size — PostgreSQL "CachedPlan" out-of-memory
+
+Migration scripts must keep `createMany` batches **small**. A large batch becomes one INSERT with
+`rows × columns` bind parameters, and the server caches its plan; past a certain point the PostgreSQL
+backend process dies with:
+
+```
+PostgresError { code: "53200", message: "out of memory",
+                detail: "Failed on request of size 40 in memory context \"CachedPlan\"" }
+```
+
+It typically fails **partway through** (not on the first batch) — with `plan_cache_mode=auto` the server
+attempts a *generic* plan after ~5 executions of the same statement, and memory accumulates across
+executions within the session. The failure point drifts run to run with available RAM, so a batch size
+that worked yesterday can fail today.
+
+Hit on 2026-07-27 during a full `refresh-test-db.ps1` against the test server (PG18, **stock config —
+`shared_buffers` 128MB, `work_mem` 4MB**). Four scripts had to be lowered; all now read
+`Number(process.env.MIGRATE_BATCH) || <default>` so a run can be tuned without editing code:
+
+| Script | Was | Now | Note |
+|---|---|---|---|
+| `migrate-informix.ts` | 500 | **100** | `Member` is 68 cols → 500 rows = 34,000 params. Failed at 7-11k rows. |
+| `migrate-amc-schedules.ts` | 500 | **100** | Failed ~5.5k CP rows. |
+| `migrate-res-avail.ts` | 5000 | **100** | Failed at 85,000/94,876 even at 1000. |
+| `migrate-cp-booking-entitlement.ts` | 1000 | **100** | Largest table (279k rows); failed at 60k @1000 and 200k @500. |
+
+`migrate-booking-entitlement.ts` (500, narrow table, 201k rows) and the 200-batch PBS scripts were
+unaffected — leave them. **All these `createMany` calls use `skipDuplicates: true`, so a failed run can
+simply be re-run and it resumes** rather than duplicating.
+
+> If this keeps recurring, the durable fix is server-side: give the test server more RAM or tune
+> `postgresql.conf` (it is currently untouched defaults). Lowering batch sizes is a workaround.
 
 ### FK vs natural key — transferred agreement pitfall
 
@@ -731,6 +841,12 @@ GET  /api/apt-blocks/:id/availability       Per-day grid (date/act/bal) for a bl
 POST /api/apt-blocks                        Create block + generate ResAvailMast day rows (RESORTS_SETUP create; 409 on overlap, 400 if unit/type mismatch)
 PUT  /api/apt-blocks/:id                    Edit block dates + re-sync grid (resortCode/unitNo/type immutable; RESORTS_SETUP edit; 409 on overlap)
 DELETE /api/apt-blocks/:id                  Delete block + reverse its grid contribution (RESORTS_SETUP delete)
+GET  /api/resort-maintenance?q=&resortCode=&year=&month=&page=&pageSize=  Maintenance list, paginated, sorted startDate desc (RESORTS_SETUP view). year (+ optional month 1-12) filters to records whose range OVERLAPS that period; month without year is ignored
+GET  /api/resort-maintenance/years          Distinct years spanned by the register, newest first — feeds the Year dropdown (RESORTS_SETUP view)
+GET  /api/resort-maintenance/:id/availability  Per-day grid (date/act/bal) for a record's resort+type over its date range (RESORTS_SETUP view)
+POST /api/resort-maintenance                Create record + decrement ResAvailMast.balNight per day (RESORTS_SETUP create; 409 on overlap, 400 if unit not registered)
+PUT  /api/resort-maintenance/:id            Edit dates + remarks, re-sync grid (resortCode/unitNo/type immutable; RESORTS_SETUP edit; 409 on overlap)
+DELETE /api/resort-maintenance/:id          Delete record + restore its balNight contribution (RESORTS_SETUP delete)
 GET  /api/pbs?q=&coCode=&acctClassify=&schemeType=&claimIndc=  PBS scheme list (search+filters)
 GET  /api/pbs/:id                                  PBS scheme detail + claims
 PUT  /api/pbs/:id                                  Update PBS scheme (certNo, schemeType, remark)
@@ -762,7 +878,7 @@ GET  /api/pbs/reports/variance                     Generate PBS Variance Report 
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
-| Resorts Setup | 🔨 In progress | New `RESORTS_SETUP` AppModule (seed defaults: IT+Resort Ops FULL, Member Services VIEW, Finance/Credit NONE). Landing page `/resorts` (PBS-style menu, sidebar group "Resorts"). Function 1 done: **Resorts Setup** (`/resorts/setup`) — Resort master CRUD (list+search, add/edit modal shared via `ResortFormModal.tsx`, status toggle A/U, delete; buttons gated by canCreate/canEdit/canDelete; Eye icon on every row → detail). **Resort Detail** (`/resorts/setup/:id`) — details card + Edit + 4 info tabs (Getting There / Resort Facilities / Places of Interest / Unit Amenities) from `ResortInfoLine`; per-tab single-textarea editor, remark-style free text (400 chars total per category, validated client+server, no auto-uppercase — legacy print lines are mixed-case). Function 2 done: **Apartment Types Setup** (`/resorts/apartment-types`) — `ApartmentType` CRUD (list+search, add/edit modal, delete; resort picker from Resort master, lockType Select disabled/forced-LN unless resort `lockOnOff='Y'`; 9 business-supplied seed rows via `migrate-resorts.ts`). Function 3 done: **Apartments/Units Setup** (`/resorts/units`) — `ResortUnit` CRUD (paginated list with resort filter + search, add/edit modal with apartment-type dropdown restricted to the selected resort's types, RCI Reserved checkbox; 481 rows from `apt_mast.txt`). Function 4 done: **Units Availability Setup by Dates** (`/resorts/availability`) — block-centric CRUD over `AptBlock` (paginated list sorted startDate desc, cascade add form Resort→ApartmentType→Unit→start/end dates, styled delete-confirm modal). Each save auto-maintains the generated `ResAvailMast` per-day grid (`act/bal +1` per day on create, `-1` on delete, reverse-then-apply on edit; overlap-guarded 409). Per-row Eye icon → modal of the block's day grid. Header **Resorts Availability** button opens a **draggable, non-modal** popup (`DraggableWindow.tsx`) = ResAvailMast pivoted resort×date, cell=balNight (red ≤2, weekends highlighted), Product Type LHC (coCode 03 only)/CP, date + `<<`/`>>` 15-day paging. Remaining 2 functions are disabled placeholders: Public & School Holidays, CP Seasons & Points. |
+| Resorts Setup | 🔨 In progress | New `RESORTS_SETUP` AppModule (seed defaults: IT+Resort Ops FULL, Member Services VIEW, Finance/Credit NONE). Landing page `/resorts` (PBS-style menu, sidebar group "Resorts"). Function 1 done: **Resorts Setup** (`/resorts/setup`) — Resort master CRUD (list+search, add/edit modal shared via `ResortFormModal.tsx`, status toggle A/U, delete; buttons gated by canCreate/canEdit/canDelete; Eye icon on every row → detail). **Resort Detail** (`/resorts/setup/:id`) — details card + Edit + 4 info tabs (Getting There / Resort Facilities / Places of Interest / Unit Amenities) from `ResortInfoLine`; per-tab single-textarea editor, remark-style free text (400 chars total per category, validated client+server, no auto-uppercase — legacy print lines are mixed-case). Function 2 done: **Apartment Types Setup** (`/resorts/apartment-types`) — `ApartmentType` CRUD (list+search, add/edit modal, delete; resort picker from Resort master, lockType Select disabled/forced-LN unless resort `lockOnOff='Y'`; 9 business-supplied seed rows via `migrate-resorts.ts`). Function 3 done: **Apartments/Units Setup** (`/resorts/units`) — `ResortUnit` CRUD (paginated list with resort filter + search, add/edit modal with apartment-type dropdown restricted to the selected resort's types, RCI Reserved checkbox; 481 rows from `apt_mast.txt`). Function 4 done: **Units Availability Setup by Dates** (`/resorts/availability`) — block-centric CRUD over `AptBlock` (paginated list sorted startDate desc, cascade add form Resort→ApartmentType→Unit→start/end dates, styled delete-confirm modal). Each save auto-maintains the generated `ResAvailMast` per-day grid (`act/bal +1` per day on create, `-1` on delete, reverse-then-apply on edit; overlap-guarded 409). Per-row Eye icon → modal of the block's day grid. Header **Resorts Availability** button opens a **draggable, non-modal** popup (`DraggableWindow.tsx`) = ResAvailMast pivoted resort×date, cell=balNight (red ≤2, weekends highlighted), Product Type LHC (coCode 03 only)/CP, date + `<<`/`>>` 15-day paging; the chart lives in the shared `components/ResortAvailabilityChart.tsx` so both Function 4 and Function 5 render it. Function 5 done: **Resorts Maintenance** (`/resorts/maintenance`) — `ResortMaintenance` CRUD (paginated list sorted startDate desc with resort filter + **Month/Year period filter** + search incl. reason, 2-level add cascade Resort→Unit with the apartment type shown in the option label and derived server-side, remarks/reason field, styled delete-confirm modal, per-row Eye icon → day grid, same **Resorts Availability** popup button). Each save maintains `ResAvailMast.balNight` only (`-1` per day on create, `+1` on delete, reverse-then-apply on edit; `actNight` never touched, rows never created/deleted; overlap-guarded 409) — so the availability chart needed no change. 7,327 rows from `resmt.txt`. Remaining 2 functions are disabled placeholders (now items 6-7): Public & School Holidays, CP Seasons & Points. |
 | Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done. PBS Pay By Month/Year (`/pbs/pay-by-month`) done: Excel with 2 worksheets (monthly + yearly summary), tabbed preview. PBS Claim Report (`/pbs/claim-report`) done: Excel with 2 worksheets (non-ND claims + ND claims), tabbed preview. Not In PBS Report (`/pbs/not-in-pbs`) done: text file output matching Informix format, preview table. PBS Variance Report (`/pbs/variance`) done: Excel comparing rightful vs Zurich scheme type, preview with variance highlighting. All PBS reports use per-user `requireReportAccess` (not department permission); menu items hidden when not granted. Remaining: Proforma, Certificate Tracking, Auto Transfer, 1 report (PBS Report). |
 
 ## Navigation / permissions
@@ -873,6 +989,39 @@ Reports use a separate per-user access model — independent of department permi
 - **Edit** button (header) shows for `canEdit('MEMBERS')` (Member Services + IT). The `/members/:id/edit` route is additionally wrapped in `RequireEdit` (`components/RequirePermission.tsx`) so a non-editor hitting the URL directly is redirected back to the detail page.
 - **Agreements accordion**: agreement number is the hyperlink (no separate View button, no date shown). Agreements with `transferFlag='TT'` show the number as strikethrough grey — link disabled.
 - All text dropdowns (salutation, gender, race, marital status, nature of work) use uppercase option labels in MemberForm. Email fields do not auto-uppercase. Remarks field does not auto-uppercase.
+
+## CRUD feedback convention (Resorts Setup — apply to new modules)
+
+Standardized 2026-07-27 across all five Resorts Setup functions. Two shared components in
+`frontend/src/components/ui/`; **use both in any new CRUD page** rather than re-rolling per page.
+
+| Outcome | Component | Behaviour |
+|---|---|---|
+| Add / edit / delete **succeeded** | `ResultDialog` | Modal with green check + **OK button — must be acknowledged** (deliberately not an auto-dismissing toast). Message names the record that changed. |
+| Delete **requested** | `ConfirmDeleteModal` | Modal with a grey summary box of the record (`rows`) + red confirm button. **Replaces `window.confirm`.** |
+| Add / edit **failed** | inline red `<p>` inside the form modal | Modal stays open so input isn't lost — `apiError(err)` into local `error` state. |
+| Delete **failed** | inline red inside `ConfirmDeleteModal` (`error` prop) | The confirm modal stays open. |
+
+**Wiring pattern.** Form modals take an `onSaved: (saved, mode: 'add' | 'edit') => void` callback and
+call it in `onSuccess` before `onClose()`; the page holds `const [result, setResult] = useState<string | null>(null)`
+and renders `<ResultDialog message={result} onClose={() => setResult(null)} />`. Delete uses
+`deleteTarget` + `delErr` state; its `onSuccess` looks the record up in the current list **before**
+invalidating so the message can name it.
+
+Message style — state the action, then identify the record, then any side effect:
+```
+Maintenance record added — L-10024 unit A1 (3BR), 2027-01-04 to 2027-01-05.
+Availability for this apartment type drops by one per day over that range.
+```
+
+> **Every mutation needs an `onError`.** The `window.confirm` pages (Resorts Setup, Apartment Types,
+> Apartments/Units) originally had `deleteMut`/`toggleMut` with **only** `onSuccess`, so a failed delete
+> or status toggle did nothing visible at all — the user saw the row unchanged and re-clicked. Fixed
+> 2026-07-27; don't reintroduce it.
+>
+> **Exception — `ResortMaster` status toggle** deliberately shows *no* success dialog: the A/U badge
+> flips in place, which is feedback enough, and a dialog per click would be tedious. It still reports
+> failures, via a second `ResultDialog` with `variant="error"`.
 
 ## Report preview page theme
 

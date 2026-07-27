@@ -9,6 +9,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Modal } from '../../components/ui/Modal';
+import { ResultDialog } from '../../components/ui/ResultDialog';
+import { ConfirmDeleteModal } from '../../components/ui/ConfirmDeleteModal';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
 import { ProductBadge } from '../../components/ProductBadge';
@@ -27,9 +29,10 @@ interface ModalProps {
   apt: ApartmentType | null;   // null = add mode
   resorts: Resort[];
   onClose: () => void;
+  onSaved: (saved: ApartmentType, mode: 'add' | 'edit') => void;
 }
 
-function ApartmentTypeFormModal({ open, apt, resorts, onClose }: ModalProps) {
+function ApartmentTypeFormModal({ open, apt, resorts, onClose, onSaved }: ModalProps) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [error, setError] = useState('');
@@ -60,8 +63,9 @@ function ApartmentTypeFormModal({ open, apt, resorts, onClose }: ModalProps) {
         ? apartmentTypesApi.update(apt.id, payload)
         : apartmentTypesApi.create({ resortCode: form.resortCode, ...payload });
     },
-    onSuccess: () => {
+    onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['apartment-types'] });
+      onSaved(r.data.data, apt ? 'edit' : 'add');
       onClose();
     },
     onError: (err) => setError(apiError(err)),
@@ -137,6 +141,9 @@ export function ApartmentTypes() {
   const [searchInput, setSearchInput] = useState(q);
 
   const [modal, setModal] = useState<{ open: boolean; apt: ApartmentType | null }>({ open: false, apt: null });
+  const [deleteTarget, setDeleteTarget] = useState<ApartmentType | null>(null);
+  const [delErr, setDelErr] = useState('');
+  const [result, setResult] = useState<string | null>(null);
 
   const { data: types, isLoading } = useQuery({
     queryKey: ['apartment-types', q],
@@ -150,7 +157,13 @@ export function ApartmentTypes() {
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => apartmentTypesApi.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['apartment-types'] }),
+    onSuccess: (_res, id) => {
+      const gone = types?.find(t => t.id === id);
+      qc.invalidateQueries({ queryKey: ['apartment-types'] });
+      setDeleteTarget(null);
+      if (gone) setResult(`Apartment type deleted — ${gone.apartmentType} of ${gone.resortCode}.`);
+    },
+    onError: (err) => setDelErr(apiError(err)),
   });
 
   const doSearch = (e: React.FormEvent) => {
@@ -229,7 +242,7 @@ export function ApartmentTypes() {
                         )}
                         {canDelete('RESORTS_SETUP') && (
                           <button
-                            onClick={() => { if (window.confirm(`Delete apartment type ${t.apartmentType} of ${t.resortCode}?`)) deleteMut.mutate(t.id); }}
+                            onClick={() => { setDelErr(''); setDeleteTarget(t); }}
                             title="Delete" className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -252,6 +265,28 @@ export function ApartmentTypes() {
         apt={modal.apt}
         resorts={resorts ?? []}
         onClose={() => setModal({ open: false, apt: null })}
+        onSaved={(t, mode) => setResult(
+          `Apartment type ${mode === 'add' ? 'added' : 'updated'} — ${t.apartmentType} of ${t.resortCode}` +
+          `${t.description ? ` (${t.description})` : ''}.`
+        )}
+      />
+
+      <ResultDialog message={result} onClose={() => setResult(null)} />
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title="Delete apartment type?"
+        description="This permanently removes the apartment type from the resort. Units still referencing it will no longer match. This cannot be undone."
+        rows={deleteTarget ? [
+          { label: 'Resort',      value: <><span className="font-mono font-medium">{deleteTarget.resortCode}</span> — {deleteTarget.resort.resortName}</> },
+          { label: 'Type',        value: <span className="font-medium">{deleteTarget.apartmentType}</span> },
+          { label: 'Description', value: deleteTarget.description ?? '—' },
+        ] : []}
+        error={delErr}
+        loading={deleteMut.isPending}
+        confirmLabel="Delete type"
+        onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
+        onClose={() => setDeleteTarget(null)}
       />
     </div>
   );

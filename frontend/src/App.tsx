@@ -38,6 +38,7 @@ import { ResortDetail } from './pages/resorts/ResortDetail';
 import { ApartmentTypes } from './pages/resorts/ApartmentTypes';
 import { ResortUnits } from './pages/resorts/ResortUnits';
 import { UnitsAvailability } from './pages/resorts/UnitsAvailability';
+import { ResortsMaintenance } from './pages/resorts/ResortsMaintenance';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -91,6 +92,7 @@ export default function App() {
               <Route path="resorts/apartment-types" element={<ApartmentTypes />} />
               <Route path="resorts/units"       element={<ResortUnits />} />
               <Route path="resorts/availability" element={<UnitsAvailability />} />
+            <Route path="resorts/maintenance" element={<ResortsMaintenance />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />
