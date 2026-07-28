@@ -440,6 +440,7 @@ model Resort {
   aptBlocks        AptBlock[]
   resAvail         ResAvailMast[]
   maintenance      ResortMaintenance[]
+  seasonPoints     CpSeasonPoint[]
 }
 
 model ResortInfoLine {
@@ -583,6 +584,37 @@ model CpSeasonDate {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @db.Timestamptz(3)
   @@index([year])
+}
+
+// CP Season Points (Resorts Setup fn 9) — from Informix ps_seasonapt.txt.
+// The points deducted per night for a CP booking, by resort x apartment type x
+// season x day of week. CpSeasonDate (fn 8) grades the day G/S/D; this table turns
+// that grade into a number. CP-only: resortCode must belong to a coCode='02' resort.
+// Only the first 12 source columns are imported — pssa_lvcpts0..6 are zero on every row.
+// The weekly total shown on screen is derived (sum of the 7 days), never stored.
+model CpSeasonPoint {
+  id            String   @id
+  resortId      String
+  resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
+  resortCode    String   // denormalized natural key
+  apartmentType String   // validated against ApartmentType (no hard FK; types are renamable)
+  year          Int      // pssa_year — the year these points apply to
+  effectiveDate DateTime // pssa_effdate — UTC midnight (business date); part of the unique key
+  season        String   // G=Gold, S=Silver, D=Diamond
+  ptsSun        Int      // pssa_norpts0
+  ptsMon        Int      // pssa_norpts1
+  ptsTue        Int      // pssa_norpts2
+  ptsWed        Int      // pssa_norpts3
+  ptsThu        Int      // pssa_norpts4
+  ptsFri        Int      // pssa_norpts5
+  ptsSat        Int      // pssa_norpts6
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @db.Timestamptz(3)
+  // Mirrors Informix u925_83. effectiveDate is part of the key because a year may
+  // legitimately hold more than one effective-dated revision of the same combo
+  // (2015/SLEEP4/G has two) — dropping it would lose rows.
+  @@unique([resortCode, apartmentType, year, effectiveDate, season], map: "CpSeasonPoint_natkey_key")
+  @@index([resortCode, year])
 }
 
 model SuReason {

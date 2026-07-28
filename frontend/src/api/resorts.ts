@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, PublicHoliday, PublicHolidayCloneResult, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, SchoolHoliday, SchoolHolidayCloneResult } from '../types';
+import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, CpSeasonPointDeleteResult, CpSeasonPointSaveResult, CpSeasonPointYear, PublicHoliday, PublicHolidayCloneResult, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, SchoolHoliday, SchoolHolidayCloneResult } from '../types';
 
 export const resortsApi = {
   list:   (q?: string) => api.get<{ data: Resort[] }>('/resorts', { params: q ? { q } : undefined }),
@@ -73,6 +73,28 @@ export const cpSeasonsApi = {
   deleteMonth: (params: { year: number; month: number }) =>
     api.delete<{ data: CpSeasonMonthDeleteResult }>('/cp-seasons/month', { params }),
   clone: (data: { sourceYear: number }) => api.post<{ data: CpSeasonCloneResult }>('/cp-seasons/clone', data),
+};
+
+export type CpSeasonPointRowInput = {
+  apartmentType: string;
+  season: string;
+  effectiveDate: string;
+  ptsSun: number; ptsMon: number; ptsTue: number; ptsWed: number;
+  ptsThu: number; ptsFri: number; ptsSat: number;
+};
+
+export const cpSeasonPointsApi = {
+  // The screen works a resort-year at a time — no pagination
+  year: (params: { resortCode: string; year: number }) =>
+    api.get<CpSeasonPointYear>('/cp-season-points', { params }),
+  years: (params: { resortCode: string }) =>
+    api.get<{ data: number[] }>('/cp-season-points/years', { params }),
+  saveYear: (data: { resortCode: string; year: number; rows: CpSeasonPointRowInput[] }) =>
+    api.post<{ data: CpSeasonPointSaveResult }>('/cp-season-points/year', data),
+  deleteYear: (params: { resortCode: string; year: number }) =>
+    api.delete<{ data: CpSeasonPointDeleteResult }>('/cp-season-points/year', { params }),
+  // Drops a single superseded effective-dated revision without wiping the year
+  remove: (id: string) => api.delete(`/cp-season-points/${id}`),
 };
 
 export const apartmentTypesApi = {

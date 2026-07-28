@@ -34,6 +34,7 @@ import resortMaintenanceRoutes from './routes/resortMaintenance';
 import publicHolidayRoutes from './routes/publicHolidays';
 import schoolHolidayRoutes from './routes/schoolHolidays';
 import cpSeasonRoutes from './routes/cpSeasons';
+import cpSeasonPointRoutes from './routes/cpSeasonPoints';
 
 // Member-scoped sub-routes
 import { authenticate, requirePasswordChanged } from './middleware/auth';
@@ -74,6 +75,7 @@ app.use('/api/resort-maintenance', resortMaintenanceRoutes);
 app.use('/api/public-holidays',   publicHolidayRoutes);
 app.use('/api/school-holidays',   schoolHolidayRoutes);
 app.use('/api/cp-seasons',        cpSeasonRoutes);
+app.use('/api/cp-season-points',  cpSeasonPointRoutes);
 
 // ─── Member-scoped agreement + AMC routes ─────────────────────────────────────
 app.get(

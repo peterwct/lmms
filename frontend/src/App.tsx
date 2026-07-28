@@ -42,6 +42,7 @@ import { ResortsMaintenance } from './pages/resorts/ResortsMaintenance';
 import { PublicHolidays } from './pages/resorts/PublicHolidays';
 import { SchoolHolidays } from './pages/resorts/SchoolHolidays';
 import { CpSeasons } from './pages/resorts/CpSeasons';
+import { CpSeasonPoints } from './pages/resorts/CpSeasonPoints';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -99,6 +100,7 @@ export default function App() {
               <Route path="resorts/holidays"    element={<PublicHolidays />} />
               <Route path="resorts/school-holidays" element={<SchoolHolidays />} />
               <Route path="resorts/seasons"     element={<CpSeasons />} />
+              <Route path="resorts/season-points" element={<CpSeasonPoints />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />

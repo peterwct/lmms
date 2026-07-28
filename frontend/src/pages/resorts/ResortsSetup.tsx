@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import {
-  Hotel, BedDouble, DoorOpen, CalendarRange, Wrench, CalendarDays, GraduationCap, Sun,
+  Hotel, BedDouble, DoorOpen, CalendarRange, Wrench, CalendarDays, GraduationCap, Sun, Coins,
   ChevronRight,
 } from 'lucide-react';
 
@@ -21,6 +21,7 @@ const SETUP_ITEMS: ResortsMenuItem[] = [
   { num: 6, label: 'Public Holidays Setup',                  to: '/resorts/holidays',     icon: <CalendarDays className="h-4 w-4" />, enabled: true },
   { num: 7, label: 'School Holidays Setup',                  to: '/resorts/school-holidays', icon: <GraduationCap className="h-4 w-4" />, enabled: true },
   { num: 8, label: "CP's Seasons Setup",                     to: '/resorts/seasons',      icon: <Sun className="h-4 w-4" />, enabled: true },
+  { num: 9, label: 'CP Resorts Season Points Setup',         to: '/resorts/season-points', icon: <Coins className="h-4 w-4" />, enabled: true },
 ];
 
 function MenuSection({ title, items }: { title: string; items: ResortsMenuItem[] }) {

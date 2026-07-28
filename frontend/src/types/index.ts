@@ -335,6 +335,52 @@ export interface CpSeasonMonthDeleteResult {
 // Same shape as the public-holiday clone result
 export type CpSeasonCloneResult = PublicHolidayCloneResult;
 
+// CP Season Points (Resorts Setup fn 9) — points deducted per night by resort x
+// apartment type x season x day of week. CpSeasonDate grades the day; this turns
+// the grade into a number. The weekly total is derived, never stored.
+export interface CpSeasonPoint {
+  id: string;
+  resortId: string;
+  resortCode: string;
+  apartmentType: string;
+  year: number;
+  effectiveDate: string; // ISO string, UTC midnight
+  season: CpSeason;
+  ptsSun: number;
+  ptsMon: number;
+  ptsTue: number;
+  ptsWed: number;
+  ptsThu: number;
+  ptsFri: number;
+  ptsSat: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// One resort-year. Combos with no row yet are absent — the page scaffolds the full
+// apartment type x season grid from `apartmentTypes` and leaves the gaps blank.
+export interface CpSeasonPointYear {
+  resortCode: string;
+  year: number;
+  resort: { resortCode: string; resortName: string; shortName: string | null; coCode: string };
+  apartmentTypes: { apartmentType: string; description: string | null }[];
+  data: CpSeasonPoint[];
+}
+
+export interface CpSeasonPointSaveResult {
+  resortCode: string;
+  year: number;
+  rows: number;
+  created: number;
+  updated: number;
+}
+
+export interface CpSeasonPointDeleteResult {
+  resortCode: string;
+  year: number;
+  deleted: number;
+}
+
 export interface AvailabilityChartCol {
   date: string;
   dow: string;

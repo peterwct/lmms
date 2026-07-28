@@ -126,6 +126,12 @@
     UNLOAD TO 'resmt.txt' DELIMITER '|'
     SELECT * FROM resmt where rm_resort_code in ("CP-PBR", "L-10016", "L-10024", "L-10025", "L-10026", "L-101", "L-103A");
 
+    UNLOAD TO 'ps_seasondate.txt' DELIMITER '|'
+    SELECT * FROM ps_seasondate where year(pssd_seadate) >= 2026;
+
+    UNLOAD TO 'ps_seasonapt.txt' DELIMITER '|'
+    SELECT * FROM ps_seasonapt where pssa_resort_code = "CP-PBR";
+
     Copy all output files into:  E:\Websites\lmms\migrate\
 
     NOTE: ctrl_billtab seeds the per-coCode AMC invoice running number
@@ -195,7 +201,9 @@ $requiredFiles = @(
     'apt_mast.txt',
     'res_avail_mast.txt',
     'apt_block.txt',
-    'resmt.txt'
+    'resmt.txt',
+    'ps_seasondate.txt',
+    'ps_seasonapt.txt'
 )
 
 $missing = $requiredFiles | Where-Object { -not (Test-Path (Join-Path $migrateDir $_)) }
@@ -222,7 +230,7 @@ Write-Host "  Will CLEAR and RELOAD:"
 Write-Host "    Member, Agreement, Nominee"
 Write-Host "    AmcSchedule, AmcInvoice"
 Write-Host "    PbsScheme, PbsClaim (Zurich Payback)"
-Write-Host "    Salesperson, Resort, ResortMaintenance, CpSeasonDate"
+Write-Host "    Salesperson, Resort, ResortMaintenance, CpSeasonDate, CpSeasonPoint"
 Write-Host "    BookingEntitlement (LHC 03/15), CpBookingEntitlement (CP 02)"
 Write-Host ""
 Write-Host "  Will PRESERVE:"
@@ -287,7 +295,7 @@ Write-Host ""
 Write-Host ("[1/7] Clearing Informix data tables...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
-TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "CpSeasonDate", "Member" CASCADE;
+TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "CpSeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "CpSeasonDate", "Member" CASCADE;
 "@
 
 # ── Step 2: Core member + agreement import ────────────────────────────────────
@@ -320,6 +328,9 @@ Invoke-Migration "prisma/migrate-apt-block.ts"     "migrate-apt-block.ts"
 # only -- res_avail_mast.txt already has maintenance deducted from bal_night, so this
 # script deliberately applies NO per-day grid deltas (that happens on app CRUD only).
 Invoke-Migration "prisma/migrate-maintenance.ts"   "migrate-maintenance.ts"
+# CP season points chart (points deducted per night by apartment type x season x day
+# of week). Needs Resort present for the FK. CP-only, like the season calendar below.
+Invoke-Migration "prisma/migrate-cp-season-points.ts" "migrate-cp-season-points.ts"
 # Public Holidays. Business-supplied (no Informix file) and NOT truncated above --
 # there is no FK to Resort. The seed upserts, so this only tops up missing rows and
 # leaves dates staff have already corrected alone.
@@ -378,6 +389,7 @@ SELECT
   (SELECT COUNT(*) FROM "PublicHoliday")      AS public_holidays,
   (SELECT COUNT(*) FROM "SchoolHoliday")      AS school_holidays,
   (SELECT COUNT(*) FROM "CpSeasonDate")       AS cp_season_dates,
+  (SELECT COUNT(*) FROM "CpSeasonPoint")      AS cp_season_points,
   (SELECT COUNT(*) FROM "BookingEntitlement")   AS booking_ent,
   (SELECT COUNT(*) FROM "CpBookingEntitlement") AS cp_booking_ent,
   (SELECT COUNT(*) FROM "AmcInvoiceCounter")  AS amc_inv_counters,
