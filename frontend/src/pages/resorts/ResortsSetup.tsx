@@ -20,7 +20,7 @@ const SETUP_ITEMS: ResortsMenuItem[] = [
   { num: 5, label: 'Resorts Maintenance',                    to: '/resorts/maintenance',  icon: <Wrench className="h-4 w-4" />, enabled: true },
   { num: 6, label: 'Public Holidays Setup',                  to: '/resorts/holidays',     icon: <CalendarDays className="h-4 w-4" />, enabled: true },
   { num: 7, label: 'School Holidays Setup',                  to: '/resorts/school-holidays', icon: <GraduationCap className="h-4 w-4" />, enabled: true },
-  { num: 8, label: "CP's Seasons & Points Setup",            to: '/resorts/seasons',      icon: <Sun className="h-4 w-4" /> },
+  { num: 8, label: "CP's Seasons Setup",                     to: '/resorts/seasons',      icon: <Sun className="h-4 w-4" />, enabled: true },
 ];
 
 function MenuSection({ title, items }: { title: string; items: ResortsMenuItem[] }) {

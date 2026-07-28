@@ -222,7 +222,7 @@ Write-Host "  Will CLEAR and RELOAD:"
 Write-Host "    Member, Agreement, Nominee"
 Write-Host "    AmcSchedule, AmcInvoice"
 Write-Host "    PbsScheme, PbsClaim (Zurich Payback)"
-Write-Host "    Salesperson, Resort, ResortMaintenance"
+Write-Host "    Salesperson, Resort, ResortMaintenance, CpSeasonDate"
 Write-Host "    BookingEntitlement (LHC 03/15), CpBookingEntitlement (CP 02)"
 Write-Host ""
 Write-Host "  Will PRESERVE:"
@@ -287,7 +287,7 @@ Write-Host ""
 Write-Host ("[1/7] Clearing Informix data tables...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
-TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "Member" CASCADE;
+TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "CpSeasonDate", "Member" CASCADE;
 "@
 
 # ── Step 2: Core member + agreement import ────────────────────────────────────
@@ -326,6 +326,9 @@ Invoke-Migration "prisma/migrate-maintenance.ts"   "migrate-maintenance.ts"
 Invoke-Migration "prisma/seed-public-holidays.ts"  "seed-public-holidays.ts"
 # School Holidays. Same deal -- business-supplied, no FK, upsert-only top-up.
 Invoke-Migration "prisma/seed-school-holidays.ts"  "seed-school-holidays.ts"
+# CP season calendar. Unlike the two holiday seeds this HAS an Informix source, so it
+# is truncated above and fully reimported (clobbers CRUD edits post-go-live).
+Invoke-Migration "prisma/migrate-cp-seasons.ts"    "migrate-cp-seasons.ts"
 
 # ── Step 5: Booking entitlements (LHC nights used + CP point balances) ───────
 # Depends on agreements existing (step 2): migrate-booking-entitlement.ts resolves
@@ -374,6 +377,7 @@ SELECT
   (SELECT COUNT(*) FROM "ResortMaintenance")  AS maintenance,
   (SELECT COUNT(*) FROM "PublicHoliday")      AS public_holidays,
   (SELECT COUNT(*) FROM "SchoolHoliday")      AS school_holidays,
+  (SELECT COUNT(*) FROM "CpSeasonDate")       AS cp_season_dates,
   (SELECT COUNT(*) FROM "BookingEntitlement")   AS booking_ent,
   (SELECT COUNT(*) FROM "CpBookingEntitlement") AS cp_booking_ent,
   (SELECT COUNT(*) FROM "AmcInvoiceCounter")  AS amc_inv_counters,

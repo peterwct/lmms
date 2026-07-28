@@ -570,6 +570,21 @@ model SchoolHoliday {
   @@unique([academicYear, description])
 }
 
+// CP Season calendar (Resorts Setup fn 8) — from Informix ps_seasondate.txt.
+// One row per calendar day, graded G/S/D; drives CP points pricing per night.
+// Global: the source has no resort column.
+// PRODUCT SCOPE: this is the ONLY holiday/peak calendar CP booking reads.
+// PublicHoliday and SchoolHoliday are LHC-only — never join or derive across them.
+model CpSeasonDate {
+  id        String   @id
+  date      DateTime @unique // UTC midnight (business date) — one season per day
+  season    String   // G=Gold, S=Silver, D=Diamond
+  year      Int      // derived server-side from date; drives the filter + clone
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @db.Timestamptz(3)
+  @@index([year])
+}
+
 model SuReason {
   code        String      @id
   description String

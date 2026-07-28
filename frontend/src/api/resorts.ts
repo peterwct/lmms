@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, PublicHoliday, PublicHolidayCloneResult, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, SchoolHoliday, SchoolHolidayCloneResult } from '../types';
+import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, PublicHoliday, PublicHolidayCloneResult, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, SchoolHoliday, SchoolHolidayCloneResult } from '../types';
 
 export const resortsApi = {
   list:   (q?: string) => api.get<{ data: Resort[] }>('/resorts', { params: q ? { q } : undefined }),
@@ -61,6 +61,18 @@ export const schoolHolidaysApi = {
   remove: (id: string) => api.delete(`/school-holidays/${id}`),
   // Copies an academic year's breaks to sourceYear + 1, same month/day on both ends
   clone: (data: { sourceYear: number }) => api.post<{ data: SchoolHolidayCloneResult }>('/school-holidays/clone', data),
+};
+
+export const cpSeasonsApi = {
+  // The screen works a month at a time — no pagination, no per-day endpoints
+  month: (params: { year: number; month: number }) =>
+    api.get<CpSeasonMonth>('/cp-seasons', { params }),
+  years: () => api.get<{ data: number[] }>('/cp-seasons/years'),
+  saveMonth: (data: { year: number; month: number; days: { date: string; season: string }[] }) =>
+    api.post<{ data: CpSeasonMonthSaveResult }>('/cp-seasons/month', data),
+  deleteMonth: (params: { year: number; month: number }) =>
+    api.delete<{ data: CpSeasonMonthDeleteResult }>('/cp-seasons/month', { params }),
+  clone: (data: { sourceYear: number }) => api.post<{ data: CpSeasonCloneResult }>('/cp-seasons/clone', data),
 };
 
 export const apartmentTypesApi = {

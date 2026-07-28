@@ -43,12 +43,13 @@
     .\migrate-table.ps1 -Table ResAvailMast                # Per-day availability grid only (res_avail_mast.txt; truncates + reimports)
     .\migrate-table.ps1 -Table AptBlock                    # Availability blocks only (apt_block.txt; truncates + reimports)
     .\migrate-table.ps1 -Table ResortMaintenance           # Maintenance register only (resmt.txt; truncates + reimports)
+    .\migrate-table.ps1 -Table CpSeasonDate                # CP season calendar (ps_seasondate.txt; one row per day, G/S/D; truncates + reimports)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Resort', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Resort', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance', 'CpSeasonDate')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -217,6 +218,14 @@ $TableConfig = @{
         TruncateSql = @('TRUNCATE "ResortMaintenance";')
         RequiredFiles = @('resmt.txt')
         Scripts = @('prisma/migrate-maintenance.ts')
+    }
+    CpSeasonDate = @{
+        # CP season calendar (ps_seasondate.txt, cols 0-1) -- one row per calendar day
+        # graded G/S/D. Read by CP booking only; the Public/School holiday tables are
+        # LHC-only and unrelated. Post-go-live re-import clobbers CRUD edits.
+        TruncateSql = @('TRUNCATE "CpSeasonDate";')
+        RequiredFiles = @('ps_seasondate.txt')
+        Scripts = @('prisma/migrate-cp-seasons.ts')
     }
 }
 

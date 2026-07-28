@@ -297,6 +297,44 @@ export interface SchoolHoliday {
 // Same shape as the public-holiday clone result
 export type SchoolHolidayCloneResult = PublicHolidayCloneResult;
 
+// CP Season calendar (Resorts Setup fn 8) — one row per calendar day, graded G/S/D.
+// Read by CP booking only; the Public/School holiday calendars are LHC-only.
+export type CpSeason = 'G' | 'S' | 'D';
+
+export interface CpSeasonDate {
+  id: string;
+  date: string;        // ISO string, UTC midnight
+  season: CpSeason;
+  year: number;        // derived server-side from date
+  createdAt: string;
+  updatedAt: string;
+}
+
+// One month's graded days. Ungraded days are simply absent — the page scaffolds the
+// full month and defaults the gaps to Silver.
+export interface CpSeasonMonth {
+  year: number;
+  month: number;
+  data: CpSeasonDate[];
+}
+
+export interface CpSeasonMonthSaveResult {
+  year: number;
+  month: number;
+  days: number;
+  created: number;
+  updated: number;
+}
+
+export interface CpSeasonMonthDeleteResult {
+  year: number;
+  month: number;
+  deleted: number;
+}
+
+// Same shape as the public-holiday clone result
+export type CpSeasonCloneResult = PublicHolidayCloneResult;
+
 export interface AvailabilityChartCol {
   date: string;
   dow: string;
