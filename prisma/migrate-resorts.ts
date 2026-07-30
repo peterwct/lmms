@@ -1,11 +1,17 @@
 /**
  * LHB MMS — Resort Master Migration
  * Source: migrate/resort_mast.txt — pipe-delimited Informix UNLOAD
- *   (SELECT * FROM resort_mast WHERE re_resort_status = 'A' AND re_cocode IN ('03','15','02'))
+ *   (SELECT * FROM resort_mast)  <- UNFILTERED since 2026-07-30
+ *
+ * The original export was filtered to `re_resort_status = 'A' AND re_cocode IN ('03','15','02')`
+ * (7 rows). It was re-extracted unfiltered on 2026-07-30 to 324 rows so the LVC exchange
+ * resorts (the `V-*` codes, e.g. V-SGI1 / V-MAE1 / V-CLC1) exist for LVC Resorts Season
+ * Point Setup (Resorts Setup fn 12) to reference. Breakdown: ours (03/15/02) 7 active +
+ * 45 inactive; partner/LVC 42 active + 230 inactive.
  *
  * Column mapping (26 cols):
  *  [0]  re_resort_code    -> resortCode (unique)
- *  [1]  re_cocode         -> coCode (03/15/02)
+ *  [1]  re_cocode         -> coCode (any Product coCode, not just 03/15/02)
  *  [2]  re_short_name     -> shortName
  *  [3]  re_resort_name    -> resortName
  *  [4]  re_exc_reg        -> (skipped — per business decision)
@@ -25,7 +31,9 @@
  *  [16] re_country        -> country
  *  [17] re_telno          -> telNo
  *  [18] re_faxno          -> faxNo
- *  [19] re_resort_status  -> status (A/U)
+ *  [19] re_resort_status  -> status (Informix 'A'/'I'; 'I' is MAPPED TO 'U' — this codebase's
+ *                            A=Active / U=Inactive convention, which the A/U toggle and the
+ *                            Active/Inactive badge both depend on. Only 'A' stays 'A'.)
  *  [20] re_paymt          -> paymt
  *  [21] re_create_user    -> legacyCreateUser
  *  [22] re_create_date    -> legacyCreateDate (dd-mm-yyyy)
@@ -109,17 +117,30 @@ async function main() {
   console.log('='.repeat(60));
 
   let total = 0, skipped = 0;
+  const byStatus: Record<string, number> = { A: 0, U: 0 };
+  const rawStatuses = new Set<string>();
   const batch: any[] = [];
 
   for await (const c of readLines('resort_mast.txt')) {
     const resortCode = t(c[0]);
     const coCode = t(c[1]);
-    const status = t(c[19]) ?? 'A';
+    const rawStatus = (t(c[19]) ?? 'A').toUpperCase();
 
-    // Defensive guards — the export is already filtered to these, but re-check
+    // The export is unfiltered since 2026-07-30 — every coCode and both statuses load,
+    // so the LVC 'V-*' exchange resorts are available to fn 12. Only structurally
+    // unusable rows are skipped.
     if (!resortCode) { skipped++; continue; }
-    if (!coCode || !['03', '15', '02'].includes(coCode)) { skipped++; continue; }
-    if (status !== 'A') { skipped++; continue; }
+    if (!coCode) {
+      console.log(`  WARN ${resortCode} has no coCode — skipped`);
+      skipped++;
+      continue;
+    }
+
+    // Informix uses 'A'/'I'; this codebase's convention is 'A'/'U' (the status toggle
+    // and the Active/Inactive badge both key off it). Anything not 'A' becomes 'U'.
+    rawStatuses.add(rawStatus);
+    const status = rawStatus === 'A' ? 'A' : 'U';
+    byStatus[status]++;
 
     batch.push({
       id:               randomUUID(),
@@ -159,7 +180,11 @@ async function main() {
     await prisma.resort.createMany({ data: batch, skipDuplicates: true });
   }
 
-  console.log(`\n  OK Resorts: ${total} inserted, ${skipped} skipped`);
+  console.log(`\n  OK Resorts: ${total} parsed, ${skipped} skipped`);
+  console.log(`     Active ${byStatus.A}, Inactive ${byStatus.U}` +
+              `  (raw Informix statuses seen: ${[...rawStatuses].sort().join(', ')})`);
+  console.log(`     createMany uses skipDuplicates on resortCode, so existing rows and any`);
+  console.log(`     app edits / cascade-dependent data are left untouched.`);
 
   // Apartment types (business-supplied, keyed by resortCode) — resolve FK then insert
   if (!DRY_RUN) {

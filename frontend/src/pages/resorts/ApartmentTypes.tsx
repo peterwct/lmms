@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Plus, Pencil, Trash2, Search } from 'lucide-react';
-import { apartmentTypesApi, resortsApi } from '../../api/resorts';
+import { apartmentTypesApi } from '../../api/resorts';
+import { useActiveResorts } from '../../hooks/useActiveResorts';
 import { apiError } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -150,10 +151,8 @@ export function ApartmentTypes() {
     queryFn: () => apartmentTypesApi.list(q || undefined).then(r => r.data.data),
   });
 
-  const { data: resorts } = useQuery({
-    queryKey: ['resorts', ''],
-    queryFn: () => resortsApi.list().then(r => r.data.data),
-  });
+  // Active resorts only (see useActiveResorts)
+  const { resorts } = useActiveResorts();
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => apartmentTypesApi.remove(id),
@@ -180,7 +179,7 @@ export function ApartmentTypes() {
         <Link to="/resorts" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600">
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
-        <h1 className="mt-1 text-xl font-semibold text-gray-900">Apartment Types Setup</h1>
+        <h1 className="mt-1 text-xl font-semibold text-gray-900">Apartment Sleep Types Maintenance and Setup</h1>
         <p className="mt-1 text-sm text-gray-500">Apartment types per resort.</p>
       </div>
 

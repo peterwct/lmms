@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Plus, Pencil, Trash2, Search } from 'lucide-react';
-import { apartmentTypesApi, resortUnitsApi, resortsApi } from '../../api/resorts';
+import { apartmentTypesApi, resortUnitsApi } from '../../api/resorts';
+import { useActiveResorts } from '../../hooks/useActiveResorts';
 import { apiError } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -114,7 +115,7 @@ function ResortUnitFormModal({ open, unit, resorts, apartmentTypes, onClose, onS
         </Select>
         {form.resortCode && typeOptions.length === 0 && (
           <p className="text-xs text-amber-600 -mt-2">
-            No apartment types set up for this resort — add them in Apartment Types Setup first.
+            No apartment types set up for this resort — add them in Apartment Sleep Types Maintenance and Setup first.
           </p>
         )}
         <Input
@@ -185,10 +186,8 @@ export function ResortUnits() {
     }).then(r => r.data),
   });
 
-  const { data: resorts } = useQuery({
-    queryKey: ['resorts', ''],
-    queryFn: () => resortsApi.list().then(r => r.data.data),
-  });
+  // Active resorts only (see useActiveResorts)
+  const { resorts } = useActiveResorts();
 
   const { data: apartmentTypes } = useQuery({
     queryKey: ['apartment-types', ''],
@@ -228,7 +227,7 @@ export function ResortUnits() {
         <Link to="/resorts" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600">
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
-        <h1 className="mt-1 text-xl font-semibold text-gray-900">Apartment's Unit Setup</h1>
+        <h1 className="mt-1 text-xl font-semibold text-gray-900">Apartment's Unit No. Maintenance and Setup</h1>
         <p className="mt-1 text-sm text-gray-500">Unit numbers per resort.</p>
       </div>
 

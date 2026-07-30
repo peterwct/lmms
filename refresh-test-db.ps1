@@ -107,8 +107,14 @@
     UNLOAD TO 'ctrl_billtab.txt' DELIMITER '|'
     SELECT cocode, last_amcinv FROM ctrl_billtab WHERE cocode IN ('03', '15', '02');
 
+    UNLOAD TO 'ps_company.txt' DELIMITER '|'
+    SELECT * FROM ps_company;
+
+    UNLOAD TO 'lvc_master.txt' DELIMITER '|'
+    SELECT * FROM lvc_master;
+
     UNLOAD TO 'resort_mast.txt' DELIMITER '|'
-    SELECT * FROM resort_mast WHERE re_resort_status = 'A' AND re_cocode IN ('03', '15', '02');
+    SELECT * FROM resort_mast;
 
     UNLOAD TO 'ps_resort_info.txt' DELIMITER '|'
     SELECT * FROM ps_resort_info;
@@ -131,6 +137,9 @@
 
     UNLOAD TO 'ps_seasonapt.txt' DELIMITER '|'
     SELECT * FROM ps_seasonapt where pssa_resort_code = "CP-PBR";
+
+    UNLOAD TO 'ps_lvcapt.txt' DELIMITER '|'
+    SELECT * FROM ps_lvcapt;
 
     Copy all output files into:  E:\Websites\lmms\migrate\
 
@@ -196,6 +205,8 @@ $requiredFiles = @(
     'booking_ent1.txt',
     'ps_bookent1.txt',
     'ctrl_billtab.txt',
+    'ps_company.txt',
+    'lvc_master.txt',
     'resort_mast.txt',
     'ps_resort_info.txt',
     'apt_mast.txt',
@@ -203,7 +214,8 @@ $requiredFiles = @(
     'apt_block.txt',
     'resmt.txt',
     'ps_seasondate.txt',
-    'ps_seasonapt.txt'
+    'ps_seasonapt.txt',
+    'ps_lvcapt.txt'
 )
 
 $missing = $requiredFiles | Where-Object { -not (Test-Path (Join-Path $migrateDir $_)) }
@@ -230,7 +242,7 @@ Write-Host "  Will CLEAR and RELOAD:"
 Write-Host "    Member, Agreement, Nominee"
 Write-Host "    AmcSchedule, AmcInvoice"
 Write-Host "    PbsScheme, PbsClaim (Zurich Payback)"
-Write-Host "    Salesperson, Resort, ResortMaintenance, CpSeasonDate, CpSeasonPoint"
+Write-Host "    Salesperson, Product, LvcCode, Resort, ResortMaintenance, CpSeasonDate, CpSeasonPoint, LvcSeasonPoint"
 Write-Host "    BookingEntitlement (LHC 03/15), CpBookingEntitlement (CP 02)"
 Write-Host ""
 Write-Host "  Will PRESERVE:"
@@ -295,7 +307,7 @@ Write-Host ""
 Write-Host ("[1/7] Clearing Informix data tables...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
-TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "CpSeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "CpSeasonDate", "Member" CASCADE;
+TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "LvcSeasonPoint", "CpSeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "Product", "LvcCode", "CpSeasonDate", "Member" CASCADE;
 "@
 
 # ── Step 2: Core member + agreement import ────────────────────────────────────
@@ -315,8 +327,15 @@ Invoke-Migration "prisma/migrate-rci-enrol.ts"     "migrate-rci-enrol.ts"
 # NOTE: post-go-live, resorts are maintained in MMS (Resorts Setup CRUD) --
 # re-importing resort_mast.txt clobbers any edits made through the app.
 Write-Host ""
-Write-Host ("[4/7] Importing salespersons and resorts...") -ForegroundColor Yellow
+Write-Host ("[4/7] Importing salespersons, products and resorts...") -ForegroundColor Yellow
 Invoke-Migration "prisma/migrate-salesperson.ts"   "migrate-salesperson.ts"
+# Product / operating-company master (coCode). No FK points at it -- Agreement,
+# AmcSchedule and Resort carry coCode as a plain string -- but it is the conceptual
+# parent, so it loads before the resorts.
+Invoke-Migration "prisma/migrate-products.ts"      "migrate-products.ts"
+# LVC exchange-programme master. lvc_cocode references Product.coCode (no hard FK,
+# validated on CRUD), so this runs after migrate-products.ts.
+Invoke-Migration "prisma/migrate-lvc-codes.ts"     "migrate-lvc-codes.ts"
 Invoke-Migration "prisma/migrate-resorts.ts"       "migrate-resorts.ts"
 Invoke-Migration "prisma/migrate-resort-info.ts"   "migrate-resort-info.ts"
 Invoke-Migration "prisma/migrate-resort-units.ts"  "migrate-resort-units.ts"
@@ -331,6 +350,9 @@ Invoke-Migration "prisma/migrate-maintenance.ts"   "migrate-maintenance.ts"
 # CP season points chart (points deducted per night by apartment type x season x day
 # of week). Needs Resort present for the FK. CP-only, like the season calendar below.
 Invoke-Migration "prisma/migrate-cp-season-points.ts" "migrate-cp-season-points.ts"
+# LVC season points chart -- the counterpart of the above: points charged to a CP member
+# booking a resort OTHER than their home (coCode 02) resort. Also needs Resort for the FK.
+Invoke-Migration "prisma/migrate-lvc-season-points.ts" "migrate-lvc-season-points.ts"
 # Public Holidays. Business-supplied (no Informix file) and NOT truncated above --
 # there is no FK to Resort. The seed upserts, so this only tops up missing rows and
 # leaves dates staff have already corrected alone.
@@ -379,6 +401,8 @@ SELECT
   (SELECT COUNT(*) FROM "PbsClaim")           AS pbs_claims,
   (SELECT COUNT(*) FROM "AmcInvoice")         AS amc_invoices,
   (SELECT COUNT(*) FROM "Salesperson")        AS salespersons,
+  (SELECT COUNT(*) FROM "Product")            AS products,
+  (SELECT COUNT(*) FROM "LvcCode")            AS lvc_codes,
   (SELECT COUNT(*) FROM "Resort")             AS resorts,
   (SELECT COUNT(*) FROM "ResortInfoLine")     AS resort_info_lines,
   (SELECT COUNT(*) FROM "ApartmentType")      AS apartment_types,
@@ -390,6 +414,7 @@ SELECT
   (SELECT COUNT(*) FROM "SchoolHoliday")      AS school_holidays,
   (SELECT COUNT(*) FROM "CpSeasonDate")       AS cp_season_dates,
   (SELECT COUNT(*) FROM "CpSeasonPoint")      AS cp_season_points,
+  (SELECT COUNT(*) FROM "LvcSeasonPoint")     AS lvc_season_points,
   (SELECT COUNT(*) FROM "BookingEntitlement")   AS booking_ent,
   (SELECT COUNT(*) FROM "CpBookingEntitlement") AS cp_booking_ent,
   (SELECT COUNT(*) FROM "AmcInvoiceCounter")  AS amc_inv_counters,

@@ -18,11 +18,24 @@
       AmcInvoiceCounter - Per-coCode AMC invoice running number from ctrl_billtab.txt
                           (migrate-amc-invoice-counter.ts). Upsert; resets lastInvNo to
                           the Informix value -- do NOT run after go-live.
+      Product           - Product / operating-company master (migrate-products.ts from
+                          ps_company.txt; first 9 of 17 cols). Truncates + reimports.
+                          Post-go-live products are maintained in MMS -- re-running
+                          clobbers any edits made in the app.
+      LvcCode           - LVC exchange-programme master (migrate-lvc-codes.ts from
+                          lvc_master.txt; first 7 of 14 cols). Truncates + reimports.
+                          Post-go-live LVC codes are maintained in MMS -- re-running
+                          clobbers any edits made in the app.
       Resort            - Resort master + resort info (migrate-resorts.ts from
                           resort_mast.txt + migrate-resort-info.ts from
                           ps_resort_info.txt). Truncates + reimports both.
                           Post-go-live resorts are maintained in MMS -- re-running
                           clobbers any edits made in the app.
+      LvcSeasonPoint    - LVC season points chart (migrate-lvc-season-points.ts from
+                          ps_lvcapt.txt; first 14 of 20 cols). Points charged to a CP
+                          member booking a resort other than their home (coCode 02)
+                          resort. Needs Resort present for the FK.
+                          Truncates + reimports -- clobbers CRUD edits.
 
 .PARAMETER DatabaseUrl
     PostgreSQL connection string. Defaults to $env:DATABASE_URL or .env file.
@@ -39,18 +52,21 @@
     .\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15 only)
     .\migrate-table.ps1 -Table CpBookingEntitlement        # CP point balances per year (CP 02 only; truncates + reimports)
     .\migrate-table.ps1 -Table AmcInvoiceCounter           # Per-coCode AMC invoice running number (ctrl_billtab.txt)
+    .\migrate-table.ps1 -Table Product                     # Product / company master (ps_company.txt; first 9 cols; truncates + reimports)
+    .\migrate-table.ps1 -Table LvcCode                     # LVC exchange codes (lvc_master.txt; first 7 cols; truncates + reimports)
     .\migrate-table.ps1 -Table Resort                      # Resort master + info + units + availability + blocks (truncates + reimports)
     .\migrate-table.ps1 -Table ResAvailMast                # Per-day availability grid only (res_avail_mast.txt; truncates + reimports)
     .\migrate-table.ps1 -Table AptBlock                    # Availability blocks only (apt_block.txt; truncates + reimports)
     .\migrate-table.ps1 -Table ResortMaintenance           # Maintenance register only (resmt.txt; truncates + reimports)
     .\migrate-table.ps1 -Table CpSeasonDate                # CP season calendar (ps_seasondate.txt; one row per day, G/S/D; truncates + reimports)
     .\migrate-table.ps1 -Table CpSeasonPoint               # CP season points chart (ps_seasonapt.txt; first 12 cols; truncates + reimports)
+    .\migrate-table.ps1 -Table LvcSeasonPoint              # LVC season points chart (ps_lvcapt.txt; first 14 of 20 cols; truncates + reimports)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Resort', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance', 'CpSeasonDate', 'CpSeasonPoint')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Product', 'LvcCode', 'Resort', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance', 'CpSeasonDate', 'CpSeasonPoint', 'LvcSeasonPoint')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -182,13 +198,30 @@ $TableConfig = @{
         RequiredFiles = @('ctrl_billtab.txt')
         Scripts = @('prisma/migrate-amc-invoice-counter.ts')
     }
+    Product = @{
+        # Product / operating-company master (ps_company.txt, first 9 of 17 cols).
+        # Standalone -- no FKs point at it; Agreement/AmcSchedule/Resort carry coCode
+        # as a plain string. Post-go-live products are maintained in MMS -- re-running
+        # truncates and clobbers any edits made through the Products Setup CRUD.
+        TruncateSql = @('TRUNCATE "Product";')
+        RequiredFiles = @('ps_company.txt')
+        Scripts = @('prisma/migrate-products.ts')
+    }
+    LvcCode = @{
+        # LVC exchange-programme master (lvc_master.txt, first 7 of 14 cols).
+        # Standalone -- nothing references it yet. Post-go-live LVC codes are
+        # maintained in MMS -- re-running truncates and clobbers CRUD edits.
+        TruncateSql = @('TRUNCATE "LvcCode";')
+        RequiredFiles = @('lvc_master.txt')
+        Scripts = @('prisma/migrate-lvc-codes.ts')
+    }
     Resort = @{
         # Master data. Post-go-live resorts are maintained in MMS -- re-running
         # truncates and clobbers any edits made through the Resorts Setup CRUD.
         # Leaf tables truncated explicitly (TRUNCATE CASCADE unreliable).
-        TruncateSql = @('TRUNCATE "CpSeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
-        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_mast.txt', 'res_avail_mast.txt', 'apt_block.txt', 'resmt.txt', 'ps_seasonapt.txt')
-        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-resort-units.ts', 'prisma/migrate-res-avail.ts', 'prisma/migrate-apt-block.ts', 'prisma/migrate-maintenance.ts', 'prisma/migrate-cp-season-points.ts')
+        TruncateSql = @('TRUNCATE "LvcSeasonPoint", "CpSeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
+        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_mast.txt', 'res_avail_mast.txt', 'apt_block.txt', 'resmt.txt', 'ps_seasonapt.txt', 'ps_lvcapt.txt')
+        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-resort-units.ts', 'prisma/migrate-res-avail.ts', 'prisma/migrate-apt-block.ts', 'prisma/migrate-maintenance.ts', 'prisma/migrate-cp-season-points.ts', 'prisma/migrate-lvc-season-points.ts')
     }
     ResortUnit = @{
         # Apartments/Units register (apt_mast.txt partial export: 5 of 15 cols).
@@ -236,6 +269,15 @@ $TableConfig = @{
         TruncateSql = @('TRUNCATE "CpSeasonPoint";')
         RequiredFiles = @('ps_seasonapt.txt')
         Scripts = @('prisma/migrate-cp-season-points.ts')
+    }
+    LvcSeasonPoint = @{
+        # LVC season points chart (ps_lvcapt.txt, first 14 of 20 cols) -- points charged
+        # to a CP member booking a resort OTHER than their home (coCode 02) resort.
+        # The counterpart of CpSeasonPoint. Needs Resort present for the FK.
+        # Post-go-live re-import clobbers CRUD edits.
+        TruncateSql = @('TRUNCATE "LvcSeasonPoint";')
+        RequiredFiles = @('ps_lvcapt.txt')
+        Scripts = @('prisma/migrate-lvc-season-points.ts')
     }
 }
 

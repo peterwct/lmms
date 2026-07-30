@@ -116,6 +116,40 @@ export interface State {
   name: string;
 }
 
+// Product / operating-company master (Informix ps_company). W=Week, P=Points.
+export type EntType = 'W' | 'P';
+
+export interface Product {
+  id: string;
+  coCode: string;
+  coName: string;
+  entType: EntType;
+  add1: string | null;
+  add2: string | null;
+  add3: string | null;
+  telNo: string | null;
+  faxNo: string | null;
+  contactPerson: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Leisure Vacation Club exchange-programme master (Informix lvc_master).
+// An LVC code names an exchange arrangement — LVC-CP (coCode 03/15 <-> 02, our own
+// members) or LVC-SGI / LVC-CLC (into a partner's MAR — Make Available Resorts).
+export interface LvcCode {
+  id: string;
+  lvcCode: string;
+  coCode: string | null;   // references Product.coCode (ps_company.psc_cocode)
+  lvcName: string;
+  status: string;          // 'A' | 'U'
+  incoming: number;        // running counters — imported, never shown, never editable
+  outgoing: number;
+  faxBatch: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Resort {
   id: string;
   resortCode: string;
@@ -380,6 +414,45 @@ export interface CpSeasonPointDeleteResult {
   year: number;
   deleted: number;
 }
+
+// LVC Season Points (Resorts Setup fn 12) — points charged to a CP member per night
+// when they book a resort OTHER than their home (coCode '02') resort. The counterpart
+// of CpSeasonPoint. The weekly total is derived, never stored.
+export interface LvcSeasonPoint {
+  id: string;
+  resortId: string;
+  resortCode: string;
+  coCode: string;        // the resort's own product
+  apartmentType: string;
+  lvcCoCode: string;     // the product whose members are charged — '02' (CP) throughout
+  year: number;
+  effectiveDate: string; // ISO string, UTC midnight
+  season: CpSeason;
+  ptsSun: number;
+  ptsMon: number;
+  ptsTue: number;
+  ptsWed: number;
+  ptsThu: number;
+  ptsFri: number;
+  ptsSat: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// One resort-year. `apartmentTypes` is the union of the resort's registered types
+// (Apartment Types Setup) and the types already stored here — partner resorts have
+// none registered, so scaffolding from fn 3 alone would render an empty grid.
+export interface LvcSeasonPointYear {
+  resortCode: string;
+  year: number;
+  resort: { resortCode: string; resortName: string; shortName: string | null; coCode: string };
+  lvcCoCode: string;
+  apartmentTypes: { apartmentType: string; description: string | null; registered: boolean }[];
+  data: LvcSeasonPoint[];
+}
+
+export type LvcSeasonPointSaveResult = CpSeasonPointSaveResult;
+export type LvcSeasonPointDeleteResult = CpSeasonPointDeleteResult;
 
 export interface AvailabilityChartCol {
   date: string;

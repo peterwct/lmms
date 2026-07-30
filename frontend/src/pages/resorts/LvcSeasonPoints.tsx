@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Trash2, Save } from 'lucide-react';
-import { cpSeasonPointsApi } from '../../api/resorts';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { lvcSeasonPointsApi, productsApi } from '../../api/resorts';
 import { useActiveResorts } from '../../hooks/useActiveResorts';
 import type { CpSeasonPointRowInput } from '../../api/resorts';
 import { apiError } from '../../api/client';
@@ -14,23 +14,16 @@ import { ResultDialog } from '../../components/ui/ResultDialog';
 import { ConfirmDeleteModal } from '../../components/ui/ConfirmDeleteModal';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
-import type { CpSeason, CpSeasonPoint } from '../../types';
+import type { CpSeason, LvcSeasonPoint } from '../../types';
 
 const SEASON_LABELS: Record<string, string> = { D: 'Diamond', G: 'Gold', S: 'Silver' };
 const SEASON_ORDER: CpSeason[] = ['S', 'G', 'D'];
 
-// Season points are a CP concept — the picker never offers LHC resorts, and the
-// server rejects them too. See the per-product calendar rule in CLAUDE.md.
+// A home resort is coCode '02' (CP-PBR). LVC points price a booking AWAY from home,
+// so the picker offers everything BUT CP, and the server rejects a CP resort too.
 const CP_CO_CODE = '02';
 
-// No company table exists in the DB; the legacy screen showed this alongside the code
-const CO_NAMES: Record<string, string> = {
-  '02': 'CONNECTIONPOINTS SYSTEM',
-  '03': 'LEISURE HOLIDAYS BHD',
-  '15': 'LEISURE HOLIDAYS BHD',
-};
-
-// pssa_norpts0..6 — the legacy screen labels these "Sunday (0)" ... "Saturday (6)"
+// The 7 point columns — the legacy screen labels these "Sunday (0)" ... "Saturday (6)"
 const DAYS = [
   { key: 'ptsSun', label: 'Sun', idx: 0 },
   { key: 'ptsMon', label: 'Mon', idx: 1 },
@@ -60,7 +53,7 @@ const rowKey = (apartmentType: string, season: string, effectiveDate: string) =>
 const blankPts = (): Record<DayKey, string> =>
   Object.fromEntries(DAYS.map(d => [d.key, ''])) as Record<DayKey, string>;
 
-const storedPts = (r: CpSeasonPoint): Record<DayKey, string> =>
+const storedPts = (r: LvcSeasonPoint): Record<DayKey, string> =>
   Object.fromEntries(DAYS.map(d => [d.key, String(r[d.key])])) as Record<DayKey, string>;
 
 // A row counts as filled once any day has a value; blank rows are never submitted
@@ -68,7 +61,7 @@ const isFilled = (d: Draft) => DAYS.some(day => d.pts[day.key].trim() !== '');
 const rowTotal = (d: Draft) =>
   DAYS.reduce((sum, day) => sum + (parseInt(d.pts[day.key], 10) || 0), 0);
 
-export function CpSeasonPoints() {
+export function LvcSeasonPoints() {
   const { canCreate, canEdit, canDelete } = useAuth();
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -82,6 +75,7 @@ export function CpSeasonPoints() {
   const [yearInput, setYearInput] = useState(String(year));
   const [edits, setEdits] = useState<Record<string, Draft>>({});
   const [bulkDate, setBulkDate] = useState('');
+  const [chargedTo, setChargedTo] = useState('');
   const [deleteYearOpen, setDeleteYearOpen] = useState(false);
   const [deleteRow, setDeleteRow] = useState<Draft | null>(null);
   const [delErr, setDelErr] = useState('');
@@ -93,31 +87,40 @@ export function CpSeasonPoints() {
   const goTo = (rc: string, y: number) =>
     setSearchParams({ resort: rc, year: String(y) }, { replace: true });
 
-  // CP resorts only — season points don't apply to LHC. Active-only comes from the hook,
-  // which keeps retired CP resorts (CP-DIR, V-DIR, V-PBR) out of the picker.
+  // Exchange resorts only — a CP-02 resort is the member's home and is priced by fn 10.
+  // Active-only comes from the hook; an inactive resort's data is still reachable by URL.
   const { resorts } = useActiveResorts();
-  const cpResorts = useMemo(
-    () => resorts.filter(r => r.coCode === CP_CO_CODE),
+  const lvcResorts = useMemo(
+    () => resorts.filter(r => r.coCode !== CP_CO_CODE),
     [resorts],
   );
 
-  // Default to the first CP resort once the list arrives
+  // Default to the first exchange resort once the list arrives
   useEffect(() => {
-    if (!resortCode && cpResorts.length) goTo(cpResorts[0].resortCode, year);
-  }, [resortCode, cpResorts, year]);
+    if (!resortCode && lvcResorts.length) goTo(lvcResorts[0].resortCode, year);
+  }, [resortCode, lvcResorts, year]);
 
   const { data: yearData, isLoading } = useQuery({
-    queryKey: ['cp-season-points', resortCode, year],
-    queryFn: () => cpSeasonPointsApi.year({ resortCode, year }).then(r => r.data),
+    queryKey: ['lvc-season-points', resortCode, year],
+    queryFn: () => lvcSeasonPointsApi.year({ resortCode, year }).then(r => r.data),
     enabled: !!resortCode,
   });
 
-  const resort = cpResorts.find(r => r.resortCode === resortCode);
-  const stored = yearData?.data ?? [];
+  // Products name both the resort's own company and the charged-to company; there is
+  // no Prisma relation, so the name is resolved client-side (same as the LVC Code list).
+  const { data: products } = useQuery({
+    queryKey: ['products', ''],
+    queryFn: () => productsApi.list().then(r => r.data.data),
+  });
+  const productName = (coCode: string | undefined) =>
+    products?.find(p => p.coCode === coCode)?.coName ?? '—';
 
-  // Scaffold every apartment type x season combo, then add any stored row that
-  // falls outside it — a year may hold a second effective-dated revision of the
-  // same combo (the migrated 2015/SLEEP4/G does), which must stay visible.
+  const resort = lvcResorts.find(r => r.resortCode === resortCode);
+  const stored = useMemo(() => yearData?.data ?? [], [yearData]);
+
+  // Scaffold every apartment type x season combo, then add any stored row that falls
+  // outside it — a year may hold a second effective-dated revision of the same combo,
+  // which must stay visible.
   const drafts = useMemo<Draft[]>(() => {
     const types = yearData?.apartmentTypes ?? [];
     const byKey = new Map(stored.map(r => [rowKey(r.apartmentType, r.season, iso(r.effectiveDate)), r]));
@@ -145,7 +148,7 @@ export function CpSeasonPoints() {
       }
     }
 
-    // Extra effective-dated revisions, appended after their scaffold slot's type
+    // Extra effective-dated revisions, appended after the scaffold
     for (const [k, r] of byKey) {
       if (used.has(k)) continue;
       out.push({
@@ -158,8 +161,16 @@ export function CpSeasonPoints() {
     return out;
   }, [yearData, stored]);
 
+  // Types the server will accept without a new Apartment Types Setup entry
+  const registered = useMemo(
+    () => new Set((yearData?.apartmentTypes ?? []).filter(t => t.registered).map(t => t.apartmentType)),
+    [yearData],
+  );
+
   // Reset pending edits whenever the displayed resort-year changes
   useEffect(() => { setEdits({}); setSaveErr(''); setBulkDate(''); }, [resortCode, year]);
+  // Charged-to follows the loaded year until the user overrides it
+  useEffect(() => { setChargedTo(yearData?.lvcCoCode ?? CP_CO_CODE); }, [yearData]);
 
   const rows = useMemo(() => drafts.map(d => edits[d.key] ?? d), [drafts, edits]);
 
@@ -185,6 +196,7 @@ export function CpSeasonPoints() {
   const filled = rows.filter(isFilled);
   const missingDate = filled.filter(r => !r.effectiveDate);
   const isNewYear = !isLoading && stored.length === 0;
+  const chargedToDirty = !!yearData && chargedTo !== yearData.lvcCoCode;
 
   const saveMut = useMutation({
     mutationFn: () => {
@@ -196,36 +208,36 @@ export function CpSeasonPoints() {
           DAYS.map(d => [d.key, parseInt(r.pts[d.key], 10) || 0]),
         ) as Record<DayKey, number>),
       }));
-      return cpSeasonPointsApi.saveYear({ resortCode, year, rows: payload });
+      return lvcSeasonPointsApi.saveYear({ resortCode, year, lvcCoCode: chargedTo || CP_CO_CODE, rows: payload });
     },
     onSuccess: (r) => {
       const { rows: n, created, updated } = r.data.data;
-      qc.invalidateQueries({ queryKey: ['cp-season-points'] });
+      qc.invalidateQueries({ queryKey: ['lvc-season-points'] });
       setEdits({});
-      setResult(`Season points saved — ${resortCode} ${year}, ${n} row(s) (${created} new, ${updated} updated).`);
+      setResult(`LVC season points saved — ${resortCode} ${year}, ${n} row(s) (${created} new, ${updated} updated).`);
     },
     onError: (err) => setSaveErr(apiError(err)),
   });
 
   const deleteYearMut = useMutation({
-    mutationFn: () => cpSeasonPointsApi.deleteYear({ resortCode, year }),
+    mutationFn: () => lvcSeasonPointsApi.deleteYear({ resortCode, year }),
     onSuccess: (r) => {
       const { deleted } = r.data.data;
-      qc.invalidateQueries({ queryKey: ['cp-season-points'] });
+      qc.invalidateQueries({ queryKey: ['lvc-season-points'] });
       setEdits({});
       setDeleteYearOpen(false);
-      setResult(`Season points deleted — ${resortCode} ${year}, ${deleted} row(s) removed. CP booking has no points for this year until it is set up again.`);
+      setResult(`LVC season points deleted — ${resortCode} ${year}, ${deleted} row(s) removed. A CP member booking this resort has no points to deduct until it is set up again.`);
     },
     onError: (err) => setDelErr(apiError(err)),
   });
 
   const deleteRowMut = useMutation({
-    mutationFn: (row: Draft) => cpSeasonPointsApi.remove(row.id!),
+    mutationFn: (row: Draft) => lvcSeasonPointsApi.remove(row.id!),
     onSuccess: (_r, row) => {
-      qc.invalidateQueries({ queryKey: ['cp-season-points'] });
+      qc.invalidateQueries({ queryKey: ['lvc-season-points'] });
       setEdits({});
       setDeleteRow(null);
-      setResult(`Season points row deleted — ${resortCode} ${row.apartmentType} ${SEASON_LABELS[row.season]} ${year}, effective ${row.effectiveDate}.`);
+      setResult(`LVC season points row deleted — ${resortCode} ${row.apartmentType} ${SEASON_LABELS[row.season]} ${year}, effective ${row.effectiveDate}.`);
     },
     onError: (err) => setDelErr(apiError(err)),
   });
@@ -236,32 +248,35 @@ export function CpSeasonPoints() {
     if (y >= 1900 && y <= 2999) goTo(resortCode, y);
   };
 
+  const resortCoCode = yearData?.resort.coCode ?? resort?.coCode;
+
   return (
     <div className="space-y-4">
       <div>
         <Link to="/resorts" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600">
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
-        <h1 className="mt-1 text-xl font-semibold text-gray-900">CP Points Deduction for Home Resorts - Maintenance and Setup</h1>
+        <h1 className="mt-1 text-xl font-semibold text-gray-900">CP Points Deduction for Non-Home Resorts - Maintenance and Setup</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Points deducted from a CP member per night, by apartment type, season and day of week —
-          one resort-year at a time. The season of each date is set in CP&apos;s Seasons Maintenance and Setup.
+          Points deducted from a CP member per night when they book a resort other than their
+          home resort — by apartment type, season and day of week, one resort-year at a time.
+          The season of each date is set in CP&apos;s Seasons Maintenance and Setup.
         </p>
       </div>
 
       <Card>
         <CardHeader className="flex flex-wrap items-center justify-between gap-3">
           <form onSubmit={applyYear} className="flex flex-wrap items-center gap-2">
-            <div className="w-56">
+            <div className="w-72">
               <Select
                 value={resortCode}
                 onChange={e => goTo(e.target.value, year)}
                 title="Resort"
               >
-                {cpResorts.length === 0 && <option value="">No CP resorts</option>}
-                {cpResorts.map(r => (
+                {lvcResorts.length === 0 && <option value="">No exchange resorts</option>}
+                {lvcResorts.map(r => (
                   <option key={r.resortCode} value={r.resortCode}>
-                    {r.resortCode} — {r.shortName ?? r.resortName}
+                    {r.resortCode} — {r.shortName ?? r.resortName} ({r.coCode})
                   </option>
                 ))}
               </Select>
@@ -298,7 +313,7 @@ export function CpSeasonPoints() {
 
         {isLoading || !resortCode ? <PageSpinner /> : (
           <div className="p-4">
-            {/* Header block mirroring the legacy ps_seasonapt screen */}
+            {/* Header block mirroring the legacy ps_lvcapt screen */}
             <div className="mb-3 grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
               <div className="flex gap-2">
                 <span className="w-32 text-gray-500">Resort Code</span>
@@ -309,25 +324,48 @@ export function CpSeasonPoints() {
                 <span className="text-gray-800">{resort?.resortName ?? yearData?.resort.resortName ?? '—'}</span>
               </div>
               <div className="flex gap-2">
-                <span className="w-32 text-gray-500">Company Code</span>
-                <span className="font-mono text-gray-800">[{yearData?.resort.coCode ?? CP_CO_CODE}]</span>
+                <span className="w-32 text-gray-500">Resort Product</span>
+                <span className="text-gray-800">
+                  <span className="font-mono">[{resortCoCode ?? '—'}]</span>{' '}
+                  <span className="text-gray-600">{productName(resortCoCode)}</span>
+                </span>
               </div>
-              <div className="flex gap-2">
-                <span className="w-32 text-gray-500">Company Name</span>
-                <span className="text-gray-800">{CO_NAMES[yearData?.resort.coCode ?? CP_CO_CODE] ?? '—'}</span>
+              <div className="flex items-center gap-2">
+                <span className="w-32 shrink-0 text-gray-500" title="The product whose members these points are charged to">
+                  Charged To
+                </span>
+                {editable ? (
+                  <div className="w-64">
+                    <Select
+                      value={chargedTo}
+                      onChange={e => setChargedTo(e.target.value)}
+                      title="Product whose members are charged these points"
+                    >
+                      {(products ?? []).map(p => (
+                        <option key={p.coCode} value={p.coCode}>{p.coCode} — {p.coName}</option>
+                      ))}
+                    </Select>
+                  </div>
+                ) : (
+                  <span className="text-gray-800">
+                    <span className="font-mono">[{chargedTo}]</span>{' '}
+                    <span className="text-gray-600">{productName(chargedTo)}</span>
+                  </span>
+                )}
               </div>
             </div>
 
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-mono text-sm font-semibold text-gray-800">Normal Points — {year}</h2>
+              <h2 className="font-mono text-sm font-semibold text-gray-800">LVC Points — {year}</h2>
               {isNewYear ? (
                 <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                  No points set up for {resortCode} {year} — fill in the rows you need and save.
+                  No LVC points set up for {resortCode} {year} — fill in the rows you need and save.
                 </span>
               ) : (
                 <span className="text-xs text-gray-500">
                   {stored.length} row(s) stored
                   {dirtyCount > 0 && <span className="ml-2 text-amber-700 font-medium">· {dirtyCount} unsaved change(s)</span>}
+                  {chargedToDirty && <span className="ml-2 text-amber-700 font-medium">· charged-to changed</span>}
                 </span>
               )}
             </div>
@@ -347,78 +385,92 @@ export function CpSeasonPoints() {
               </div>
             )}
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full font-mono text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 text-gray-500">
-                    <th className="px-2 py-1 text-left font-normal">Apt Type</th>
-                    <th className="px-2 py-1 text-left font-normal">Season</th>
-                    <th className="px-2 py-1 text-left font-normal">Effective Date</th>
-                    {DAYS.map(d => (
-                      <th key={d.key} className="px-1 py-1 text-center font-normal">{d.label} ({d.idx})</th>
-                    ))}
-                    <th className="px-2 py-1 text-right font-normal">Total/Wk</th>
-                    <th className="px-2 py-1" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => {
-                    const total = rowTotal(row);
-                    const dirty = edits[row.key] !== undefined;
-                    const untracked = row.id === null;
-                    return (
-                      <tr key={row.key} className="border-b border-gray-100">
-                        <td className={`px-2 py-0.5 whitespace-nowrap ${untracked ? 'text-gray-400' : 'text-gray-800'}`}>
-                          {row.apartmentType}
-                        </td>
-                        <td className={`px-2 py-0.5 whitespace-nowrap ${untracked ? 'text-gray-400' : 'text-gray-800'}`}>
-                          {row.season} <span className="text-xs text-gray-400">{SEASON_LABELS[row.season]}</span>
-                        </td>
-                        <td className="px-2 py-0.5">
-                          <input
-                            type="date"
-                            value={row.effectiveDate}
-                            disabled={!editable}
-                            onChange={e => patch(row, { effectiveDate: e.target.value })}
-                            className={`w-36 rounded border border-gray-200 px-1 py-0.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-500 ${
-                              dirty ? 'text-amber-700' : 'text-gray-800'}`}
-                          />
-                        </td>
-                        {DAYS.map(d => (
-                          <td key={d.key} className="px-1 py-0.5">
+            {rows.length === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-500">
+                No apartment types for {resortCode}. Add one in Apartment Sleep Types Maintenance and Setup before setting up LVC points.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full font-mono text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-gray-500">
+                      <th className="px-2 py-1 text-left font-normal">Apt Type</th>
+                      <th className="px-2 py-1 text-left font-normal">Season</th>
+                      <th className="px-2 py-1 text-left font-normal">Effective Date</th>
+                      {DAYS.map(d => (
+                        <th key={d.key} className="px-1 py-1 text-center font-normal">{d.label} ({d.idx})</th>
+                      ))}
+                      <th className="px-2 py-1 text-right font-normal">Total/Wk</th>
+                      <th className="px-2 py-1" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => {
+                      const total = rowTotal(row);
+                      const dirty = edits[row.key] !== undefined;
+                      const untracked = row.id === null;
+                      return (
+                        <tr key={row.key} className="border-b border-gray-100">
+                          <td className={`px-2 py-0.5 whitespace-nowrap ${untracked ? 'text-gray-400' : 'text-gray-800'}`}>
+                            {row.apartmentType}
+                            {!registered.has(row.apartmentType) && (
+                              <span
+                                className="ml-1 text-[10px] font-sans text-gray-400"
+                                title="Not in Apartment Sleep Types Maintenance and Setup — kept editable because points already exist for it"
+                              >
+                                (legacy)
+                              </span>
+                            )}
+                          </td>
+                          <td className={`px-2 py-0.5 whitespace-nowrap ${untracked ? 'text-gray-400' : 'text-gray-800'}`}>
+                            {row.season} <span className="text-xs text-gray-400">{SEASON_LABELS[row.season]}</span>
+                          </td>
+                          <td className="px-2 py-0.5">
                             <input
-                              type="text"
-                              inputMode="numeric"
-                              value={row.pts[d.key]}
+                              type="date"
+                              value={row.effectiveDate}
                               disabled={!editable}
-                              onChange={e => setPts(row, d.key, e.target.value)}
-                              title={`${d.label} — pssa_norpts${d.idx}`}
-                              className={`w-12 rounded border border-gray-200 px-1 py-0.5 text-right font-mono text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-500 ${
-                                dirty ? 'text-amber-700 font-semibold' : 'text-gray-800'}`}
+                              onChange={e => patch(row, { effectiveDate: e.target.value })}
+                              className={`w-36 rounded border border-gray-200 px-1 py-0.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-500 ${
+                                dirty ? 'text-amber-700' : 'text-gray-800'}`}
                             />
                           </td>
-                        ))}
-                        <td className={`px-2 py-0.5 text-right ${total ? 'text-gray-800' : 'text-gray-300'}`}>
-                          {total || '—'}
-                        </td>
-                        <td className="px-2 py-0.5 text-right">
-                          {canDelete('RESORTS_SETUP') && row.id && (
-                            <button
-                              type="button"
-                              onClick={() => { setDelErr(''); setDeleteRow(row); }}
-                              title="Delete this row"
-                              className="text-gray-400 hover:text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          {DAYS.map(d => (
+                            <td key={d.key} className="px-1 py-0.5">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={row.pts[d.key]}
+                                disabled={!editable}
+                                onChange={e => setPts(row, d.key, e.target.value)}
+                                title={`${d.label} — day ${d.idx}`}
+                                className={`w-12 rounded border border-gray-200 px-1 py-0.5 text-right font-mono text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-500 ${
+                                  dirty ? 'text-amber-700 font-semibold' : 'text-gray-800'}`}
+                              />
+                            </td>
+                          ))}
+                          <td className={`px-2 py-0.5 text-right ${total ? 'text-gray-800' : 'text-gray-300'}`}>
+                            {total || '—'}
+                          </td>
+                          <td className="px-2 py-0.5 text-right">
+                            {canDelete('RESORTS_SETUP') && row.id && (
+                              <button
+                                type="button"
+                                onClick={() => { setDelErr(''); setDeleteRow(row); }}
+                                title="Delete this row"
+                                className="text-gray-400 hover:text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {missingDate.length > 0 && (
               <p className="mt-3 text-sm text-amber-700">
@@ -427,17 +479,22 @@ export function CpSeasonPoints() {
             )}
             {saveErr && <p className="mt-3 text-sm text-red-600">{saveErr}</p>}
 
-            {editable && (
+            {editable && rows.length > 0 && (
               <div className="mt-4 flex items-center gap-3">
                 <Button
                   onClick={() => { setSaveErr(''); saveMut.mutate(); }}
                   loading={saveMut.isPending}
-                  disabled={dirtyCount === 0 || filled.length === 0 || missingDate.length > 0}
+                  disabled={(dirtyCount === 0 && !chargedToDirty) || filled.length === 0 || missingDate.length > 0}
                 >
                   <Save className="h-4 w-4" /> Save year
                 </Button>
-                {dirtyCount > 0 && (
-                  <Button variant="secondary" onClick={() => setEdits({})}>Cancel changes</Button>
+                {(dirtyCount > 0 || chargedToDirty) && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => { setEdits({}); setChargedTo(yearData?.lvcCoCode ?? CP_CO_CODE); }}
+                  >
+                    Cancel changes
+                  </Button>
                 )}
                 <span className="text-xs text-gray-400">
                   Rows left blank are not saved. Total per week is calculated, not stored.
@@ -452,8 +509,8 @@ export function CpSeasonPoints() {
 
       <ConfirmDeleteModal
         open={deleteYearOpen}
-        title="Delete this year's season points?"
-        description="This removes every points row for this resort and year. CP booking has no points to deduct without them. This cannot be undone."
+        title="Delete this year's LVC season points?"
+        description="This removes every points row for this resort and year. A CP member booking this resort has no points to deduct without them. This cannot be undone."
         rows={[
           { label: 'Resort', value: <span className="font-medium">{resortCode}</span> },
           { label: 'Year', value: <span className="font-mono">{year}</span> },

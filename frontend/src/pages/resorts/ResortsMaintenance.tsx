@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Plus, Pencil, Trash2, Search, Eye, CalendarRange } from 'lucide-react';
-import { resortMaintenanceApi, resortUnitsApi, resortsApi } from '../../api/resorts';
+import { resortMaintenanceApi, resortUnitsApi } from '../../api/resorts';
+import { useActiveResorts } from '../../hooks/useActiveResorts';
 import { apiError } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -133,7 +134,7 @@ function MaintenanceFormModal({ open, record, resorts, onClose, onSaved }: Modal
             </Select>
             {form.resortCode && unitOptions.length === 0 && (
               <p className="text-xs text-amber-600 -mt-2">
-                No units set up for this resort — add them in Apartment's Unit Setup first.
+                No units set up for this resort — add them in Apartment&apos;s Unit No. Maintenance and Setup first.
               </p>
             )}
           </>
@@ -288,10 +289,8 @@ export function ResortsMaintenance() {
     }).then(r => r.data),
   });
 
-  const { data: resorts } = useQuery({
-    queryKey: ['resorts', ''],
-    queryFn: () => resortsApi.list().then(r => r.data.data),
-  });
+  // Active resorts only (see useActiveResorts)
+  const { resorts } = useActiveResorts();
 
   const { data: years } = useQuery({
     queryKey: ['resort-maintenance-years'],
@@ -326,7 +325,7 @@ export function ResortsMaintenance() {
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
         <div className="mt-1 flex items-center gap-8">
-          <h1 className="text-xl font-semibold text-gray-900">Resorts Maintenance</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Resorts Unit Under Maintenance</h1>
           <Button size="sm" onClick={() => setChartOpen(true)}>
             <CalendarRange className="h-4 w-4" /> Resorts Availability
           </Button>

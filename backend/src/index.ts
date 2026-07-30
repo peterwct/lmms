@@ -26,6 +26,8 @@ import reportsRoutes     from './routes/reports';
 import pbsRoutes         from './routes/pbs';
 import cancellationReasonRoutes from './routes/cancellationReasons';
 import suReasonRoutes    from './routes/suReasons';
+import productRoutes     from './routes/products';
+import lvcCodeRoutes     from './routes/lvcCodes';
 import resortRoutes      from './routes/resorts';
 import apartmentTypeRoutes from './routes/apartmentTypes';
 import resortUnitRoutes  from './routes/resortUnits';
@@ -35,6 +37,7 @@ import publicHolidayRoutes from './routes/publicHolidays';
 import schoolHolidayRoutes from './routes/schoolHolidays';
 import cpSeasonRoutes from './routes/cpSeasons';
 import cpSeasonPointRoutes from './routes/cpSeasonPoints';
+import lvcSeasonPointRoutes from './routes/lvcSeasonPoints';
 
 // Member-scoped sub-routes
 import { authenticate, requirePasswordChanged } from './middleware/auth';
@@ -67,6 +70,8 @@ app.use('/api/reports',           reportsRoutes);
 app.use('/api/pbs',              pbsRoutes);
 app.use('/api/cancellation-reasons', cancellationReasonRoutes);
 app.use('/api/su-reasons',        suReasonRoutes);
+app.use('/api/products',          productRoutes);
+app.use('/api/lvc-codes',         lvcCodeRoutes);
 app.use('/api/resorts',           resortRoutes);
 app.use('/api/apartment-types',   apartmentTypeRoutes);
 app.use('/api/resort-units',      resortUnitRoutes);
@@ -76,6 +81,7 @@ app.use('/api/public-holidays',   publicHolidayRoutes);
 app.use('/api/school-holidays',   schoolHolidayRoutes);
 app.use('/api/cp-seasons',        cpSeasonRoutes);
 app.use('/api/cp-season-points',  cpSeasonPointRoutes);
+app.use('/api/lvc-season-points', lvcSeasonPointRoutes);
 
 // ─── Member-scoped agreement + AMC routes ─────────────────────────────────────
 app.get(

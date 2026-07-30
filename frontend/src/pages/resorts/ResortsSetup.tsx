@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
-  Hotel, BedDouble, DoorOpen, CalendarRange, Wrench, CalendarDays, GraduationCap, Sun, Coins,
-  ChevronRight,
+  Package, Hotel, BedDouble, DoorOpen, CalendarRange, Wrench, CalendarDays, GraduationCap, Sun, Coins,
+  ArrowLeftRight, CircleDollarSign, ChevronRight,
 } from 'lucide-react';
 
 interface ResortsMenuItem {
@@ -12,16 +12,25 @@ interface ResortsMenuItem {
   enabled?: boolean;
 }
 
+// Menu numbering is display-only — the routes below are stable and are what everything
+// else keys off. Functions 11 and 12 were swapped on 2026-07-30 so the two CP points
+// charts (home / non-home) sit next to each other at 10-11.
 const SETUP_ITEMS: ResortsMenuItem[] = [
-  { num: 1, label: 'Resorts Setup',                          to: '/resorts/setup',        icon: <Hotel className="h-4 w-4" />, enabled: true },
-  { num: 2, label: 'Apartment Types Setup',                  to: '/resorts/apartment-types', icon: <BedDouble className="h-4 w-4" />, enabled: true },
-  { num: 3, label: "Apartment's Unit Setup",                 to: '/resorts/units',        icon: <DoorOpen className="h-4 w-4" />, enabled: true },
-  { num: 4, label: 'Units Availability Setup by Dates',      to: '/resorts/availability', icon: <CalendarRange className="h-4 w-4" />, enabled: true },
-  { num: 5, label: 'Resorts Maintenance',                    to: '/resorts/maintenance',  icon: <Wrench className="h-4 w-4" />, enabled: true },
-  { num: 6, label: 'Public Holidays Setup',                  to: '/resorts/holidays',     icon: <CalendarDays className="h-4 w-4" />, enabled: true },
-  { num: 7, label: 'School Holidays Setup',                  to: '/resorts/school-holidays', icon: <GraduationCap className="h-4 w-4" />, enabled: true },
-  { num: 8, label: "CP's Seasons Setup",                     to: '/resorts/seasons',      icon: <Sun className="h-4 w-4" />, enabled: true },
-  { num: 9, label: 'CP Resorts Season Points Setup',         to: '/resorts/season-points', icon: <Coins className="h-4 w-4" />, enabled: true },
+  { num: 1, label: 'Products Code Maintenance and Setup',    to: '/resorts/products',     icon: <Package className="h-4 w-4" />, enabled: true },
+  { num: 2, label: 'Resorts Master Maintenance and Setup',   to: '/resorts/setup',        icon: <Hotel className="h-4 w-4" />, enabled: true },
+  { num: 3, label: 'Apartment Sleep Types Maintenance and Setup', to: '/resorts/apartment-types', icon: <BedDouble className="h-4 w-4" />, enabled: true },
+  { num: 4, label: "Apartment's Unit No. Maintenance and Setup",  to: '/resorts/units',   icon: <DoorOpen className="h-4 w-4" />, enabled: true },
+  { num: 5, label: 'Units Availability Maintenance and Setup by Dates', to: '/resorts/availability', icon: <CalendarRange className="h-4 w-4" />, enabled: true },
+  { num: 6, label: 'Resorts Unit Under Maintenance',         to: '/resorts/maintenance',  icon: <Wrench className="h-4 w-4" />, enabled: true },
+  { num: 7, label: 'Public Holidays Maintenance and Setup',  to: '/resorts/holidays',     icon: <CalendarDays className="h-4 w-4" />, enabled: true },
+  { num: 8, label: 'School Holidays Maintenance and Setup',  to: '/resorts/school-holidays', icon: <GraduationCap className="h-4 w-4" />, enabled: true },
+  { num: 9, label: "CP's Seasons Maintenance and Setup",     to: '/resorts/seasons',      icon: <Sun className="h-4 w-4" />, enabled: true },
+  // Home = a coCode '02' resort (CP-PBR today). CpSeasonPoint.
+  { num: 10, label: 'CP Points Deduction for Home Resorts - Maintenance and Setup',     to: '/resorts/season-points', icon: <Coins className="h-4 w-4" />, enabled: true },
+  // Non-home = every other resort: our own LHC resorts and the partner/exchange V-* codes,
+  // reached through an LVC exchange programme. LvcSeasonPoint.
+  { num: 11, label: 'CP Points Deduction for Non-Home Resorts - Maintenance and Setup', to: '/resorts/lvc-season-points', icon: <CircleDollarSign className="h-4 w-4" />, enabled: true },
+  { num: 12, label: 'Leisure Vacation Club (LVC) Code Maintenance and Setup', to: '/resorts/lvc-codes', icon: <ArrowLeftRight className="h-4 w-4" />, enabled: true },
 ];
 
 function MenuSection({ title, items }: { title: string; items: ResortsMenuItem[] }) {

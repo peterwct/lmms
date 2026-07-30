@@ -404,6 +404,41 @@ model Salesperson {
   updatedAt DateTime @db.Timestamptz(3)
 }
 
+// Product / operating-company master (Informix ps_company).
+// coCode '02'=CP, '03'/'15'=LHC, 20/24/25/26=external exchange partners.
+// Deliberately has NO relations — Agreement/AmcSchedule/Resort keep plain coCode
+// strings; deleteProduct guards referential integrity in the controller instead.
+model Product {
+  id            String   @id
+  coCode        String   @unique
+  coName        String
+  entType       String // W=Week, P=Points
+  add1          String?
+  add2          String?
+  add3          String?
+  telNo         String?
+  faxNo         String?
+  contactPerson String?
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @db.Timestamptz(3)
+}
+
+// Leisure Vacation Club exchange-programme master (Informix lvc_master).
+// An LVC code names an exchange arrangement between products (LVC-CP: 03/15 <-> 02)
+// or with an external partner (LVC-SGI, LVC-CLC, ...).
+model LvcCode {
+  id        String   @id
+  lvcCode   String   @unique // lvc_code, e.g. 'LVC-CP'
+  coCode    String? // lvc_cocode -> Product.coCode (ps_company.psc_cocode); validated, no hard FK
+  lvcName   String
+  status    String   @default("A") // A=Active, U=Inactive
+  incoming  Int      @default(0) // running counters owned by the exchange process --
+  outgoing  Int      @default(0) // imported so no data is lost, but never written by
+  faxBatch  Int      @default(0) // the CRUD and not shown on screen
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @db.Timestamptz(3)
+}
+
 model Resort {
   id               String    @id
   resortCode       String    @unique
@@ -441,6 +476,7 @@ model Resort {
   resAvail         ResAvailMast[]
   maintenance      ResortMaintenance[]
   seasonPoints     CpSeasonPoint[]
+  lvcSeasonPoints  LvcSeasonPoint[]
 }
 
 model ResortInfoLine {
@@ -614,6 +650,41 @@ model CpSeasonPoint {
   // legitimately hold more than one effective-dated revision of the same combo
   // (2015/SLEEP4/G has two) — dropping it would lose rows.
   @@unique([resortCode, apartmentType, year, effectiveDate, season], map: "CpSeasonPoint_natkey_key")
+  @@index([resortCode, year])
+}
+
+// LVC Season Points — "CP Points Deduction for Non-Home Resorts" (Resorts Setup fn 11).
+// From Informix ps_lvcapt.txt.
+// The points deducted per night when a CP member books a resort OTHER than their
+// home resort. A home resort is coCode='02' (CP-PBR); everything else — our own LHC
+// resorts and the partner/exchange V-* resorts — is an LVC booking priced from here.
+// This is the counterpart of CpSeasonPoint, and the reason pssa_lvcpts0..6 are zero
+// in ps_seasonapt: the LVC points live in their own table.
+// Only the first 14 of 20 source columns are imported (audit/lock trailer dropped).
+model LvcSeasonPoint {
+  id            String   @id
+  resortId      String
+  resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
+  resortCode    String   // denormalized natural key — the LVC/exchange resort being booked
+  coCode        String   // the resort's OWN product; constant per resortCode (verified)
+  apartmentType String   // validated against ApartmentType (no hard FK; types are renamable)
+  lvcCoCode     String   @default("02") // the product whose members are charged — CP on every imported row
+  year          Int      // the year these points apply to
+  effectiveDate DateTime // UTC midnight (business date); part of the unique key
+  season        String   // G=Gold, S=Silver, D=Diamond
+  ptsSun        Int      // lvcapt col 7 — 0 = Sunday
+  ptsMon        Int
+  ptsTue        Int
+  ptsWed        Int
+  ptsThu        Int
+  ptsFri        Int
+  ptsSat        Int      // lvcapt col 13 — 6 = Saturday
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @db.Timestamptz(3)
+  // Same shape as CpSeasonPoint_natkey_key: unique across all 4,513 source rows, while
+  // dropping effectiveDate would collide on 16 of them. map: is required — the generated
+  // name would exceed PostgreSQL's 63-char identifier limit.
+  @@unique([resortCode, apartmentType, year, effectiveDate, season], map: "LvcSeasonPoint_natkey_key")
   @@index([resortCode, year])
 }
 

@@ -1,5 +1,20 @@
 import { api } from './client';
-import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, CpSeasonPointDeleteResult, CpSeasonPointSaveResult, CpSeasonPointYear, PublicHoliday, PublicHolidayCloneResult, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, SchoolHoliday, SchoolHolidayCloneResult } from '../types';
+import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, CpSeasonPointDeleteResult, CpSeasonPointSaveResult, CpSeasonPointYear, LvcCode, LvcSeasonPointDeleteResult, LvcSeasonPointSaveResult, LvcSeasonPointYear, Product, PublicHoliday, PublicHolidayCloneResult, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, SchoolHoliday, SchoolHolidayCloneResult } from '../types';
+
+export const productsApi = {
+  list:   (q?: string) => api.get<{ data: Product[] }>('/products', { params: q ? { q } : undefined }),
+  create: (data: Record<string, unknown>) => api.post<{ data: Product }>('/products', data),
+  update: (id: string, data: Record<string, unknown>) => api.put<{ data: Product }>(`/products/${id}`, data),
+  remove: (id: string) => api.delete(`/products/${id}`),
+};
+
+export const lvcCodesApi = {
+  list:   (q?: string) => api.get<{ data: LvcCode[] }>('/lvc-codes', { params: q ? { q } : undefined }),
+  create: (data: Record<string, unknown>) => api.post<{ data: LvcCode }>('/lvc-codes', data),
+  update: (id: string, data: Record<string, unknown>) => api.put<{ data: LvcCode }>(`/lvc-codes/${id}`, data),
+  toggle: (id: string) => api.patch<{ data: LvcCode }>(`/lvc-codes/${id}/toggle`, {}),
+  remove: (id: string) => api.delete(`/lvc-codes/${id}`),
+};
 
 export const resortsApi = {
   list:   (q?: string) => api.get<{ data: Resort[] }>('/resorts', { params: q ? { q } : undefined }),
@@ -95,6 +110,20 @@ export const cpSeasonPointsApi = {
     api.delete<{ data: CpSeasonPointDeleteResult }>('/cp-season-points/year', { params }),
   // Drops a single superseded effective-dated revision without wiping the year
   remove: (id: string) => api.delete(`/cp-season-points/${id}`),
+};
+
+export const lvcSeasonPointsApi = {
+  // Same resort-year shape as cpSeasonPointsApi, plus lvcCoCode (the product charged)
+  year: (params: { resortCode: string; year: number }) =>
+    api.get<LvcSeasonPointYear>('/lvc-season-points', { params }),
+  years: (params: { resortCode: string }) =>
+    api.get<{ data: number[] }>('/lvc-season-points/years', { params }),
+  saveYear: (data: { resortCode: string; year: number; lvcCoCode: string; rows: CpSeasonPointRowInput[] }) =>
+    api.post<{ data: LvcSeasonPointSaveResult }>('/lvc-season-points/year', data),
+  deleteYear: (params: { resortCode: string; year: number }) =>
+    api.delete<{ data: LvcSeasonPointDeleteResult }>('/lvc-season-points/year', { params }),
+  // Drops a single superseded effective-dated revision without wiping the year
+  remove: (id: string) => api.delete(`/lvc-season-points/${id}`),
 };
 
 export const apartmentTypesApi = {

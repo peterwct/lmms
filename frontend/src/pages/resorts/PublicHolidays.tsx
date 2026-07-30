@@ -220,7 +220,7 @@ export function PublicHolidays() {
         <Link to="/resorts" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600">
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
-        <h1 className="mt-1 text-xl font-semibold text-gray-900">Public Holidays Setup</h1>
+        <h1 className="mt-1 text-xl font-semibold text-gray-900">Public Holidays Maintenance and Setup</h1>
         <p className="mt-1 text-sm text-gray-500">
           National public holiday calendar. Clone a year forward, then correct each date.
         </p>

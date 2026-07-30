@@ -33,6 +33,8 @@ import { PbsNotInPbsReport } from './pages/pbs/PbsNotInPbsReport';
 import { PbsVarianceReport } from './pages/pbs/PbsVarianceReport';
 import { PbsAutoTransfer } from './pages/pbs/PbsAutoTransfer';
 import { ResortsSetup } from './pages/resorts/ResortsSetup';
+import { Products } from './pages/resorts/Products';
+import { LvcCodes } from './pages/resorts/LvcCodes';
 import { ResortMaster } from './pages/resorts/ResortMaster';
 import { ResortDetail } from './pages/resorts/ResortDetail';
 import { ApartmentTypes } from './pages/resorts/ApartmentTypes';
@@ -43,6 +45,7 @@ import { PublicHolidays } from './pages/resorts/PublicHolidays';
 import { SchoolHolidays } from './pages/resorts/SchoolHolidays';
 import { CpSeasons } from './pages/resorts/CpSeasons';
 import { CpSeasonPoints } from './pages/resorts/CpSeasonPoints';
+import { LvcSeasonPoints } from './pages/resorts/LvcSeasonPoints';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -91,6 +94,7 @@ export default function App() {
               <Route path="pbs/not-in-pbs"       element={<PbsNotInPbsReport />} />
               <Route path="pbs/pay-by-month"     element={<PbsPayByMonthReport />} />
               <Route path="resorts"             element={<ResortsSetup />} />
+              <Route path="resorts/products"    element={<Products />} />
               <Route path="resorts/setup"       element={<ResortMaster />} />
               <Route path="resorts/setup/:id"   element={<ResortDetail />} />
               <Route path="resorts/apartment-types" element={<ApartmentTypes />} />
@@ -101,6 +105,8 @@ export default function App() {
               <Route path="resorts/school-holidays" element={<SchoolHolidays />} />
               <Route path="resorts/seasons"     element={<CpSeasons />} />
               <Route path="resorts/season-points" element={<CpSeasonPoints />} />
+              <Route path="resorts/lvc-codes"   element={<LvcCodes />} />
+              <Route path="resorts/lvc-season-points" element={<LvcSeasonPoints />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />

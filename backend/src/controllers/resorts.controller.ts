@@ -55,7 +55,9 @@ export async function listResorts(req: Request, res: Response): Promise<void> {
           ],
         }
       : undefined,
-    orderBy: [{ coCode: 'asc' }, { resortCode: 'asc' }],
+    // Active first, then resort code. 'A' sorts before 'U' ascending, so a plain asc on
+    // status gives Active-then-Inactive (same trick as the AMC schedules acctClassify sort).
+    orderBy: [{ status: 'asc' }, { resortCode: 'asc' }],
   });
   res.json({ data: resorts });
 }
