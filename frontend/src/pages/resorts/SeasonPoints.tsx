@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Trash2, Save } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { lvcSeasonPointsApi, productsApi } from '../../api/resorts';
+import clsx from 'clsx';
+import { seasonPointsApi, productsApi } from '../../api/resorts';
 import { useActiveResorts } from '../../hooks/useActiveResorts';
-import type { CpSeasonPointRowInput } from '../../api/resorts';
+import type { SeasonPointRowInput } from '../../api/resorts';
 import { apiError } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -14,14 +15,21 @@ import { ResultDialog } from '../../components/ui/ResultDialog';
 import { ConfirmDeleteModal } from '../../components/ui/ConfirmDeleteModal';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
-import type { CpSeason, LvcSeasonPoint } from '../../types';
+import type { CpSeason, PointsType, SeasonPoint } from '../../types';
+
+// Home and non-home points share one table and this one screen; the tab picks which
+// chart is being maintained. A home resort is coCode '02' (CP-PBR today) — everything
+// else is reached through an LVC exchange programme and priced on the Non-Home tab.
 
 const SEASON_LABELS: Record<string, string> = { D: 'Diamond', G: 'Gold', S: 'Silver' };
 const SEASON_ORDER: CpSeason[] = ['S', 'G', 'D'];
 
-// A home resort is coCode '02' (CP-PBR). LVC points price a booking AWAY from home,
-// so the picker offers everything BUT CP, and the server rejects a CP resort too.
 const CP_CO_CODE = '02';
+
+const TABS: { key: PointsType; slug: string; label: string }[] = [
+  { key: 'HOME', slug: 'home', label: 'Home Resorts' },
+  { key: 'AWAY', slug: 'away', label: 'Non-Home Resorts' },
+];
 
 // The 7 point columns — the legacy screen labels these "Sunday (0)" ... "Saturday (6)"
 const DAYS = [
@@ -53,7 +61,7 @@ const rowKey = (apartmentType: string, season: string, effectiveDate: string) =>
 const blankPts = (): Record<DayKey, string> =>
   Object.fromEntries(DAYS.map(d => [d.key, ''])) as Record<DayKey, string>;
 
-const storedPts = (r: LvcSeasonPoint): Record<DayKey, string> =>
+const storedPts = (r: SeasonPoint): Record<DayKey, string> =>
   Object.fromEntries(DAYS.map(d => [d.key, String(r[d.key])])) as Record<DayKey, string>;
 
 // A row counts as filled once any day has a value; blank rows are never submitted
@@ -61,12 +69,17 @@ const isFilled = (d: Draft) => DAYS.some(day => d.pts[day.key].trim() !== '');
 const rowTotal = (d: Draft) =>
   DAYS.reduce((sum, day) => sum + (parseInt(d.pts[day.key], 10) || 0), 0);
 
-export function LvcSeasonPoints() {
+export function SeasonPoints() {
   const { canCreate, canEdit, canDelete } = useAuth();
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const editable = canCreate('RESORTS_SETUP') || canEdit('RESORTS_SETUP');
+
+  // Tab lives in the URL alongside resort + year, so Back restores the whole view
+  const slug = searchParams.get('type') === 'away' ? 'away' : 'home';
+  const type: PointsType = slug === 'away' ? 'AWAY' : 'HOME';
+  const isAway = type === 'AWAY';
 
   const yearParam = parseInt(searchParams.get('year') ?? '', 10);
   const year = yearParam >= 1900 && yearParam <= 2999 ? yearParam : new Date().getFullYear();
@@ -85,24 +98,29 @@ export function LvcSeasonPoints() {
   useEffect(() => { setYearInput(String(year)); }, [year]);
 
   const goTo = (rc: string, y: number) =>
-    setSearchParams({ resort: rc, year: String(y) }, { replace: true });
+    setSearchParams({ type: slug, resort: rc, year: String(y) }, { replace: true });
 
-  // Exchange resorts only — a CP-02 resort is the member's home and is priced by fn 10.
+  // A resort valid on one tab is invalid on the other, so switching drops it and
+  // falls through to the default-resort effect below.
+  const switchTab = (nextSlug: string) =>
+    setSearchParams({ type: nextSlug, year: String(year) }, { replace: true });
+
   // Active-only comes from the hook; an inactive resort's data is still reachable by URL.
+  // Home = our own CP product; away = every exchange resort.
   const { resorts } = useActiveResorts();
-  const lvcResorts = useMemo(
-    () => resorts.filter(r => r.coCode !== CP_CO_CODE),
-    [resorts],
+  const tabResorts = useMemo(
+    () => resorts.filter(r => (isAway ? r.coCode !== CP_CO_CODE : r.coCode === CP_CO_CODE)),
+    [resorts, isAway],
   );
 
-  // Default to the first exchange resort once the list arrives
+  // Default to the first resort of this kind once the list arrives
   useEffect(() => {
-    if (!resortCode && lvcResorts.length) goTo(lvcResorts[0].resortCode, year);
-  }, [resortCode, lvcResorts, year]);
+    if (!resortCode && tabResorts.length) goTo(tabResorts[0].resortCode, year);
+  }, [resortCode, tabResorts, year]);
 
   const { data: yearData, isLoading } = useQuery({
-    queryKey: ['lvc-season-points', resortCode, year],
-    queryFn: () => lvcSeasonPointsApi.year({ resortCode, year }).then(r => r.data),
+    queryKey: ['season-points', type, resortCode, year],
+    queryFn: () => seasonPointsApi.year({ type, resortCode, year }).then(r => r.data),
     enabled: !!resortCode,
   });
 
@@ -115,12 +133,13 @@ export function LvcSeasonPoints() {
   const productName = (coCode: string | undefined) =>
     products?.find(p => p.coCode === coCode)?.coName ?? '—';
 
-  const resort = lvcResorts.find(r => r.resortCode === resortCode);
+  const resort = tabResorts.find(r => r.resortCode === resortCode);
+  const resortCoCode = resort?.coCode ?? yearData?.resort.coCode;
   const stored = useMemo(() => yearData?.data ?? [], [yearData]);
 
   // Scaffold every apartment type x season combo, then add any stored row that falls
-  // outside it — a year may hold a second effective-dated revision of the same combo,
-  // which must stay visible.
+  // outside it — a year may hold a second effective-dated revision of the same combo
+  // (the migrated home 2015/SLEEP4/G does), which must stay visible.
   const drafts = useMemo<Draft[]>(() => {
     const types = yearData?.apartmentTypes ?? [];
     const byKey = new Map(stored.map(r => [rowKey(r.apartmentType, r.season, iso(r.effectiveDate)), r]));
@@ -167,9 +186,9 @@ export function LvcSeasonPoints() {
     [yearData],
   );
 
-  // Reset pending edits whenever the displayed resort-year changes
-  useEffect(() => { setEdits({}); setSaveErr(''); setBulkDate(''); }, [resortCode, year]);
-  // Charged-to follows the loaded year until the user overrides it
+  // Reset pending edits whenever the displayed tab / resort-year changes
+  useEffect(() => { setEdits({}); setSaveErr(''); setBulkDate(''); }, [type, resortCode, year]);
+  // Charged-to follows the loaded year until the user overrides it (away only)
   useEffect(() => { setChargedTo(yearData?.lvcCoCode ?? CP_CO_CODE); }, [yearData]);
 
   const rows = useMemo(() => drafts.map(d => edits[d.key] ?? d), [drafts, edits]);
@@ -196,11 +215,13 @@ export function LvcSeasonPoints() {
   const filled = rows.filter(isFilled);
   const missingDate = filled.filter(r => !r.effectiveDate);
   const isNewYear = !isLoading && stored.length === 0;
-  const chargedToDirty = !!yearData && chargedTo !== yearData.lvcCoCode;
+  const chargedToDirty = isAway && !!yearData && chargedTo !== yearData.lvcCoCode;
+
+  const kindWord = isAway ? 'Non-home' : 'Home';
 
   const saveMut = useMutation({
     mutationFn: () => {
-      const payload: CpSeasonPointRowInput[] = filled.map(r => ({
+      const payload: SeasonPointRowInput[] = filled.map(r => ({
         apartmentType: r.apartmentType,
         season: r.season,
         effectiveDate: r.effectiveDate,
@@ -208,36 +229,48 @@ export function LvcSeasonPoints() {
           DAYS.map(d => [d.key, parseInt(r.pts[d.key], 10) || 0]),
         ) as Record<DayKey, number>),
       }));
-      return lvcSeasonPointsApi.saveYear({ resortCode, year, lvcCoCode: chargedTo || CP_CO_CODE, rows: payload });
+      return seasonPointsApi.saveYear({
+        pointsType: type,
+        resortCode,
+        year,
+        // Away-only; the server ignores it on home and stores null
+        ...(isAway ? { lvcCoCode: chargedTo || CP_CO_CODE } : {}),
+        rows: payload,
+      });
     },
     onSuccess: (r) => {
       const { rows: n, created, updated } = r.data.data;
-      qc.invalidateQueries({ queryKey: ['lvc-season-points'] });
+      qc.invalidateQueries({ queryKey: ['season-points'] });
       setEdits({});
-      setResult(`LVC season points saved — ${resortCode} ${year}, ${n} row(s) (${created} new, ${updated} updated).`);
+      setResult(`${kindWord} season points saved — ${resortCode} ${year}, ${n} row(s) (${created} new, ${updated} updated).`);
     },
     onError: (err) => setSaveErr(apiError(err)),
   });
 
   const deleteYearMut = useMutation({
-    mutationFn: () => lvcSeasonPointsApi.deleteYear({ resortCode, year }),
+    mutationFn: () => seasonPointsApi.deleteYear({ type, resortCode, year }),
     onSuccess: (r) => {
       const { deleted } = r.data.data;
-      qc.invalidateQueries({ queryKey: ['lvc-season-points'] });
+      qc.invalidateQueries({ queryKey: ['season-points'] });
       setEdits({});
       setDeleteYearOpen(false);
-      setResult(`LVC season points deleted — ${resortCode} ${year}, ${deleted} row(s) removed. A CP member booking this resort has no points to deduct until it is set up again.`);
+      setResult(
+        `${kindWord} season points deleted — ${resortCode} ${year}, ${deleted} row(s) removed. ` +
+        (isAway
+          ? 'A CP member booking this resort has no points to deduct until it is set up again.'
+          : 'CP booking has no points for this year until it is set up again.')
+      );
     },
     onError: (err) => setDelErr(apiError(err)),
   });
 
   const deleteRowMut = useMutation({
-    mutationFn: (row: Draft) => lvcSeasonPointsApi.remove(row.id!),
+    mutationFn: (row: Draft) => seasonPointsApi.remove(row.id!),
     onSuccess: (_r, row) => {
-      qc.invalidateQueries({ queryKey: ['lvc-season-points'] });
+      qc.invalidateQueries({ queryKey: ['season-points'] });
       setEdits({});
       setDeleteRow(null);
-      setResult(`LVC season points row deleted — ${resortCode} ${row.apartmentType} ${SEASON_LABELS[row.season]} ${year}, effective ${row.effectiveDate}.`);
+      setResult(`Season points row deleted — ${resortCode} ${row.apartmentType} ${SEASON_LABELS[row.season]} ${year}, effective ${row.effectiveDate}.`);
     },
     onError: (err) => setDelErr(apiError(err)),
   });
@@ -248,35 +281,53 @@ export function LvcSeasonPoints() {
     if (y >= 1900 && y <= 2999) goTo(resortCode, y);
   };
 
-  const resortCoCode = yearData?.resort.coCode ?? resort?.coCode;
-
   return (
     <div className="space-y-4">
       <div>
         <Link to="/resorts" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600">
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
-        <h1 className="mt-1 text-xl font-semibold text-gray-900">CP Points Deduction for Non-Home Resorts - Maintenance and Setup</h1>
+        <h1 className="mt-1 text-xl font-semibold text-gray-900">CP Points Deduction - Maintenance and Setup</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Points deducted from a CP member per night when they book a resort other than their
-          home resort — by apartment type, season and day of week, one resort-year at a time.
-          The season of each date is set in CP&apos;s Seasons Maintenance and Setup.
+          {isAway
+            ? 'Points deducted from a CP member per night when they book a resort other than their home resort — one resort-year at a time.'
+            : 'Points deducted from a CP member per night at their own home resort, by apartment type, season and day of week — one resort-year at a time.'}
+          {' '}The season of each date is set in CP&apos;s Seasons Maintenance and Setup.
         </p>
       </div>
 
       <Card>
+        <div className="flex gap-1 border-b px-4 pt-2">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => switchTab(t.slug)}
+              className={clsx(
+                'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+                type === t.key
+                  ? 'border-blue-600 text-blue-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         <CardHeader className="flex flex-wrap items-center justify-between gap-3">
           <form onSubmit={applyYear} className="flex flex-wrap items-center gap-2">
-            <div className="w-72">
+            <div className={isAway ? 'w-72' : 'w-56'}>
               <Select
                 value={resortCode}
                 onChange={e => goTo(e.target.value, year)}
                 title="Resort"
               >
-                {lvcResorts.length === 0 && <option value="">No exchange resorts</option>}
-                {lvcResorts.map(r => (
+                {tabResorts.length === 0 && (
+                  <option value="">{isAway ? 'No exchange resorts' : 'No CP resorts'}</option>
+                )}
+                {tabResorts.map(r => (
                   <option key={r.resortCode} value={r.resortCode}>
-                    {r.resortCode} — {r.shortName ?? r.resortName} ({r.coCode})
+                    {r.resortCode} — {r.shortName ?? r.resortName}{isAway ? ` (${r.coCode})` : ''}
                   </option>
                 ))}
               </Select>
@@ -313,7 +364,7 @@ export function LvcSeasonPoints() {
 
         {isLoading || !resortCode ? <PageSpinner /> : (
           <div className="p-4">
-            {/* Header block mirroring the legacy ps_lvcapt screen */}
+            {/* Header block mirroring the legacy ps_seasonapt / ps_lvcapt screens */}
             <div className="mb-3 grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
               <div className="flex gap-2">
                 <span className="w-32 text-gray-500">Resort Code</span>
@@ -330,36 +381,40 @@ export function LvcSeasonPoints() {
                   <span className="text-gray-600">{productName(resortCoCode)}</span>
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-32 shrink-0 text-gray-500" title="The product whose members these points are charged to">
-                  Charged To
-                </span>
-                {editable ? (
-                  <div className="w-64">
-                    <Select
-                      value={chargedTo}
-                      onChange={e => setChargedTo(e.target.value)}
-                      title="Product whose members are charged these points"
-                    >
-                      {(products ?? []).map(p => (
-                        <option key={p.coCode} value={p.coCode}>{p.coCode} — {p.coName}</option>
-                      ))}
-                    </Select>
-                  </div>
-                ) : (
-                  <span className="text-gray-800">
-                    <span className="font-mono">[{chargedTo}]</span>{' '}
-                    <span className="text-gray-600">{productName(chargedTo)}</span>
+              {isAway && (
+                <div className="flex items-center gap-2">
+                  <span className="w-32 shrink-0 text-gray-500" title="The product whose members these points are charged to">
+                    Charged To
                   </span>
-                )}
-              </div>
+                  {editable ? (
+                    <div className="w-64">
+                      <Select
+                        value={chargedTo}
+                        onChange={e => setChargedTo(e.target.value)}
+                        title="Product whose members are charged these points"
+                      >
+                        {(products ?? []).map(p => (
+                          <option key={p.coCode} value={p.coCode}>{p.coCode} — {p.coName}</option>
+                        ))}
+                      </Select>
+                    </div>
+                  ) : (
+                    <span className="text-gray-800">
+                      <span className="font-mono">[{chargedTo}]</span>{' '}
+                      <span className="text-gray-600">{productName(chargedTo)}</span>
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-mono text-sm font-semibold text-gray-800">LVC Points — {year}</h2>
+              <h2 className="font-mono text-sm font-semibold text-gray-800">
+                {isAway ? 'Non-Home Points' : 'Home Points'} — {year}
+              </h2>
               {isNewYear ? (
                 <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                  No LVC points set up for {resortCode} {year} — fill in the rows you need and save.
+                  No points set up for {resortCode} {year} — fill in the rows you need and save.
                 </span>
               ) : (
                 <span className="text-xs text-gray-500">
@@ -387,7 +442,7 @@ export function LvcSeasonPoints() {
 
             {rows.length === 0 ? (
               <p className="py-6 text-center text-sm text-gray-500">
-                No apartment types for {resortCode}. Add one in Apartment Sleep Types Maintenance and Setup before setting up LVC points.
+                No apartment types for {resortCode}. Add one in Apartment Sleep Types Maintenance and Setup before setting up points.
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -509,8 +564,14 @@ export function LvcSeasonPoints() {
 
       <ConfirmDeleteModal
         open={deleteYearOpen}
-        title="Delete this year's LVC season points?"
-        description="This removes every points row for this resort and year. A CP member booking this resort has no points to deduct without them. This cannot be undone."
+        title={`Delete this year's ${isAway ? 'non-home' : 'home'} season points?`}
+        description={
+          'This removes every points row for this resort and year. ' +
+          (isAway
+            ? 'A CP member booking this resort has no points to deduct without them. '
+            : 'CP booking has no points for this year without them. ') +
+          'This cannot be undone.'
+        }
         rows={[
           { label: 'Resort', value: <span className="font-medium">{resortCode}</span> },
           { label: 'Year', value: <span className="font-mono">{year}</span> },

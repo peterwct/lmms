@@ -23,7 +23,7 @@
  * 01-04-2014 -> 22/38 and 02-04-2014 -> 28/48). Dropping it would lose a row.
  *
  * PRODUCT SCOPE: CP only. Season grades come from CpSeasonDate (fn 8); the
- * PublicHoliday / SchoolHoliday calendars are LHC-only and unrelated.
+ * The Holiday calendar (public + school) is LHC-only and unrelated.
  *
  * Does NOT truncate — the caller does (migrate-table.ps1 -Table CpSeasonPoint,
  * refresh-test-db.ps1), matching migrate-cp-seasons.ts / migrate-resort-units.ts.
@@ -61,6 +61,8 @@ const n = (s: string | undefined): number => {
   return Number.isNaN(v) ? 0 : v;
 };
 
+const BATCH = Number(process.env.MIGRATE_BATCH) || 100;
+
 async function* readLines(filename: string): AsyncGenerator<string[]> {
   const fp = path.join(MIGRATE_DIR, filename);
   if (!fs.existsSync(fp)) throw new Error(`File not found: ${fp}`);
@@ -80,8 +82,9 @@ async function main() {
   console.log(DRY_RUN ? '  MODE: DRY RUN' : '  MODE: LIVE');
   console.log('='.repeat(60));
 
-  const resorts = await prisma.resort.findMany({ select: { id: true, resortCode: true } });
-  const idByCode = new Map(resorts.map(r => [r.resortCode, r.id]));
+  // SeasonPoint denormalizes the resort's own product, so carry coCode too
+  const resorts = await prisma.resort.findMany({ select: { id: true, resortCode: true, coCode: true } });
+  const byCode = new Map(resorts.map(r => [r.resortCode, r]));
 
   let total = 0, skipped = 0;
   const counts: Record<string, number> = { G: 0, S: 0, D: 0 };
@@ -92,8 +95,8 @@ async function main() {
     const apartmentType = t(c[1]);
     if (!resortCode || !apartmentType) { skipped++; continue; }
 
-    const resortId = idByCode.get(resortCode);
-    if (!resortId) {
+    const resortRow = byCode.get(resortCode);
+    if (!resortRow) {
       console.log(`  WARN unknown resort ${resortCode} — skipped ${apartmentType} ${c[2]}`);
       skipped++;
       continue;
@@ -124,8 +127,12 @@ async function main() {
     batch.push({
       id:        randomUUID(),
       updatedAt: new Date(),
-      resortId,
+      // These rows are the HOME chart: the member's own product's resort
+      pointsType: 'HOME',
+      resortId:  resortRow.id,
       resortCode,
+      coCode:    resortRow.coCode,
+      lvcCoCode: null,
       apartmentType,
       year,
       effectiveDate,
@@ -143,16 +150,21 @@ async function main() {
   }
 
   if (!DRY_RUN && batch.length) {
-    await prisma.cpSeasonPoint.createMany({ data: batch, skipDuplicates: true });
+    // Chunked like migrate-lvc-season-points.ts — a large createMany becomes one INSERT
+    // with rows x columns bind params and can kill the PG backend with SQLSTATE 53200
+    // ("out of memory in CachedPlan"). 253 rows is safe unbatched, but one convention wins.
+    for (let i = 0; i < batch.length; i += BATCH) {
+      await prisma.seasonPoint.createMany({ data: batch.slice(i, i + BATCH), skipDuplicates: true });
+    }
   }
 
   console.log(`\n  OK CP season points: ${total} inserted, ${skipped} skipped`);
   console.log(`     Diamond ${counts.D}, Gold ${counts.G}, Silver ${counts.S}`);
 
   if (!DRY_RUN) {
-    const count = await prisma.cpSeasonPoint.count();
-    const agg = await prisma.cpSeasonPoint.aggregate({ _min: { year: true }, _max: { year: true } });
-    console.log(`  DB count: ${count}`);
+    const count = await prisma.seasonPoint.count({ where: { pointsType: 'HOME' } });
+    const agg = await prisma.seasonPoint.aggregate({ where: { pointsType: 'HOME' }, _min: { year: true }, _max: { year: true } });
+    console.log(`  DB count (HOME): ${count}`);
     if (agg._min.year && agg._max.year) {
       console.log(`  Years: ${agg._min.year} to ${agg._max.year}`);
     }

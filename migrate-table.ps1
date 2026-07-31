@@ -31,11 +31,15 @@
                           ps_resort_info.txt). Truncates + reimports both.
                           Post-go-live resorts are maintained in MMS -- re-running
                           clobbers any edits made in the app.
-      LvcSeasonPoint    - LVC season points chart (migrate-lvc-season-points.ts from
-                          ps_lvcapt.txt; first 14 of 20 cols). Points charged to a CP
-                          member booking a resort other than their home (coCode 02)
-                          resort. Needs Resort present for the FK.
-                          Truncates + reimports -- clobbers CRUD edits.
+      CpSeasonPoint     - HOME half of the season points chart (migrate-cp-season-points.ts
+                          from ps_seasonapt.txt; first 12 of 24 cols). Points deducted per
+                          night at the member's own product's resort.
+      LvcSeasonPoint    - AWAY half of the season points chart (migrate-lvc-season-points.ts
+                          from ps_lvcapt.txt; first 14 of 20 cols). Points charged to a CP
+                          member booking a resort other than their home (coCode 02) resort.
+                          Both halves live in the one SeasonPoint table and each clears only
+                          its own pointsType. Need Resort present for the FK.
+                          Reimports -- clobbers CRUD edits.
 
 .PARAMETER DatabaseUrl
     PostgreSQL connection string. Defaults to $env:DATABASE_URL or .env file.
@@ -59,8 +63,8 @@
     .\migrate-table.ps1 -Table AptBlock                    # Availability blocks only (apt_block.txt; truncates + reimports)
     .\migrate-table.ps1 -Table ResortMaintenance           # Maintenance register only (resmt.txt; truncates + reimports)
     .\migrate-table.ps1 -Table CpSeasonDate                # CP season calendar (ps_seasondate.txt; one row per day, G/S/D; truncates + reimports)
-    .\migrate-table.ps1 -Table CpSeasonPoint               # CP season points chart (ps_seasonapt.txt; first 12 cols; truncates + reimports)
-    .\migrate-table.ps1 -Table LvcSeasonPoint              # LVC season points chart (ps_lvcapt.txt; first 14 of 20 cols; truncates + reimports)
+    .\migrate-table.ps1 -Table CpSeasonPoint               # Season points, HOME half (ps_seasonapt.txt; first 12 cols; clears pointsType HOME + reimports)
+    .\migrate-table.ps1 -Table LvcSeasonPoint              # Season points, AWAY half (ps_lvcapt.txt; first 14 of 20 cols; clears pointsType AWAY + reimports)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
@@ -219,7 +223,7 @@ $TableConfig = @{
         # Master data. Post-go-live resorts are maintained in MMS -- re-running
         # truncates and clobbers any edits made through the Resorts Setup CRUD.
         # Leaf tables truncated explicitly (TRUNCATE CASCADE unreliable).
-        TruncateSql = @('TRUNCATE "LvcSeasonPoint", "CpSeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
+        TruncateSql = @('TRUNCATE "SeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
         RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_mast.txt', 'res_avail_mast.txt', 'apt_block.txt', 'resmt.txt', 'ps_seasonapt.txt', 'ps_lvcapt.txt')
         Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-resort-units.ts', 'prisma/migrate-res-avail.ts', 'prisma/migrate-apt-block.ts', 'prisma/migrate-maintenance.ts', 'prisma/migrate-cp-season-points.ts', 'prisma/migrate-lvc-season-points.ts')
     }
@@ -255,27 +259,30 @@ $TableConfig = @{
     }
     CpSeasonDate = @{
         # CP season calendar (ps_seasondate.txt, cols 0-1) -- one row per calendar day
-        # graded G/S/D. Read by CP booking only; the Public/School holiday tables are
+        # graded G/S/D. Read by CP booking only; the Holiday table (public + school) is
         # LHC-only and unrelated. Post-go-live re-import clobbers CRUD edits.
         TruncateSql = @('TRUNCATE "CpSeasonDate";')
         RequiredFiles = @('ps_seasondate.txt')
         Scripts = @('prisma/migrate-cp-seasons.ts')
     }
     CpSeasonPoint = @{
-        # CP season points chart (ps_seasonapt.txt, first 12 of 24 cols) -- points
-        # deducted per night by resort x apartment type x season x day of week.
-        # Needs Resort present for the FK. CP-only, like CpSeasonDate.
+        # HOME half of the season points chart (ps_seasonapt.txt, first 12 of 24 cols) --
+        # points deducted per night by resort x apartment type x season x day of week at
+        # the member's own product's resort. Needs Resort present for the FK.
+        # HOME and AWAY share the SeasonPoint table, so this scopes its clear by
+        # pointsType rather than truncating the whole table.
         # Post-go-live re-import clobbers CRUD edits.
-        TruncateSql = @('TRUNCATE "CpSeasonPoint";')
+        TruncateSql = @('DELETE FROM "SeasonPoint" WHERE "pointsType" = ''HOME'';')
         RequiredFiles = @('ps_seasonapt.txt')
         Scripts = @('prisma/migrate-cp-season-points.ts')
     }
     LvcSeasonPoint = @{
-        # LVC season points chart (ps_lvcapt.txt, first 14 of 20 cols) -- points charged
-        # to a CP member booking a resort OTHER than their home (coCode 02) resort.
-        # The counterpart of CpSeasonPoint. Needs Resort present for the FK.
-        # Post-go-live re-import clobbers CRUD edits.
-        TruncateSql = @('TRUNCATE "LvcSeasonPoint";')
+        # AWAY half of the season points chart (ps_lvcapt.txt, first 14 of 20 cols) --
+        # points charged to a CP member booking a resort OTHER than their home (coCode 02)
+        # resort. The counterpart of the HOME half above; both live in SeasonPoint, so
+        # this scopes its clear by pointsType rather than truncating the whole table.
+        # Needs Resort present for the FK. Post-go-live re-import clobbers CRUD edits.
+        TruncateSql = @('DELETE FROM "SeasonPoint" WHERE "pointsType" = ''AWAY'';')
         RequiredFiles = @('ps_lvcapt.txt')
         Scripts = @('prisma/migrate-lvc-season-points.ts')
     }

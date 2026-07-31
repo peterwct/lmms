@@ -41,11 +41,9 @@ import { ApartmentTypes } from './pages/resorts/ApartmentTypes';
 import { ResortUnits } from './pages/resorts/ResortUnits';
 import { UnitsAvailability } from './pages/resorts/UnitsAvailability';
 import { ResortsMaintenance } from './pages/resorts/ResortsMaintenance';
-import { PublicHolidays } from './pages/resorts/PublicHolidays';
-import { SchoolHolidays } from './pages/resorts/SchoolHolidays';
+import { Holidays } from './pages/resorts/Holidays';
 import { CpSeasons } from './pages/resorts/CpSeasons';
-import { CpSeasonPoints } from './pages/resorts/CpSeasonPoints';
-import { LvcSeasonPoints } from './pages/resorts/LvcSeasonPoints';
+import { SeasonPoints } from './pages/resorts/SeasonPoints';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -101,12 +99,14 @@ export default function App() {
               <Route path="resorts/units"       element={<ResortUnits />} />
               <Route path="resorts/availability" element={<UnitsAvailability />} />
               <Route path="resorts/maintenance" element={<ResortsMaintenance />} />
-              <Route path="resorts/holidays"    element={<PublicHolidays />} />
-              <Route path="resorts/school-holidays" element={<SchoolHolidays />} />
+              <Route path="resorts/holidays"    element={<Holidays />} />
+              {/* School holidays merged into the tabbed Holidays page — keep old bookmarks working */}
+              <Route path="resorts/school-holidays" element={<Navigate to="/resorts/holidays?tab=school" replace />} />
               <Route path="resorts/seasons"     element={<CpSeasons />} />
-              <Route path="resorts/season-points" element={<CpSeasonPoints />} />
+              <Route path="resorts/season-points" element={<SeasonPoints />} />
               <Route path="resorts/lvc-codes"   element={<LvcCodes />} />
-              <Route path="resorts/lvc-season-points" element={<LvcSeasonPoints />} />
+              {/* Non-home points merged into the tabbed Season Points page — keep old bookmarks working */}
+              <Route path="resorts/lvc-season-points" element={<Navigate to="/resorts/season-points?type=away" replace />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />

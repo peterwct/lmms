@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, CpSeasonPointDeleteResult, CpSeasonPointSaveResult, CpSeasonPointYear, LvcCode, LvcSeasonPointDeleteResult, LvcSeasonPointSaveResult, LvcSeasonPointYear, Product, PublicHoliday, PublicHolidayCloneResult, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, SchoolHoliday, SchoolHolidayCloneResult } from '../types';
+import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, LvcCode, PointsType, SeasonPointDeleteResult, SeasonPointSaveResult, SeasonPointYear, Product, Holiday, HolidayCloneResult, HolidayType, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList } from '../types';
 
 export const productsApi = {
   list:   (q?: string) => api.get<{ data: Product[] }>('/products', { params: q ? { q } : undefined }),
@@ -56,26 +56,17 @@ export const resortMaintenanceApi = {
   availability: (id: string) => api.get<ResortMaintenanceAvailability>(`/resort-maintenance/${id}/availability`),
 };
 
-export const publicHolidaysApi = {
-  list: (params: { q?: string; year?: number }) =>
-    api.get<{ data: PublicHoliday[] }>('/public-holidays', { params }),
-  years:  () => api.get<{ data: number[] }>('/public-holidays/years'),
-  create: (data: Record<string, unknown>) => api.post<{ data: PublicHoliday }>('/public-holidays', data),
-  update: (id: string, data: Record<string, unknown>) => api.put<{ data: PublicHoliday }>(`/public-holidays/${id}`, data),
-  remove: (id: string) => api.delete(`/public-holidays/${id}`),
-  // Copies a year's holidays to sourceYear + 1 on the same month/day
-  clone: (data: { sourceYear: number }) => api.post<{ data: PublicHolidayCloneResult }>('/public-holidays/clone', data),
-};
-
-export const schoolHolidaysApi = {
-  list: (params: { q?: string; academicYear?: number }) =>
-    api.get<{ data: SchoolHoliday[] }>('/school-holidays', { params }),
-  years:  () => api.get<{ data: number[] }>('/school-holidays/years'),
-  create: (data: Record<string, unknown>) => api.post<{ data: SchoolHoliday }>('/school-holidays', data),
-  update: (id: string, data: Record<string, unknown>) => api.put<{ data: SchoolHoliday }>(`/school-holidays/${id}`, data),
-  remove: (id: string) => api.delete(`/school-holidays/${id}`),
-  // Copies an academic year's breaks to sourceYear + 1, same month/day on both ends
-  clone: (data: { sourceYear: number }) => api.post<{ data: SchoolHolidayCloneResult }>('/school-holidays/clone', data),
+// One client for both kinds — `type` selects public holidays or school holidays
+export const holidaysApi = {
+  list: (params: { type: HolidayType; q?: string; year?: number }) =>
+    api.get<{ data: Holiday[] }>('/holidays', { params }),
+  years:  (type: HolidayType) => api.get<{ data: number[] }>('/holidays/years', { params: { type } }),
+  create: (data: Record<string, unknown>) => api.post<{ data: Holiday }>('/holidays', data),
+  update: (id: string, data: Record<string, unknown>) => api.put<{ data: Holiday }>(`/holidays/${id}`, data),
+  remove: (id: string) => api.delete(`/holidays/${id}`),
+  // Copies a year's holidays to sourceYear + 1 on the same month/day (both ends of a range)
+  clone: (data: { holidayType: HolidayType; sourceYear: number }) =>
+    api.post<{ data: HolidayCloneResult }>('/holidays/clone', data),
 };
 
 export const cpSeasonsApi = {
@@ -90,7 +81,7 @@ export const cpSeasonsApi = {
   clone: (data: { sourceYear: number }) => api.post<{ data: CpSeasonCloneResult }>('/cp-seasons/clone', data),
 };
 
-export type CpSeasonPointRowInput = {
+export type SeasonPointRowInput = {
   apartmentType: string;
   season: string;
   effectiveDate: string;
@@ -98,32 +89,20 @@ export type CpSeasonPointRowInput = {
   ptsThu: number; ptsFri: number; ptsSat: number;
 };
 
-export const cpSeasonPointsApi = {
+// One client for both charts — `type` selects HOME (own-product resorts) or AWAY
+// (exchange resorts). lvcCoCode, the product charged, is AWAY-only.
+export const seasonPointsApi = {
   // The screen works a resort-year at a time — no pagination
-  year: (params: { resortCode: string; year: number }) =>
-    api.get<CpSeasonPointYear>('/cp-season-points', { params }),
+  year: (params: { type: PointsType; resortCode: string; year: number }) =>
+    api.get<SeasonPointYear>('/season-points', { params }),
   years: (params: { resortCode: string }) =>
-    api.get<{ data: number[] }>('/cp-season-points/years', { params }),
-  saveYear: (data: { resortCode: string; year: number; rows: CpSeasonPointRowInput[] }) =>
-    api.post<{ data: CpSeasonPointSaveResult }>('/cp-season-points/year', data),
-  deleteYear: (params: { resortCode: string; year: number }) =>
-    api.delete<{ data: CpSeasonPointDeleteResult }>('/cp-season-points/year', { params }),
+    api.get<{ data: number[] }>('/season-points/years', { params }),
+  saveYear: (data: { pointsType: PointsType; resortCode: string; year: number; lvcCoCode?: string; rows: SeasonPointRowInput[] }) =>
+    api.post<{ data: SeasonPointSaveResult }>('/season-points/year', data),
+  deleteYear: (params: { type: PointsType; resortCode: string; year: number }) =>
+    api.delete<{ data: SeasonPointDeleteResult }>('/season-points/year', { params }),
   // Drops a single superseded effective-dated revision without wiping the year
-  remove: (id: string) => api.delete(`/cp-season-points/${id}`),
-};
-
-export const lvcSeasonPointsApi = {
-  // Same resort-year shape as cpSeasonPointsApi, plus lvcCoCode (the product charged)
-  year: (params: { resortCode: string; year: number }) =>
-    api.get<LvcSeasonPointYear>('/lvc-season-points', { params }),
-  years: (params: { resortCode: string }) =>
-    api.get<{ data: number[] }>('/lvc-season-points/years', { params }),
-  saveYear: (data: { resortCode: string; year: number; lvcCoCode: string; rows: CpSeasonPointRowInput[] }) =>
-    api.post<{ data: LvcSeasonPointSaveResult }>('/lvc-season-points/year', data),
-  deleteYear: (params: { resortCode: string; year: number }) =>
-    api.delete<{ data: LvcSeasonPointDeleteResult }>('/lvc-season-points/year', { params }),
-  // Drops a single superseded effective-dated revision without wiping the year
-  remove: (id: string) => api.delete(`/lvc-season-points/${id}`),
+  remove: (id: string) => api.delete(`/season-points/${id}`),
 };
 
 export const apartmentTypesApi = {

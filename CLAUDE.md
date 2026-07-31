@@ -13,8 +13,7 @@ lmms/
 │   ├── seed-states.ts       # 39 Malaysian state codes from migrate/state.txt
 │   ├── seed-cancellation-reasons.ts  # 46 cancellation codes from migrate/agmt_can_cate.txt
 │   ├── seed-su-reasons.ts   # 28 suspension reason codes from migrate/su_mast.txt
-│   ├── seed-public-holidays.ts  # 12 business-supplied 2026 public holidays (Public Holidays Setup; no Informix file, idempotent upsert)
-│   ├── seed-school-holidays.ts  # 4 business-supplied 2026 school holiday ranges (School Holidays Setup; no Informix file, idempotent upsert)
+│   ├── seed-holidays.ts         # 12 business-supplied 2026 public holidays + 4 school holiday ranges (Holidays Setup; one table, no Informix file, idempotent upsert)
 │   ├── migrate-cp-seasons.ts    # CP season calendar from ps_seasondate.txt (CP's Seasons Setup; one row per day, G/S/D)
 │   ├── migrate-informix.ts  # Full Informix → PostgreSQL migration (run once)
 │   ├── migrate-maa-mem.ts   # PBS (Zurich Payback Scheme) migration from maa_mem.txt
@@ -28,15 +27,15 @@ lmms/
 │   ├── migrate-booking-entitlement.ts  # Booking entitlement nights used from booking_ent1.txt (LHC 03/15)
 │   ├── migrate-amc-invoice-counter.ts  # Per-coCode AMC invoice running number from ctrl_billtab.txt (seeds AmcInvoiceCounter)
 │   ├── migrate-products.ts  # Product / operating-company master from ps_company.txt (Products Setup; first 9 of 17 cols)
-│   ├── migrate-lvc-codes.ts # LVC exchange-programme master from lvc_master.txt (fn 12 LVC Code; first 7 of 14 cols)
+│   ├── migrate-lvc-codes.ts # LVC exchange-programme master from lvc_master.txt (fn 11 LVC Code; first 7 of 14 cols)
 │   ├── migrate-resorts.ts   # Resort master from resort_mast.txt (Resorts Setup module) + business-supplied ApartmentType seed rows
 │   ├── migrate-resort-info.ts  # Resort info lines from ps_resort_info.txt (normalized into ResortInfoLine)
 │   ├── migrate-resort-units.ts # Resort units from apt_mast.txt (Apartments/Units Setup; 5-col partial export)
 │   ├── migrate-res-avail.ts # Per-day availability grid from res_avail_mast.txt (Units Availability by Dates; cols 0-4, chunked)
 │   ├── migrate-apt-block.ts # Availability input blocks from apt_block.txt (Units Availability by Dates; cols 0-4, apartmentType derived from ResortUnit)
 │   ├── migrate-maintenance.ts # Maintenance register from resmt.txt (Resorts Maintenance; cols 0-5, NO grid deltas — see ResortMaintenance)
-│   ├── migrate-cp-season-points.ts # CP points chart from ps_seasonapt.txt (fn 10, HOME resorts; first 12 of 24 cols, Sunday=index 0)
-│   ├── migrate-lvc-season-points.ts # LVC points chart from ps_lvcapt.txt (fn 11, NON-HOME resorts; first 14 of 20 cols, Sunday=index 0)
+│   ├── migrate-cp-season-points.ts # Season points chart, HOME half, from ps_seasonapt.txt (fn 9; first 12 of 24 cols, Sunday=index 0)
+│   ├── migrate-lvc-season-points.ts # Season points chart, AWAY half, from ps_lvcapt.txt (fn 9; first 14 of 20 cols, Sunday=index 0)
 │   └── migrations/          # Applied migration history
 ├── refresh-test-db.ps1      # Clears + re-imports all Informix data; use for UAT refreshes and live cutover
 ├── migrate-table.ps1        # Migrate a single table without full refresh (Member, PbsScheme, PbsClaim, AmcSchedule, RciEnrol, SuPtReason, AmcInvoiceCounter)
@@ -269,7 +268,7 @@ $env:DATABASE_URL = "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 .\refresh-test-db.ps1 -DryRun
 ```
 
-The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + LvcSeasonPoint + CpSeasonPoint + ResortMaintenance + AptBlock + ResAvailMast + Resort + Product + LvcCode + CpSeasonDate + Member CASCADE (the Member CASCADE also clears AmcInvoice) → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons + products (`ps_company.txt`) + LVC codes (`lvc_master.txt`) + resorts (master + info + units + `res_avail_mast.txt` availability grid + `apt_block.txt` blocks + `resmt.txt` maintenance + `ps_seasonapt.txt` CP season points + `ps_lvcapt.txt` LVC season points) → public/school holiday seeds + `ps_seasondate.txt` CP season calendar → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → AMC invoice counter (`ctrl_billtab.txt`, resets `AmcInvoiceCounter` to the Informix baseline) → re-grants lhb_app permissions → prints final row counts.
+The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + SeasonPoint + ResortMaintenance + AptBlock + ResAvailMast + Resort + Product + LvcCode + CpSeasonDate + Member CASCADE (the Member CASCADE also clears AmcInvoice) → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons + products (`ps_company.txt`) + LVC codes (`lvc_master.txt`) + resorts (master + info + units + `res_avail_mast.txt` availability grid + `apt_block.txt` blocks + `resmt.txt` maintenance + `ps_seasonapt.txt` HOME season points + `ps_lvcapt.txt` AWAY season points) → public/school holiday seeds + `ps_seasondate.txt` CP season calendar → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → AMC invoice counter (`ctrl_billtab.txt`, resets `AmcInvoiceCounter` to the Informix baseline) → re-grants lhb_app permissions → prints final row counts.
 
 ### Migrating a single table
 
@@ -297,8 +296,8 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table AptBlock                    # Availability blocks only (apt_block.txt; needs ResortUnit present for apartmentType lookup; truncates + reimports — clobbers CRUD edits)
 .\migrate-table.ps1 -Table ResortMaintenance           # Maintenance register only (resmt.txt; needs ResortUnit for apartmentType lookup; applies NO ResAvailMast deltas; truncates + reimports — clobbers CRUD edits)
 .\migrate-table.ps1 -Table CpSeasonDate                # CP season calendar (ps_seasondate.txt; one row per day, G/S/D; truncates + reimports — clobbers CRUD edits)
-.\migrate-table.ps1 -Table CpSeasonPoint               # CP season points chart (ps_seasonapt.txt, first 12 of 24 cols; needs Resort for the FK; truncates + reimports — clobbers CRUD edits)
-.\migrate-table.ps1 -Table LvcSeasonPoint              # LVC season points chart (ps_lvcapt.txt, first 14 of 20 cols; needs Resort for the FK; truncates + reimports — clobbers CRUD edits)
+.\migrate-table.ps1 -Table CpSeasonPoint               # Season points, HOME half (ps_seasonapt.txt, first 12 of 24 cols; needs Resort for the FK; clears pointsType HOME + reimports — clobbers CRUD edits)
+.\migrate-table.ps1 -Table LvcSeasonPoint              # Season points, AWAY half (ps_lvcapt.txt, first 14 of 20 cols; needs Resort for the FK; clears pointsType AWAY + reimports — clobbers CRUD edits)
 .\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
 
@@ -579,7 +578,7 @@ post-go-live re-import **clobbers CRUD edits**.
 
 ### LvcCode
 Leisure Vacation Club exchange-programme master for the **Leisure Vacation Club (LVC) Code
-Maintenance and Setup** function (`/resorts/lvc-codes`, Resorts Setup fn 12). 23 records from `lvc_master.txt` (Informix `lvc_master`).
+Maintenance and Setup** function (`/resorts/lvc-codes`, Resorts Setup fn 11). 23 records from `lvc_master.txt` (Informix `lvc_master`).
 
 **What an LVC code is:** the exchange arrangement under which a member books *outside their own
 product*.
@@ -643,7 +642,7 @@ the re-import supersedes it).
 > **The export was unfiltered on 2026-07-30 (7 → 324 rows).** It had been
 > `WHERE re_resort_status='A' AND re_cocode IN ('03','15','02')`. The wider set is needed so the
 > **LVC exchange resorts** — the `V-*` codes (`V-SGI1` SGI Damai Laut, `V-MAE1..20`, `V-CLC1/2`,
-> `V-AWT1/3`, …) — exist for **CP Points Deduction for Non-Home Resorts** (fn 11) to reference. Breakdown:
+> `V-AWT1/3`, …) — exist for **CP Points Deduction**'s Non-Home tab (fn 9) to reference. Breakdown:
 > ours (03/15/02) 7 active + 45 inactive; partner/LVC 42 active + 230 inactive. Every
 > `Resort.coCode` resolves against `Product.coCode` (0 unmatched).
 >
@@ -657,7 +656,7 @@ the re-import supersedes it).
 > `CHECK_TIMES` and any CRUD edits) alone. **`migrate-table.ps1 -Table Resort` and
 > `refresh-test-db.ps1` DO truncate `Resort`, which cascade-deletes `ResortInfoLine`,
 > `ApartmentType`, `ResortUnit`, `AptBlock`, `ResAvailMast` (~95k rows), `ResortMaintenance`
-> (~7.3k) and `CpSeasonPoint`** — they re-import all of those, but it is slow and is where the
+> (~7.3k) and `SeasonPoint`** — they re-import all of those, but it is slow and is where the
 > `CachedPlan` OOM bites. To add resorts only, run the script directly:
 > `npx ts-node --transpile-only prisma/migrate-resorts.ts`.
 >
@@ -678,10 +677,10 @@ the re-import supersedes it).
 > are still UNLOADed `WHERE ... resort_code IN (the 7)`, and `ps_seasonapt.txt` is `CP-PBR` only.
 > The 317 new resorts have no apartment types, units, availability grid or maintenance, so the
 > Resorts Availability chart (which builds its rows from `ApartmentType`) is unaffected.
-> **The exception is `ps_lvcapt.txt`** (fn 11, `LvcSeasonPoint`), which is unfiltered and references
+> **The exception is `ps_lvcapt.txt`** (fn 9's Non-Home tab, `SeasonPoint` AWAY rows), which is unfiltered and references
 > **264** of the 324 resorts — that widened export is exactly what it was for. Because those resorts
-> have no `ApartmentType` rows, fn 11 grandfathers apartment types already stored in its own table
-> rather than requiring them in fn 3; see `### LvcSeasonPoint`.
+> have no `ApartmentType` rows, fn 9 grandfathers apartment types already stored in its own table
+> rather than requiring them in fn 3; see `### SeasonPoint`.
 
 Full CRUD at `/resorts/setup` under `RESORTS_SETUP` matrix permission (view/create/edit/delete +
 status toggle; `resortCode` immutable after create; delete is hard delete — no FKs reference Resort yet).
@@ -816,93 +815,99 @@ month-end and leap years are exact — verified against raw SQL incl. Feb 2028.
 > including 2026-08-07/08 which carry a pre-existing Informix booking (`act=20, bal=15`).
 
 > ### Per-product calendars — do not cross the streams
-> The three date calendars belong to **different products** and are **never joined or derived from
+> The date calendars belong to **different products** and are **never joined or derived from
 > one another**:
-> - **`PublicHoliday` + `SchoolHoliday` → LHC booking only.**
+> - **`Holiday` (public + school, one table) → LHC booking only.**
 > - **`CpSeasonDate` → CP booking only.** It is the *only* peak/holiday calendar CP reads.
->   `CpSeasonPoint` is the downstream half of the same CP-only pair: `CpSeasonDate` **grades** a day
->   G/S/D, `CpSeasonPoint` turns that grade into a **points figure**. Neither ever reads the LHC
->   holiday tables.
+>   `SeasonPoint` is the downstream half of the same CP-only pair: `CpSeasonDate` **grades** a day
+>   G/S/D, `SeasonPoint` turns that grade into a **points figure**. Neither ever reads the LHC
+>   holiday table.
 >
 > The 2026 CP season grading happens to sit close to the holiday dates (Diamond clusters on public
 > holidays, Gold on school breaks) — that is how the business grades peak demand, **not a dependency**.
-> Never generate one calendar from another, and never have a CP code path read the holiday tables (or
-> an LHC path read `CpSeasonDate`).
+> Never generate one calendar from another, and never have a CP code path read `Holiday` (or an LHC
+> path read `CpSeasonDate`).
+>
+> Merging **public** and **school** holidays into one `Holiday` table (2026-07-31) is not a
+> counter-example: both were already LHC-only, so the merge stayed inside one product's stream.
 
-### PublicHoliday
-National public holiday calendar for the **Public Holidays Setup** function (`/resorts/holidays`).
-**Consumed by LHC booking only** (see the per-product note above).
-**No Informix source** — the 12 rows for 2026 are business-supplied and baked into
-`prisma/seed-public-holidays.ts` (like `APARTMENT_TYPES` in `migrate-resorts.ts`). Fields:
-`holidayDate` (plain TIMESTAMP UTC-midnight business date), `year` (Int — **always derived
-server-side** from `holidayDate`, never accepted from the client, so it cannot drift),
-`description`. Unique: `[holidayDate, description]` — blocks exact duplicates while still
-allowing two different holidays on one date. Indexed on `year`.
+### Holiday
+**One** calendar table for the **Public & School Holidays Setup** function (`/resorts/holidays`,
+Resorts Setup fn 7), covering both national public holidays (single dates) and school breaks (date
+ranges), discriminated by `holidayType`. **Consumed by LHC booking only** (see the per-product note
+above). **No Informix source** — the 12 public + 4 school rows for 2026 are business-supplied and
+baked into `prisma/seed-holidays.ts` (like `APARTMENT_TYPES` in `migrate-resorts.ts`).
 
-**Global scope — no resort or state column.** Holidays are nationwide; Malaysian state-specific
-holidays are deliberately out of scope (business decision).
+> **Merged from two tables on 2026-07-31.** `PublicHoliday` and `SchoolHoliday` were separate models,
+> controllers, routers, API clients and pages that shared ~90% of their code. Migration
+> `20260731090000_merge_holiday_tables` creates `Holiday`, copies both tables into it (preserving row
+> `id`s) and DROPs them. **Historical `AuditLog` rows still carry `targetType='PublicHoliday'` /
+> `'SchoolHoliday'`** — new rows write `'Holiday'`. The old route `/resorts/school-holidays` redirects
+> to `/resorts/holidays?tab=school` so bookmarks keep working; `/api/public-holidays` and
+> `/api/school-holidays` are **gone**.
 
-**Dates are stored exactly as supplied.** Several seed rows are the *eve* of the gazetted date
-(Labour Day 30/04, National Day 30/08, Christmas 24/12) — this is intentional, not a typo, so
-don't "correct" them on re-seed.
+Fields: `holidayType` (`'PUBLIC'` | `'SCHOOL'`), `startDate` (plain TIMESTAMP UTC-midnight business
+date — for PUBLIC this *is* the holiday date), `endDate` (**nullable** — null for PUBLIC, required for
+SCHOOL), `year` (Int), `description`. Unique: `[holidayType, startDate, description]`. Indexed on
+`[holidayType, year]`.
 
-**Clone by year** (`POST /api/public-holidays/clone`, body `{ sourceYear }`): copies every holiday
-of `sourceYear` into **`sourceYear + 1`** on the same month/day, then staff edit each row to the
-real gazetted date (lunar and Islamic holidays shift annually). Refuses with **409** if the target
-year already holds any rows — a second click must not duplicate rows or silently discard dates that
-have already been corrected; **404** if the source year is empty. A 29-Feb source date rolls to
-1 Mar in a non-leap target year (acceptable — every cloned date is reviewed anyway).
+**`holidayType` is a plain `String`** validated by a `z.enum(['PUBLIC','SCHOOL'])` in the controller,
+**not** a Prisma enum — adding a kind later must not require a migration (same reasoning as
+`CpSeasonDate.season` and `Product.entType`, and it avoids the enum-variant deploy footgun that broke
+login on 2026-07-23).
 
-The seed **upserts** on the compound unique, so re-running only tops up missing rows. `PublicHoliday`
-is **not** truncated by `refresh-test-db.ps1` (no FK to Resort) — the refresh calls the seed to top it
-up and leaves corrected dates alone. CRUD at `/api/public-holidays` under `RESORTS_SETUP` matrix
+**`year` means different things per kind, deliberately:**
+- **PUBLIC** — the calendar year, **always derived server-side** from `startDate`, never accepted from
+  the client, so it cannot drift.
+- **SCHOOL** — the **academic year**, **editable**: a Malaysian session can run past the calendar
+  boundary, so a January break can legitimately belong to the previous academic year. The form
+  pre-fills it from the start date's year *only while the field is still blank* (a default, not an
+  override).
+
+**Global scope — no resort or state column.** Holidays are nationwide; Malaysian state-specific public
+holidays and state-group (Kumpulan A/B) school variants are deliberately out of scope.
+
+**Dates are stored exactly as supplied.** Several public seed rows are the *eve* of the gazetted date
+(Labour Day 30/04, National Day 30/08, Christmas 24/12) — intentional, not a typo, so don't "correct"
+them on re-seed.
+
+**SCHOOL-only guards** (public holidays legitimately share dates and repeat names):
+- **Overlap:** a range overlapping another in the **same academic year** is rejected **409**
+  (`hasOverlap()` in `holidays.controller.ts`, same shape as the AptBlock / ResortMaintenance guards
+  but keyed on `year` instead of `(resortCode, unitNo)`). `endDate < startDate` returns **400**.
+- **Duplicate name:** one "TERM 1 SCHOOL HOLIDAYS" per academic year, **409** via `descriptionTaken()`.
+  This was the old `SchoolHoliday` `[academicYear, description]` unique; the merged table keys on the
+  start date instead, because a year-scoped unique would wrongly block a multi-day public holiday that
+  repeats a name on another date — so the rule is re-enforced in the controller, not the DB.
+- Update merges the payload over the stored row *before* re-running both checks, passing its own id as
+  `excludeId`. **`holidayType` is immutable** — taken from the stored row, never the payload.
+
+**Clone by year** (`POST /api/holidays/clone`, body `{ holidayType, sourceYear }`): copies every row of
+`sourceYear` into **`sourceYear + 1`**, shifting `startDate` and (when present) `endDate` by one year on
+the same month/day (`getUTCFullYear() + 1` per date, so a school range crossing 31 Dec stays intact),
+then staff correct each row — lunar/Islamic holidays and school terms both shift annually. Refuses
+**409** if the target year already holds rows of that kind (a second click must not duplicate rows or
+silently discard dates already corrected); **404** if the source year is empty. A 29-Feb source date
+rolls to 1 Mar in a non-leap target year (acceptable — every cloned date is reviewed anyway).
+
+The seed **upserts** on the compound unique, so re-running only tops up missing rows. `Holiday` is
+**not** truncated by `refresh-test-db.ps1` (no FK to Resort) — the refresh calls the seed to top it up
+and leaves corrected dates alone. Note the start date is part of the upsert key: if staff move a seeded
+holiday, a re-seed re-creates its original row rather than updating the corrected one (unchanged
+behaviour from the two seeds this replaces). CRUD at `/api/holidays` under `RESORTS_SETUP` matrix
 permission (clone requires `create`).
-
-### SchoolHoliday
-School break **date ranges** for the **School Holidays Setup** function (`/resorts/school-holidays`).
-**Consumed by LHC booking only** (see the per-product note above `### PublicHoliday`).
-**No Informix source** — the 4 rows for 2026 are business-supplied and baked into
-`prisma/seed-school-holidays.ts`. Fields: `academicYear` (Int), `startDate`/`endDate` (plain TIMESTAMP
-UTC-midnight business dates), `description`. Unique: `[academicYear, description]` — one
-"TERM 1 SCHOOL HOLIDAYS" per academic year; that compound index also serves `academicYear`-only
-lookups as a prefix, so there is **no separate `@@index`** (unlike `PublicHoliday`, whose unique key
-starts with the date).
-
-**Global scope — no resort or state column**, same as `PublicHoliday` (state-group Kumpulan A/B
-variants are deliberately out of scope).
-
-**`academicYear` is editable, NOT derived from the dates** — a Malaysian session can run past the
-calendar boundary, so a January break can legitimately belong to the previous academic year. The form
-pre-fills it from the start date's year *only while the field is still blank* (a default, not an
-override). Contrast `PublicHoliday.year`, which **is** always derived server-side.
-
-**Overlap guard:** a record whose range overlaps another in the **same academic year** is rejected
-with **409** (`hasOverlap()` in `school-holidays.controller.ts`, same shape as the AptBlock /
-ResortMaintenance guards but keyed on `academicYear` instead of `(resortCode, unitNo)`). `endDate <
-startDate` returns 400. Update merges the payload over the stored row *before* re-running both checks,
-passing its own id as `excludeId`.
-
-**Clone by academic year** (`POST /api/school-holidays/clone`, body `{ sourceYear }`): copies every
-range of `sourceYear` into **`sourceYear + 1`**, shifting **both** ends by one year on the same
-month/day (`getUTCFullYear() + 1` per date, so a range crossing 31 Dec stays intact), then staff correct
-each range. Refuses with **409** if the target academic year already holds rows; **404** if the source
-year is empty. Same reasoning as the PublicHoliday clone.
-
-The seed **upserts** on the compound unique. `SchoolHoliday` is **not** truncated by
-`refresh-test-db.ps1` (no FK to Resort) — the refresh calls the seed to top it up. CRUD at
-`/api/school-holidays` under `RESORTS_SETUP` matrix permission (clone requires `create`).
 
 ### CpSeasonDate
 CP season calendar for the **CP's Seasons Setup** function (`/resorts/seasons`) — **one row per
 calendar day**, graded `G`=Gold / `S`=Silver / `D`=Diamond. The grade is resolved into an actual
-points-per-night figure by **`CpSeasonPoint`** (fn 10) — see below. 424 rows from `ps_seasondate.txt`. Fields: `date` (plain
+points-per-night figure by **`SeasonPoint`** (fn 9) — see below. 424 rows from `ps_seasondate.txt`. Fields: `date` (plain
 TIMESTAMP UTC-midnight business date, **`@unique`** — one season per day), `season` (String validated
 against a `SEASONS` const + `z.enum`, not a Prisma enum, so adding a grade needs no migration), `year`
 (Int — **derived server-side** from `date`, never accepted from the client; needs its own
 `@@index([year])` since the unique index is on `date`).
 
 **Consumed by CP booking only** — this is the *only* peak/holiday calendar CP reads, and
-`PublicHoliday`/`SchoolHoliday` are LHC-only. See the per-product note above `### PublicHoliday`.
+the `Holiday` table (public + school) is LHC-only. See the per-product note above `### Holiday`.
 
 **Global** — the source has no resort or coCode column (the `ps_` prefix already marks it CP, like
 `ps_amc_mem` / `ps_ctrltab` / `ps_bookent1`).
@@ -939,132 +944,119 @@ Imported via `prisma/migrate-cp-seasons.ts` (`migrate-table.ps1 -Table CpSeasonD
 `refresh-test-db.ps1`). Unlike the two holiday **seeds** (business-supplied, upsert/top-up), this has a
 real Informix source so it **truncates and reimports** — post-go-live re-import **clobbers CRUD edits**.
 
-### CpSeasonPoint
-The CP points chart for the **CP Points Deduction for Home Resorts** function (fn 10,
-`/resorts/season-points`) —
-how many points a CP member is charged **per night**, by resort × apartment type × season × day of
-week. `CpSeasonDate` (fn 9) grades the day G/S/D; this table turns that grade into a number.
-253 rows from `ps_seasonapt.txt`. Fields: `resortId` (FK → Resort.id, Cascade), `resortCode`,
-`apartmentType` (**no hard FK to `ApartmentType`** — validated on save that the
-`(resortCode, apartmentType)` pair exists, 400 otherwise, same rule as `ResortUnit`), `year` (Int —
-the year the points apply to), `effectiveDate` (plain TIMESTAMP UTC-midnight business date),
-`season` (validated against a `SEASONS` const + `z.enum`, not a Prisma enum), and seven Int columns
-`ptsSun`..`ptsSat`. Unique: `[resortCode, apartmentType, year, effectiveDate, season]` (mirrors
-Informix `u925_83`; the DB constraint is named `CpSeasonPoint_natkey_key` via `map:` because the
-generated name would exceed PostgreSQL's 63-char identifier limit). Indexed on `[resortCode, year]`.
+### SeasonPoint
+**One** points chart for the **CP Points Deduction** function (`/resorts/season-points`, Resorts
+Setup fn 9) — how many points a CP member is charged **per night**, by resort × apartment type ×
+season × day of week — covering both halves, discriminated by `pointsType`:
 
-**Sunday is index 0.** `pssa_norpts0..6` map to Sun→Sat, *not* Mon→Sun. Verified against the legacy
-screen: SLEEP6/S 2027 is `29,29,29,29,29,51,51` and the screen shows "Total Points Per Week: 247"
-(= 29×5 + 51×2). **The weekly total is derived, never stored.**
+- **`HOME`** — the member's own product's resort (`coCode '02'`, CP-PBR today). `CpSeasonDate` (fn 8)
+  grades the day G/S/D; this table turns that grade into a number. **253 rows** from `ps_seasonapt.txt`.
+- **`AWAY`** — every other resort: our own LHC resorts (`L-101`, coCode 03) and the partner/exchange
+  `V-*` resorts, reached through an LVC exchange programme. This is why `pssa_lvcpts0..6` are zero on
+  all 253 `ps_seasonapt` rows — the away points lived in their own Informix table. **4,513 rows** from
+  `ps_lvcapt.txt`, across **264 resorts** and years **2000-2028**.
 
-**Only the first 12 of 24 source columns are imported** (business decision). `pssa_lvcpts0..6`
-(cols 13-19) are **zero on all 253 rows** and the rest are legacy audit/lock columns dropped
-everywhere else in this codebase.
+> **Merged from two tables on 2026-07-31.** `CpSeasonPoint` and `LvcSeasonPoint` were separate models,
+> controllers, routers, API clients and pages sharing ~78% of controller code and ~86% of page code;
+> 15 of their 17 columns were identical. Migration `20260731140000_merge_season_point_tables` creates
+> `SeasonPoint`, copies both tables into it (preserving row `id`s) and DROPs them. Safe because the
+> datasets are disjoint: CP-PBR appears in 0 `ps_lvcapt` rows, 0 away rows carry `coCode '02'`, and the
+> shared natural key collides **0 times across all 4,766 rows**. **Historical `AuditLog` rows still
+> carry `targetType='CpSeasonPoint'` / `'LvcSeasonPoint'`** — new rows write `'SeasonPoint'`. The old
+> route `/resorts/lvc-season-points` redirects to `/resorts/season-points?type=away`;
+> `/api/cp-season-points` and `/api/lvc-season-points` are **gone**.
 
-**`effectiveDate` is part of the key, and is a per-row attribute — not a per-year revision stamp.**
-24 of the 28 imported years (2000–2027) carry a single effective date across all 9 rows, but 2003,
-2008 and 2022 split a year across two dates, and **2015/SLEEP4/G genuinely has two rows**
-(`01-04-2014` → 22/38 and `02-04-2014` → 28/48). Keying on `(resort, type, year, season)` alone
-would have silently dropped one, so each grid row carries its own date. The screen renders the extra
-revision as an additional row rather than hiding it.
+Fields: `pointsType` (`'HOME'` | `'AWAY'`), `resortId` (FK → Resort.id, Cascade), `resortCode`,
+`coCode` (the resort's **own** product — denormalized from `Resort` on save, never taken from the
+payload), `lvcCoCode` (**nullable** — the product whose members are **charged**; `'02'` on every
+imported away row, **null** on home), `apartmentType`, `year` (Int), `effectiveDate` (plain TIMESTAMP
+UTC-midnight business date), `season` (validated against a `SEASONS` const + `z.enum`, not a Prisma
+enum), and seven Int columns `ptsSun`..`ptsSat`. Unique:
+`[resortCode, apartmentType, year, effectiveDate, season]` (mirrors Informix `u925_83`; named
+`SeasonPoint_natkey_key` via `map:` because the generated name would exceed PostgreSQL's 63-char
+limit). Indexed on `[resortCode, year]`.
 
-**CP-only.** Every endpoint calls `requireCpResort()` and returns **400 `'Season points apply to CP
-resorts only'`** for a `coCode != '02'` resort; the resort picker is filtered client-side to
-`coCode === '02'` **and `status === 'A'`**. The status filter was added 2026-07-30 when the unfiltered
-`resort_mast` re-import brought in retired CP resorts (`CP-DIR`, `V-DIR`, `V-PBR`) that must not be
-offered for new points setup — so the dropdown shows CP-PBR alone, and a new *active* CP resort
-appears automatically. **The server deliberately does NOT check status**, so a URL naming an inactive
-CP resort still loads and stays editable (the header falls back to `yearData.resort`); existing points
-data never becomes unreachable just because a resort was deactivated.
+**`pointsType` is a plain `String`** validated by a `z.enum(['HOME','AWAY'])` in the controller, **not**
+a Prisma enum (same reasoning as `Holiday.holidayType` and `CpSeasonDate.season`), and is **derived
+server-side** from the resort's `coCode` on every save — never taken from the payload, so it cannot
+drift. It is deliberately **not** in the natural key: a resort is either home or away, so `resortCode`
+already determines it, and keeping the key unchanged is what makes the merge lossless.
 
-**The screen is resort-year-scoped**, like fn 9's month scope. `GET /api/cp-season-points?resortCode&year`
-returns the year's rows plus the resort's `apartmentTypes`, and the page scaffolds the full
-type × season grid (`SEASON_ORDER = ['S','G','D']`), leaving unset combos blank. `POST /year`
-bulk-upserts; **rows left entirely blank are never submitted**, so opening an untouched year and
-saving cannot create zero-point garbage. Deletion is year-scoped (`DELETE /year`) with a per-row
-`DELETE /:id` that exists only to drop a superseded effective-dated revision. **There is no clone
-action** (deliberate — unlike fns 7/8/9).
+**Sunday is index 0.** Source cols `0..6` map to Sun→Sat, *not* Mon→Sun. Verified against the legacy
+screens on **both** halves: home `CP-PBR/SLEEP6/S/2027` and away `V-KI/SLEEP6/S/2000` are each
+`29,29,29,29,29,51,51` and the screen shows "Total Points Per Week: 247" (= 29×5 + 51×2).
+**The weekly total is derived, never stored.**
 
-Imported via `prisma/migrate-cp-season-points.ts` (`migrate-table.ps1 -Table CpSeasonPoint`, bundled
-into `-Table Resort` + `refresh-test-db.ps1` — runs after `migrate-resorts.ts` since it needs
-`Resort` for the FK). Like `CpSeasonDate` it has a real Informix source, so it **truncates and
-reimports** — post-go-live re-import **clobbers CRUD edits**.
+**Source columns:** home imports the first 12 of 24 (`pssa_lvcpts0..6` are zero on all 253 rows, the
+rest are legacy audit/lock); away imports the first 14 of 20 (cols 15-20 are the usual audit/lock
+trailer).
 
-### LvcSeasonPoint
-The LVC points chart for the **CP Points Deduction for Non-Home Resorts** function (fn 11,
-`/resorts/lvc-season-points`)
-— how many points a CP member is charged **per night** when they book a resort **other than their home
-resort**, by resort × apartment type × season × day of week. A home resort is one with `coCode = '02'`
-(today only `CP-PBR`); everything else — our own LHC resorts (`L-101`, coCode 03) and the
-partner/exchange `V-*` resorts — is an LVC booking priced from here. This is the counterpart of
-`CpSeasonPoint`, and the reason `pssa_lvcpts0..6` are zero on all 253 `ps_seasonapt` rows: the LVC
-points live in their own Informix table, `ps_lvcapt`.
+**`effectiveDate` must stay in the key — it is a per-row attribute, not a per-year revision stamp.**
+On the home side, 24 of the 28 imported years (2000–2027) carry a single effective date across all 9
+rows, but 2003, 2008 and 2022 split a year across two dates, and **2015/SLEEP4/G genuinely has two
+rows** (`01-04-2014` → 22/38 and `02-04-2014` → 28/48). On the away side the key is unique across all
+4,513 rows while dropping `effectiveDate` collides on **16**. Either way, keying on
+`(resort, type, year, season)` alone would silently drop rows. The screen renders an extra revision as
+an additional row rather than hiding it.
 
-**4,513 rows** from `ps_lvcapt.txt`, across **264 resorts** and years **2000-2028**. Fields:
-`resortId` (FK → Resort.id, Cascade), `resortCode`, `coCode` (the resort's **own** product —
-denormalized from `Resort` on save, never taken from the payload; verified constant per resortCode),
-`apartmentType`, `lvcCoCode` (the product whose members are **charged** — `'02'` on every imported row),
-`year` (Int), `effectiveDate` (plain TIMESTAMP UTC-midnight business date), `season` (validated against
-a `SEASONS` const + `z.enum`, not a Prisma enum), and seven Int columns `ptsSun`..`ptsSat`.
-Unique: `[resortCode, apartmentType, year, effectiveDate, season]` (DB constraint named
-`LvcSeasonPoint_natkey_key` via `map:` — the generated name would exceed PostgreSQL's 63-char limit).
-Indexed on `[resortCode, year]`.
-
-**Sunday is index 0**, same as `CpSeasonPoint` — verified: `V-KI/SLEEP6/2000/S` is
-`29,29,29,29,29,51,51` = 247 per week, the same figure the legacy screen shows.
-
-**`effectiveDate` must stay in the key.** It is unique across all 4,513 source rows, but dropping
-`effectiveDate` collides on **16** of them — the same reason it is in `CpSeasonPoint`'s key.
-
-**Only the first 14 of 20 source columns are imported** (business decision) — cols 15-20 are the usual
-legacy audit/lock trailer (`teh|17-04-2000| ||U|`) dropped everywhere else in this codebase. The 14
-imported columns are exactly the data columns, so nothing meaningful is left behind.
-
-**Resort scope: exchange resorts only.** Every endpoint calls `requireLvcResort()` and returns **400**
-for a `coCode == '02'` resort ("a CP resort is a home resort, priced by CP Resorts Season Points
-Setup") — the mirror image of fn 10's `requireCpResort()`. The picker is `useActiveResorts()` filtered
-to `coCode !== '02'` = **48 resorts**. As in fn 10 the **server deliberately does NOT check status**,
-which matters far more here: **237 of the 264 resorts with data are Inactive**, and their points stay
-readable and editable by URL (`?resort=V-KI&year=2005`) even though the dropdown won't offer them for
-new setup.
+**Resort scope is enforced both ways.** Every endpoint calls `requireResortOfType(resortCode, expected)`,
+which loads the resort, computes its kind from `coCode` and returns **400** on a mismatch — naming the
+other tab. This replaced the mirror-image `requireCpResort()` / `requireLvcResort()` pair. The pickers
+are `useActiveResorts()` filtered to `coCode === '02'` (home, CP-PBR alone) and `!== '02'` (away, **48**
+resorts). **The server deliberately does NOT check status**, which matters most on the away side:
+**237 of the 264 resorts with data are Inactive**, and their points stay readable and editable by URL
+(`?type=away&resort=V-KI&year=2005`) even though the dropdown won't offer them for new setup. The
+status filter on the pickers was added 2026-07-30 when the unfiltered `resort_mast` re-import brought
+in retired CP resorts (`CP-DIR`, `V-DIR`, `V-PBR`) that must not be offered for new points setup.
 
 > **Apartment types are validated against `ApartmentType` (fn 3), but existing pairs are
 > grandfathered.** A submitted row is accepted when the `(resortCode, apartmentType)` pair is
-> registered in Apartment Types Setup **or** a `LvcSeasonPoint` row already exists for it
+> registered in Apartment Types Setup **or** a `SeasonPoint` row already exists for it
 > (`allowedApartmentTypes()` in the controller). Genuinely new types still have to go through fn 3.
 >
-> This split is necessary because only **5 of the 412** `(resort, apartmentType)` pairs in the source
-> exist in `ApartmentType` (a 9-row business-supplied seed covering our own resorts). Partner
-> apartment types — `SLEEPA`..`SLEEPE`, `HOTEL UNIT` — are the partner's own nomenclature and were
-> never registered here. Without grandfathering, **22 of the 27 populated pickable resorts would be
-> permanently read-only** (every save 400s). For the 48 pickable resorts, 41 of the 46 needed pairs
-> are missing from fn 3 — register them there if the strict rule should apply everywhere.
+> This split is necessary on the away side: only **5 of the 412** `(resort, apartmentType)` pairs in
+> `ps_lvcapt` exist in `ApartmentType` (a 9-row business-supplied seed covering our own resorts).
+> Partner apartment types — `SLEEPA`..`SLEEPE`, `HOTEL UNIT` — are the partner's own nomenclature and
+> were never registered here. Without grandfathering, **22 of the 27 populated pickable away resorts
+> would be permanently read-only** (every save 400s).
 >
-> The list endpoint therefore returns `apartmentTypes` as the **union** of registered types and types
-> already stored, each flagged `registered: boolean`; scaffolding the grid from `ApartmentType` alone
-> would render an empty grid for every partner resort. Unregistered types show a `(legacy)` hint.
-> **The migration validates neither** — it checks only the resort FK, exactly like
-> `migrate-cp-season-points.ts`, so all 4,513 rows import as-is.
+> **The rule is applied to HOME too**, rather than keeping the old strict `apartmentTypeExists()`
+> check on that side: CP-PBR's SLEEP2/SLEEP4/SLEEP6 are all registered in fn 3, so home behaves
+> exactly as before, and there is one rule instead of two. The list endpoint returns `apartmentTypes`
+> as the **union** of registered types and types already stored, each flagged `registered: boolean`;
+> unregistered types show a `(legacy)` hint. **Neither migration validates apartment types** — both
+> check only the resort FK, so all 4,766 rows import as-is.
 
-**`lvcCoCode` is editable** — a product dropdown validated against `Product.coCode` (400 on an unknown
-code), reusing the lookup-not-FK pattern from `lvc-codes.controller.ts`. It is a header-level control
-applied to every row on save, since the natural key excludes it (two rows differing only in
-`lvcCoCode` cannot coexist). Every imported row is `'02'`; the field exists so a future non-CP
-exchange direction can be set up.
+**`lvcCoCode` is editable, and away-only** — a product dropdown validated against `Product.coCode`
+(400 on an unknown code), reusing the lookup-not-FK pattern from `lvc-codes.controller.ts`. It is a
+header-level control applied to every row on save, since the natural key excludes it (two rows
+differing only in `lvcCoCode` cannot coexist). Every imported away row is `'02'`; the field exists so
+a future non-CP exchange direction can be set up. **On the home tab the control is not rendered and
+the server stores null whatever the client sends.**
 
-**The screen is resort-year-scoped**, like fn 10. `GET /api/lvc-season-points?resortCode&year` returns
-the year's rows plus the resort header, its `apartmentTypes` and the year's `lvcCoCode`; the page
-scaffolds the full type × season grid (`SEASON_ORDER = ['S','G','D']`), leaving unset combos blank.
-`POST /year` bulk-upserts; **rows left entirely blank are never submitted**, so opening an untouched
-year and saving cannot create zero-point garbage. Deletion is year-scoped (`DELETE /year`) with a
-per-row `DELETE /:id` for dropping a superseded effective-dated revision. **There is no clone action**
-(deliberate, same as fn 10).
+**The screen is resort-year-scoped**, like fn 8's month scope, and presented as a **tabbed page**
+(Home Resorts / Non-Home Resorts) whose tab lives in the URL (`?type=home|away`) alongside `resort`
+and `year`. `GET /api/season-points?type&resortCode&year` returns the year's rows plus the resort
+header, its `apartmentTypes` and (away only) the year's `lvcCoCode`; the page scaffolds the full
+type × season grid (`SEASON_ORDER = ['S','G','D']`), leaving unset combos blank. `POST /year`
+bulk-upserts; **rows left entirely blank are never submitted**, so opening an untouched year and
+saving cannot create zero-point garbage. Deletion is year-scoped (`DELETE /year`) with a per-row
+`DELETE /:id` for dropping a superseded effective-dated revision. **There is no clone action**
+(deliberate — unlike fns 7 and 8).
 
-Imported via `prisma/migrate-lvc-season-points.ts` (`migrate-table.ps1 -Table LvcSeasonPoint`, bundled
-into `-Table Resort` + `refresh-test-db.ps1` — runs after `migrate-resorts.ts` since it needs `Resort`
-for the FK). `createMany` is **chunked at 100** (`MIGRATE_BATCH`) — 4,513 rows × 16 cols is well into
-CachedPlan-OOM territory, unlike fn 10's 253 unchunked rows. Real Informix source, so it **truncates
-and reimports** — post-go-live re-import **clobbers CRUD edits**.
+> The merge closed a small inconsistency: the old `deleteCpSeasonPointYear` never ran its resort scope
+> check while the LVC equivalent did. `deleteSeasonPointYear` now checks on both sides.
+
+Imported via `prisma/migrate-cp-season-points.ts` (HOME) and `prisma/migrate-lvc-season-points.ts`
+(AWAY) — **kept as two scripts on purpose**: they read different Informix files with different column
+layouts (`ps_seasonapt.txt` 24 cols, points at `[5-11]`; `ps_lvcapt.txt` 20 cols, points at `[7-13]`),
+which is genuine difference, not duplicated logic. Both run after `migrate-resorts.ts` since they need
+`Resort` for the FK, and both `createMany` **chunked at 100** (`MIGRATE_BATCH`) — 4,513 rows × 18 cols
+is well into CachedPlan-OOM territory. Via `migrate-table.ps1 -Table CpSeasonPoint` /
+`-Table LvcSeasonPoint`, each of which clears **only its own `pointsType`** (a `DELETE ... WHERE`, not
+a `TRUNCATE`, since the halves share a table); `-Table Resort` and `refresh-test-db.ps1` truncate the
+whole table. Real Informix source, so both **reimport** — post-go-live re-import **clobbers CRUD
+edits**.
 
 ### State
 39 records from `state.txt`. Fields: `code` (PK, 2-digit), `name`. Served via `GET /api/states`.
@@ -1097,7 +1089,7 @@ Source tables and their column counts (verified from actual export files):
 
 | `lvc_master.txt` | LVC exchange-programme master | 14 cols pipe-delimited (+ trailing empty field, so `NF=15`); **only [0..6] migrated** | lvc_code[0] (→ `lvcCode`, e.g. `LVC-CP`), lvc_cocode[1] (→ `coCode` — **references `ps_company.psc_cocode` → `Product.coCode`**; all 23 rows resolve against the full 29-row export; validated on CRUD, no hard FK), lvc_name[2] (→ `lvcName`), lvc_status[3] (→ `status`; `A`/`U`, defaults `A` when blank, any other value skipped with a WARN), lvc_incoming[4], lvc_outgoing[5], lvc_fax_batch[6] (→ `incoming`/`outgoing`/`faxBatch`). **user_create[7], date_create[8], user_modify[9], date_modify[10], user_cancel[11], date_cancel[12], lock_status[13] NOT migrated.** `UNLOAD TO 'lvc_master.txt' DELIMITER '\|' SELECT * FROM lvc_master;` → `LvcCode` (unique on `lvcCode`). **The three counters are `decimal(5,0)` but export as FLOAT strings (`"519.0"`) — parse with `Math.round(parseFloat(…))`, the same trap `pssa_year` (`"2000.0"`) has in `migrate-cp-season-points.ts`.** Names are imported **verbatim including source typos** (`LVC-RR` = `ROYAL RESORTS GROU[P`, `LVC-AWT` = `ABSOLUTE WORL TRAVEL LTD`) — staff correct them via the CRUD screen; rewriting them here would make a re-import disagree with Informix. **23 rows, all `status='A'`.** See `prisma/migrate-lvc-codes.ts`. |
 
-| `resort_mast.txt` | Resort master | 26 cols pipe-delimited | re_resort_code[0], re_cocode[1], re_short_name[2], re_resort_name[3], **re_exc_reg[4] + re_rci_release[7] skipped**, re_rci_aff[5] (→ `rciAffiliate`), re_rci_code[6], re_lock_onoff[8] (lock-on/lock-off: apartment splits as Sleep2/4/6), re_resort_mgmt[9], re_contact_person[10], re_add1-3[11-13], re_city[14], re_state[15], re_country[16], re_telno[17], re_faxno[18], re_resort_status[19] (Informix `A`/`I` — **`I` is mapped to `U`** for this codebase's A/U convention), re_paymt[20], re_create_user/date[21-22], re_mod_user/date[23-24], re_lock_status[25]. `UNLOAD TO 'resort_mast.txt' DELIMITER '\|' SELECT * FROM resort_mast;` (**unfiltered since 2026-07-30**; was `WHERE re_resort_status='A' AND re_cocode IN ('03','15','02')` = 7 rows) → `Resort`. **324 rows** — 49 active / 275 inactive, all coCodes, including the `V-*` LVC exchange resorts needed by fn 11. The script does NOT truncate and uses `skipDuplicates`, so running it alone is **additive**. See `prisma/migrate-resorts.ts`. |
+| `resort_mast.txt` | Resort master | 26 cols pipe-delimited | re_resort_code[0], re_cocode[1], re_short_name[2], re_resort_name[3], **re_exc_reg[4] + re_rci_release[7] skipped**, re_rci_aff[5] (→ `rciAffiliate`), re_rci_code[6], re_lock_onoff[8] (lock-on/lock-off: apartment splits as Sleep2/4/6), re_resort_mgmt[9], re_contact_person[10], re_add1-3[11-13], re_city[14], re_state[15], re_country[16], re_telno[17], re_faxno[18], re_resort_status[19] (Informix `A`/`I` — **`I` is mapped to `U`** for this codebase's A/U convention), re_paymt[20], re_create_user/date[21-22], re_mod_user/date[23-24], re_lock_status[25]. `UNLOAD TO 'resort_mast.txt' DELIMITER '\|' SELECT * FROM resort_mast;` (**unfiltered since 2026-07-30**; was `WHERE re_resort_status='A' AND re_cocode IN ('03','15','02')` = 7 rows) → `Resort`. **324 rows** — 49 active / 275 inactive, all coCodes, including the `V-*` LVC exchange resorts needed by fn 9's Non-Home tab. The script does NOT truncate and uses `skipDuplicates`, so running it alone is **additive**. See `prisma/migrate-resorts.ts`. |
 
 | `apt_mast.txt` | Resort units (Apartments/Units register) | 5 cols pipe-delimited (deliberately partial export of the 15-col `apt_mast` — dates/audit/lock_status skipped) | apt_code[0] (→ `unitNo`; compound lock-off codes `3227/3228`, dotted `1.12A`), apt_resort_code[1], apt_rci_reserved[2] (Y/N), apt_unit_type[3] (matches `ApartmentType.apartmentType`), apt_occupancy[4]. `UNLOAD TO 'apt_mast.txt' DELIMITER '\|' SELECT apt_code, apt_resort_code, apt_rci_reserved, apt_unit_type, apt_occupancy FROM apt_mast;` → `ResortUnit` (unique `[resortCode, unitNo]` — apt_code NOT globally unique). See `prisma/migrate-resort-units.ts`. |
 
@@ -1109,11 +1101,11 @@ Source tables and their column counts (verified from actual export files):
 
 | `resmt.txt` | Resorts Maintenance register | 9 cols pipe-delimited (+ trailing empty field, so `NF=10`); only [0..5] migrated | rm_serial_no[0] (→ `serialNo`), rm_resort_code[1], rm_apt_code[2] (→ `unitNo`, incl. `3231/3232` and `3.9B`), rm_checkin[3] (→ `startDate`), rm_checkout[4] (→ `endDate`) (`dd-mm-yyyy` → UTC midnight), rm_remarks[5] (→ `remarks`, the reason). **rm_user_name[6], rm_sys_date[7], rm_lock_status[8] NOT migrated** (lock_status is `U` on all 13,396 rows). `apartmentType` derived by ResortUnit lookup (null when the unit isn't registered — 291 rows, all historic). `UNLOAD TO 'resmt.txt' DELIMITER '\|' SELECT * FROM resmt WHERE rm_resort_code IN ("CP-PBR","L-10016","L-10024","L-10025","L-10026","L-101","L-103A");` → `ResortMaintenance` (unique `[resortCode, unitNo, startDate]` = Informix `rm_idx1`). The UNLOAD is **filtered to the 7 active resorts** (same as `apt_mast.txt`) → **7,327 rows**. An unfiltered export yields 13,396; the extra 6,069 reference retired resort codes (L-10020 3122, L-10027 1626, L-10013 426, L-103 378, …) absent from `Resort`, so the FK can't be satisfied — the script skips them with a summary WARN rather than failing, so either export works. **Applies NO `ResAvailMast` deltas** — the grid export already has maintenance deducted. See `prisma/migrate-maintenance.ts`. |
 
-| `ps_seasondate.txt` | CP season calendar (per-day G/S/D grading) | 2 cols pipe-delimited (+ trailing empty field, so `NF=3`) | ps_date[0] (`dd-mm-yyyy` → UTC midnight), ps_season[1] (`G`=Gold / `S`=Silver / `D`=Diamond; any other value is skipped with a WARN). `year` derived from the date. `UNLOAD TO 'ps_seasondate.txt' DELIMITER '\|' SELECT * FROM ps_seasondate;` → `CpSeasonDate` (unique on `date` — one season per day). **424 rows, 2026-01-01 → 2027-02-28, fully contiguous (no gaps, no duplicate dates); D 40 / G 56 / S 328 forming 33 contiguous runs.** CP-only — see the per-product calendar note under `### PublicHoliday`. See `prisma/migrate-cp-seasons.ts`. |
+| `ps_seasondate.txt` | CP season calendar (per-day G/S/D grading) | 2 cols pipe-delimited (+ trailing empty field, so `NF=3`) | ps_date[0] (`dd-mm-yyyy` → UTC midnight), ps_season[1] (`G`=Gold / `S`=Silver / `D`=Diamond; any other value is skipped with a WARN). `year` derived from the date. `UNLOAD TO 'ps_seasondate.txt' DELIMITER '\|' SELECT * FROM ps_seasondate;` → `CpSeasonDate` (unique on `date` — one season per day). **424 rows, 2026-01-01 → 2027-02-28, fully contiguous (no gaps, no duplicate dates); D 40 / G 56 / S 328 forming 33 contiguous runs.** CP-only — see the per-product calendar note under `### Holiday`. See `prisma/migrate-cp-seasons.ts`. |
 
-| `ps_seasonapt.txt` | CP season points chart (points per night) | 24 cols pipe-delimited (+ trailing empty field, so `NF=25`); **only [0..11] migrated** | pssa_resort_code[0] (`CP-PBR` on every row), pssa_apt_type[1] (→ `apartmentType`; SLEEP2/SLEEP4/SLEEP6), pssa_year[2] (→ `year`; **exported as a float string `"2000.0"` — use `parseFloat`, not the `d()` date helper**), pssa_effdate[3] (→ `effectiveDate`, `dd-mm-yyyy` → UTC midnight), pssa_season[4] (`G`/`S`/`D`; any other value skipped with a WARN), pssa_norpts0..6[5-11] (→ `ptsSun`..`ptsSat`, **0 = Sunday … 6 = Saturday**). **pssa_lvcpts0..6[12-18] NOT migrated (zero on all 253 rows), plus audit/lock cols [19-23].** `UNLOAD TO 'ps_seasonapt.txt' DELIMITER '\|' SELECT * FROM ps_seasonapt;` → `CpSeasonPoint` (unique `[resortCode, apartmentType, year, effectiveDate, season]` = Informix `u925_83`). **253 rows, 28 years (2000-2027) × 3 types × 3 seasons = 252, plus one genuine duplicate combo — 2015/SLEEP4/G exists at two effective dates (22/38 and 28/48). Keeping `effectiveDate` in the key is what makes the import lossless.** CP-only — see the per-product calendar note under `### PublicHoliday`. See `prisma/migrate-cp-season-points.ts`. |
+| `ps_seasonapt.txt` | Season points chart, HOME half (points per night) | 24 cols pipe-delimited (+ trailing empty field, so `NF=25`); **only [0..11] migrated** | pssa_resort_code[0] (`CP-PBR` on every row), pssa_apt_type[1] (→ `apartmentType`; SLEEP2/SLEEP4/SLEEP6), pssa_year[2] (→ `year`; **exported as a float string `"2000.0"` — use `parseFloat`, not the `d()` date helper**), pssa_effdate[3] (→ `effectiveDate`, `dd-mm-yyyy` → UTC midnight), pssa_season[4] (`G`/`S`/`D`; any other value skipped with a WARN), pssa_norpts0..6[5-11] (→ `ptsSun`..`ptsSat`, **0 = Sunday … 6 = Saturday**). **pssa_lvcpts0..6[12-18] NOT migrated (zero on all 253 rows), plus audit/lock cols [19-23].** `UNLOAD TO 'ps_seasonapt.txt' DELIMITER '\|' SELECT * FROM ps_seasonapt;` → `SeasonPoint` as `pointsType='HOME'` (unique `[resortCode, apartmentType, year, effectiveDate, season]` = Informix `u925_83`). **253 rows, 28 years (2000-2027) × 3 types × 3 seasons = 252, plus one genuine duplicate combo — 2015/SLEEP4/G exists at two effective dates (22/38 and 28/48). Keeping `effectiveDate` in the key is what makes the import lossless.** CP-only — see the per-product calendar note under `### Holiday`. See `prisma/migrate-cp-season-points.ts`. |
 
-| `ps_lvcapt.txt` | LVC season points chart (points per night away from home) | 20 cols pipe-delimited; **only [0..13] migrated** | resort_code[0] (→ `resortCode`; 264 distinct, **all resolve against `Resort`** — 0 unmatched), resort cocode[1] (→ `coCode`, the resort's OWN product; 24 distinct, never `02`, **constant per resortCode**), apt_type[2] (→ `apartmentType`; SLEEP2/4/6, 1BR/2BR/3BR, HOTEL UNIT, SLEEPA-E), lvc cocode[3] (→ `lvcCoCode`, the product **charged** — `02` on all 4,513 rows), year[4] (→ `year`; **exported as a float string `"2000.0"` — use `Math.round(parseFloat(…))`**, the same trap as `pssa_year`), effdate[5] (→ `effectiveDate`, `dd-mm-yyyy` → UTC midnight), season[6] (`G`/`S`/`D`; any other value skipped with a WARN), points0..6[7-13] (→ `ptsSun`..`ptsSat`, **0 = Sunday … 6 = Saturday**). **Cols [14..19] — the legacy user/date/blank/lock trailer (`teh\|17-04-2000\| \|\|U\|`) — NOT migrated.** `UNLOAD TO 'ps_lvcapt.txt' DELIMITER '\|' SELECT * FROM ps_lvcapt;` (**unfiltered**) → `LvcSeasonPoint` (unique `[resortCode, apartmentType, year, effectiveDate, season]`). **4,513 rows, 264 resorts, years 2000-2028; D 1504 / G 1504 / S 1505.** The natural key is unique across all 4,513 rows, while dropping `effectiveDate` collides on 16 — keeping it is what makes the import lossless. Apartment type is **not** validated at import (only 5 of the 412 pairs exist in `ApartmentType`); the CRUD validates new types and grandfathers stored ones. `createMany` **chunked at 100** (`MIGRATE_BATCH`). See `prisma/migrate-lvc-season-points.ts`. |
+| `ps_lvcapt.txt` | Season points chart, AWAY half (points per night away from home) | 20 cols pipe-delimited; **only [0..13] migrated** | resort_code[0] (→ `resortCode`; 264 distinct, **all resolve against `Resort`** — 0 unmatched), resort cocode[1] (→ `coCode`, the resort's OWN product; 24 distinct, never `02`, **constant per resortCode**), apt_type[2] (→ `apartmentType`; SLEEP2/4/6, 1BR/2BR/3BR, HOTEL UNIT, SLEEPA-E), lvc cocode[3] (→ `lvcCoCode`, the product **charged** — `02` on all 4,513 rows), year[4] (→ `year`; **exported as a float string `"2000.0"` — use `Math.round(parseFloat(…))`**, the same trap as `pssa_year`), effdate[5] (→ `effectiveDate`, `dd-mm-yyyy` → UTC midnight), season[6] (`G`/`S`/`D`; any other value skipped with a WARN), points0..6[7-13] (→ `ptsSun`..`ptsSat`, **0 = Sunday … 6 = Saturday**). **Cols [14..19] — the legacy user/date/blank/lock trailer (`teh\|17-04-2000\| \|\|U\|`) — NOT migrated.** `UNLOAD TO 'ps_lvcapt.txt' DELIMITER '\|' SELECT * FROM ps_lvcapt;` (**unfiltered**) → `SeasonPoint` as `pointsType='AWAY'` (unique `[resortCode, apartmentType, year, effectiveDate, season]`). **4,513 rows, 264 resorts, years 2000-2028; D 1504 / G 1504 / S 1505.** The natural key is unique across all 4,513 rows, while dropping `effectiveDate` collides on 16 — keeping it is what makes the import lossless. Apartment type is **not** validated at import (only 5 of the 412 pairs exist in `ApartmentType`); the CRUD validates new types and grandfathers stored ones. `createMany` **chunked at 100** (`MIGRATE_BATCH`). See `prisma/migrate-lvc-season-points.ts`. |
 
 | `ctrl_billtab.txt` | AMC invoice running number per coCode | 2 cols pipe-delimited | cocode[0], last_amcinv[1]. `UNLOAD TO 'ctrl_billtab.txt' SELECT cocode, last_amcinv FROM ctrl_billtab WHERE cocode IN ('03','15','02');`. Upsert-by-coCode → `AmcInvoiceCounter` (`coCode` PK, `lastInvNo`). Seeds the per-coCode AMC invoice running number so the new system continues where Informix left off. **Re-running RESETS `lastInvNo`** to the Informix value — OK for UAT refresh, must NOT run after go-live. See `prisma/migrate-amc-invoice-counter.ts`. |
 
@@ -1263,33 +1255,22 @@ GET  /api/resort-maintenance/:id/availability  Per-day grid (date/act/bal) for a
 POST /api/resort-maintenance                Create record + decrement ResAvailMast.balNight per day (RESORTS_SETUP create; 409 on overlap, 400 if unit not registered)
 PUT  /api/resort-maintenance/:id            Edit dates + remarks, re-sync grid (resortCode/unitNo/type immutable; RESORTS_SETUP edit; 409 on overlap)
 DELETE /api/resort-maintenance/:id          Delete record + restore its balNight contribution (RESORTS_SETUP delete)
-GET  /api/public-holidays?q=&year=          Public holiday list, sorted holidayDate asc; q searches the holiday name (RESORTS_SETUP view)
-GET  /api/public-holidays/years             Distinct years present in the calendar, newest first — feeds the Year dropdown (RESORTS_SETUP view)
-POST /api/public-holidays/clone             Clone a year's holidays to sourceYear+1, same month/day (body: sourceYear; RESORTS_SETUP create; 409 if target year non-empty, 404 if source empty)
-POST /api/public-holidays                   Create holiday (RESORTS_SETUP create; 409 on duplicate date+name)
-PUT  /api/public-holidays/:id               Update holiday date and/or name; re-derives year (RESORTS_SETUP edit)
-DELETE /api/public-holidays/:id             Delete holiday (RESORTS_SETUP delete)
-GET  /api/school-holidays?q=&academicYear=  School holiday list, sorted startDate asc; q searches the name (RESORTS_SETUP view)
-GET  /api/school-holidays/years             Distinct academic years, newest first — feeds the Academic Year dropdown (RESORTS_SETUP view)
-POST /api/school-holidays/clone             Clone an academic year's ranges to sourceYear+1, both ends same month/day (body: sourceYear; RESORTS_SETUP create; 409 if target year non-empty, 404 if source empty)
-POST /api/school-holidays                   Create school holiday (RESORTS_SETUP create; 400 if end<start, 409 on overlap within the academic year)
-PUT  /api/school-holidays/:id               Update academic year / dates / name; re-checks order + overlap (RESORTS_SETUP edit)
-DELETE /api/school-holidays/:id             Delete school holiday (RESORTS_SETUP delete)
+GET  /api/holidays?type=&q=&year=           Holiday list for one kind, sorted startDate asc; `type` (PUBLIC|SCHOOL) is REQUIRED (400 otherwise); q searches the name; year = calendar year (PUBLIC) or academic year (SCHOOL) (RESORTS_SETUP view)
+GET  /api/holidays/years?type=              Distinct years present for that kind, newest first — feeds the Year dropdown (RESORTS_SETUP view)
+POST /api/holidays/clone                    Clone a year to sourceYear+1, same month/day on both ends (body: holidayType, sourceYear; RESORTS_SETUP create; 409 if target year non-empty, 404 if source empty)
+POST /api/holidays                          Create holiday (body: holidayType, startDate, description + endDate/year for SCHOOL; PUBLIC derives year and stores endDate null; RESORTS_SETUP create; 400 if end<start or SCHOOL missing endDate/year, 409 on duplicate date+name, SCHOOL overlap, or duplicate SCHOOL name in the academic year)
+PUT  /api/holidays/:id                      Update dates / name / academic year; holidayType is immutable (taken from the stored row); PUBLIC re-derives year; SCHOOL re-checks order + overlap + duplicate name (RESORTS_SETUP edit)
+DELETE /api/holidays/:id                    Delete holiday (RESORTS_SETUP delete)
 GET  /api/cp-seasons?year=&month=           One month's graded days, unpaginated, sorted date asc; BOTH year and month required (400 otherwise). Ungraded days are absent — the page scaffolds them (RESORTS_SETUP view)
 GET  /api/cp-seasons/years                  Distinct years in the calendar, newest first — feeds the clone picker (RESORTS_SETUP view)
 POST /api/cp-seasons/month                  Bulk upsert a whole month (body: year, month, days[{date,season}]) — the add AND edit path; 400 if any date falls outside the month or repeats (RESORTS_SETUP create)
 DELETE /api/cp-seasons/month?year=&month=   Delete every graded day in the month (RESORTS_SETUP delete; 404 if the month is empty)
 POST /api/cp-seasons/clone                  Clone a year's grading to sourceYear+1, same month/day (body: sourceYear; RESORTS_SETUP create; 409 if target year non-empty, 404 if source empty)
-GET  /api/cp-season-points?resortCode=&year=  One resort-year's points rows, unpaginated, sorted apartmentType/season/effectiveDate; also returns the resort header + its apartmentTypes so the page can scaffold the grid. BOTH params required (400). 400 if the resort isn't CP (coCode!='02'), 404 if unknown (RESORTS_SETUP view)
-GET  /api/cp-season-points/years?resortCode=  Distinct years set up for that resort, newest first (RESORTS_SETUP view)
-POST /api/cp-season-points/year             Bulk upsert a whole resort-year (body: resortCode, year, rows[{apartmentType,season,effectiveDate,ptsSun..ptsSat}]) — the add AND edit path; 400 on a non-CP resort, an apartment type not set up for the resort, or a repeated (type,season,effectiveDate) (RESORTS_SETUP create)
-DELETE /api/cp-season-points/year?resortCode=&year=  Delete every points row for that resort-year (RESORTS_SETUP delete; 404 if empty)
-DELETE /api/cp-season-points/:id            Delete one row — drops a superseded effective-dated revision without wiping the year (RESORTS_SETUP delete; 404 if not found)
-GET  /api/lvc-season-points?resortCode=&year=  One resort-year's LVC points rows, unpaginated; also returns the resort header, its apartmentTypes (registered + grandfathered, each flagged) and the year's lvcCoCode. BOTH params required (400). 400 if the resort IS CP (coCode='02' — that's a home resort), 404 if unknown (RESORTS_SETUP view)
-GET  /api/lvc-season-points/years?resortCode=  Distinct years set up for that resort, newest first (RESORTS_SETUP view)
-POST /api/lvc-season-points/year            Bulk upsert a whole resort-year (body: resortCode, year, lvcCoCode, rows[{apartmentType,season,effectiveDate,ptsSun..ptsSat}]) — the add AND edit path; 400 on a CP resort, an unknown lvcCoCode product, an apartment type neither registered in fn 3 nor already stored, or a repeated (type,season,effectiveDate) (RESORTS_SETUP create)
-DELETE /api/lvc-season-points/year?resortCode=&year=  Delete every LVC points row for that resort-year (RESORTS_SETUP delete; 404 if empty)
-DELETE /api/lvc-season-points/:id           Delete one row — drops a superseded effective-dated revision without wiping the year (RESORTS_SETUP delete; 404 if not found)
+GET  /api/season-points?type=&resortCode=&year=  One resort-year's points rows for one kind, unpaginated, sorted apartmentType/season/effectiveDate; also returns the resort header, its apartmentTypes (registered + grandfathered, each flagged) and (AWAY only) the year's lvcCoCode. ALL THREE params required (400). type is HOME|AWAY and must match the resort's kind (coCode '02' = HOME), else 400; 404 if the resort is unknown (RESORTS_SETUP view)
+GET  /api/season-points/years?resortCode=   Distinct years set up for that resort, newest first (RESORTS_SETUP view)
+POST /api/season-points/year                Bulk upsert a whole resort-year (body: pointsType, resortCode, year, lvcCoCode? [AWAY only], rows[{apartmentType,season,effectiveDate,ptsSun..ptsSat}]) - the add AND edit path; pointsType and coCode are derived from the resort, never the payload. 400 on a kind mismatch, an unknown lvcCoCode product, an apartment type neither registered in fn 3 nor already stored, or a repeated (type,season,effectiveDate) (RESORTS_SETUP create)
+DELETE /api/season-points/year?type=&resortCode=&year=  Delete every points row for that resort-year (RESORTS_SETUP delete; 400 on a kind mismatch, 404 if empty)
+DELETE /api/season-points/:id               Delete one row - drops a superseded effective-dated revision without wiping the year (RESORTS_SETUP delete; 404 if not found)
 GET  /api/pbs?q=&coCode=&acctClassify=&schemeType=&claimIndc=  PBS scheme list (search+filters)
 GET  /api/pbs/:id                                  PBS scheme detail + claims
 PUT  /api/pbs/:id                                  Update PBS scheme (certNo, schemeType, remark)
@@ -1308,11 +1289,14 @@ GET  /api/pbs/reports/variance                     Generate PBS Variance Report 
 
 ## Resorts Setup — function list
 
-The menu labels below are authoritative (renamed 2026-07-30; **functions 11 and 12 were swapped**
-at the same time so the two CP points-deduction charts sit together at 10-11). **The menu number is
-display-only** — routes, table names and permissions are what everything else keys off, and none of
-them changed. `SETUP_ITEMS` in `frontend/src/pages/resorts/ResortsSetup.tsx` is the single source of
-truth; each page's `<h1>` mirrors its label.
+The menu labels below are authoritative (renamed 2026-07-30, when **functions 11 and 12 were swapped**
+so the two CP points-deduction charts sit together; then on **2026-07-31 two merges landed** - the
+separate Public (7) and School (8) holiday functions became one tabbed page at 7, and the Home (9) /
+Non-Home (10) points charts became one tabbed page at 9, leaving 10 functions).
+**The menu number is display-only** — routes, table names and permissions are what everything else keys
+off, and no route changed in either renumbering. `SETUP_ITEMS` in
+`frontend/src/pages/resorts/ResortsSetup.tsx` is the single source of truth; each page's `<h1>` mirrors
+its label. **Prose elsewhere may still cite pre-merge numbers; this table wins.**
 
 | # | Menu label | Route | Table |
 |---|---|---|---|
@@ -1322,14 +1306,12 @@ truth; each page's `<h1>` mirrors its label.
 | 4 | Apartment's Unit No. Maintenance and Setup | `/resorts/units` | `ResortUnit` |
 | 5 | Units Availability Maintenance and Setup by Dates | `/resorts/availability` | `AptBlock` → `ResAvailMast` |
 | 6 | Resorts Unit Under Maintenance | `/resorts/maintenance` | `ResortMaintenance` |
-| 7 | Public Holidays Maintenance and Setup | `/resorts/holidays` | `PublicHoliday` |
-| 8 | School Holidays Maintenance and Setup | `/resorts/school-holidays` | `SchoolHoliday` |
-| 9 | CP's Seasons Maintenance and Setup | `/resorts/seasons` | `CpSeasonDate` |
-| 10 | CP Points Deduction for **Home** Resorts - Maintenance and Setup | `/resorts/season-points` | `CpSeasonPoint` |
-| 11 | CP Points Deduction for **Non-Home** Resorts - Maintenance and Setup | `/resorts/lvc-season-points` | `LvcSeasonPoint` |
-| 12 | Leisure Vacation Club (LVC) Code Maintenance and Setup | `/resorts/lvc-codes` | `LvcCode` |
+| 7 | Public & School Holidays Maintenance and Setup | `/resorts/holidays` | `Holiday` (tabbed: Public / School) |
+| 8 | CP's Seasons Maintenance and Setup | `/resorts/seasons` | `CpSeasonDate` |
+| 9 | CP Points Deduction - Maintenance and Setup | `/resorts/season-points` | `SeasonPoint` (tabbed: Home / Non-Home) |
+| 10 | Leisure Vacation Club (LVC) Code Maintenance and Setup | `/resorts/lvc-codes` | `LvcCode` |
 
-> **Home vs non-home** is the whole distinction between 10 and 11: home = a `coCode '02'` resort
+> **Home vs non-home** is the whole distinction between the two tabs of fn 9: home = a `coCode '02'` resort
 > (CP-PBR today); non-home = every other resort — our own LHC resorts and the partner/exchange
 > `V-*` codes — reached through an LVC exchange programme. Older prose and code comments may still
 > say "CP Resorts Season Points Setup" (10) and "LVC Resorts Season Point Setup" (11), and some
@@ -1350,7 +1332,7 @@ truth; each page's `<h1>` mirrors its label.
 | AMC Billing — Rates | ✅ Done | LHC + CP rates with Add/Edit/Deactivate/Delete; auto-calc total + amount-in-words |
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
-| Resorts Setup | ✅ Done | New `RESORTS_SETUP` AppModule (seed defaults: IT+Resort Ops FULL, Member Services VIEW, Finance/Credit NONE). Landing page `/resorts` (PBS-style menu, sidebar group "Resorts"). Function 1 done: **Products Setup** (`/resorts/products`) — `Product` CRUD over the operating-company / product master (list+search on code/name/contact, add/edit modal with the product code read-only in edit mode, `ConfirmDeleteModal`). **Delete is refused 409** when any Agreement/AmcSchedule/Resort/LvcCode still carries the `coCode` — there is no DB-level FK, so this controller count is the only guard; the message names the counts and surfaces inside the confirm modal. 29 rows from `ps_company.txt` (first 9 of 17 cols; the initial 7-row export was filtered and was re-extracted in full). Nothing else reads this table yet — `ProductBadge` still hardcodes the LHC/CP names. Function 2 done: **Resorts Setup** (`/resorts/setup`) — Resort master CRUD (list+search, add/edit modal shared via `ResortFormModal.tsx`, status toggle A/U, delete; buttons gated by canCreate/canEdit/canDelete; Eye icon on every row → detail). **Resort Detail** (`/resorts/setup/:id`) — details card + Edit + 4 info tabs (Getting There / Resort Facilities / Places of Interest / Unit Amenities) from `ResortInfoLine`; per-tab single-textarea editor, remark-style free text (400 chars total per category, validated client+server, no auto-uppercase — legacy print lines are mixed-case). Function 3 done: **Apartment Types Setup** (`/resorts/apartment-types`) — `ApartmentType` CRUD (list+search, add/edit modal, delete; resort picker from Resort master, lockType Select disabled/forced-LN unless resort `lockOnOff='Y'`; 9 business-supplied seed rows via `migrate-resorts.ts`). Function 4 done: **Apartments/Units Setup** (`/resorts/units`) — `ResortUnit` CRUD (paginated list with resort filter + search, add/edit modal with apartment-type dropdown restricted to the selected resort's types, RCI Reserved checkbox; 481 rows from `apt_mast.txt`). Function 5 done: **Units Availability Setup by Dates** (`/resorts/availability`) — block-centric CRUD over `AptBlock` (paginated list sorted startDate desc, cascade add form Resort→ApartmentType→Unit→start/end dates, styled delete-confirm modal). Each save auto-maintains the generated `ResAvailMast` per-day grid (`act/bal +1` per day on create, `-1` on delete, reverse-then-apply on edit; overlap-guarded 409). Per-row Eye icon → modal of the block's day grid. Header **Resorts Availability** button opens a **draggable, non-modal** popup (`DraggableWindow.tsx`) = ResAvailMast pivoted resort×date, cell=balNight (red ≤2, weekends highlighted), Product Type LHC (coCode 03 only)/CP, date + `<<`/`>>` 15-day paging; the chart lives in the shared `components/ResortAvailabilityChart.tsx` so both Function 5 and Function 6 render it. Function 6 done: **Resorts Maintenance** (`/resorts/maintenance`) — `ResortMaintenance` CRUD (paginated list sorted startDate desc with resort filter + **Month/Year period filter** + search incl. reason, 2-level add cascade Resort→Unit with the apartment type shown in the option label and derived server-side, remarks/reason field, styled delete-confirm modal, per-row Eye icon → day grid, same **Resorts Availability** popup button). Each save maintains `ResAvailMast.balNight` only (`-1` per day on create, `+1` on delete, reverse-then-apply on edit; `actNight` never touched, rows never created/deleted; overlap-guarded 409) — so the availability chart needed no change. 7,327 rows from `resmt.txt`. Function 7 done: **Public Holidays Setup** (`/resorts/holidays`, renamed from "Public & School Holidays Setup" — school holidays dropped) — `PublicHoliday` CRUD (list sorted by date with Year filter + holiday-name search, add/edit modal with a date picker, `ConfirmDeleteModal`), plus a **Clone to next year** sub-function that copies a year's holidays to year+1 on the same month/day for staff to correct. Global calendar — no resort/state scope, so no availability-grid interaction. 12 business-supplied 2026 rows via `prisma/seed-public-holidays.ts`. Function 8 done: **School Holidays Setup** (`/resorts/school-holidays`) — `SchoolHoliday` CRUD, the date-**range** sibling of Public Holidays (list sorted by start date with Academic Year filter + name search + a derived inclusive Days column, add/edit modal, `ConfirmDeleteModal`), plus the same **Clone to next year** sub-function shifting both ends by a year. `academicYear` is **editable** (pre-filled from the start date only while blank) since a session can cross the calendar boundary; overlapping ranges within an academic year are rejected 409. 4 business-supplied 2026 rows via `prisma/seed-school-holidays.ts`. Function 9 done: **CP's Seasons Setup** (`/resorts/seasons`, renamed from "CP's Seasons & Points Setup" — the points chart is function 10, `CpSeasonPoint`) — `CpSeasonDate` CRUD over a **per-day** G/S/D calendar, presented **one month at a time** in the legacy Informix 3-across `[dd-mm-yyyy] [S]` grid (Year input + Month dropdown + **Prev/Next** month buttons; season cells are inline selects; **Save month** bulk-upserts every date shown; **Delete month** removes the whole month). An empty month doubles as the add form, pre-filled Silver. Plus **Clone to next year**. 424 rows from `ps_seasondate.txt`. **CP-only** — see the per-product calendar note above `### PublicHoliday`. Function 10 done: **CP Resorts Season Points Setup** (`/resorts/season-points`) — `CpSeasonPoint` CRUD over the points chart that fn 9's G/S/D grade resolves into (points deducted per night by resort × apartment type × season × day of week). Edited **one resort-year at a time**: Resort picker (**CP resorts only**, `coCode='02'`) + Year input + Prev/Next, a legacy-style read-only header block (Resort Code/Name, Company Code/Name), then a grid scaffolded from the resort's apartment types × `['S','G','D']` with a per-row Effective Date and seven day cells (`Sun(0)`…`Sat(6)`), a live **Total/Wk** column (derived, never stored) and a per-row delete. A header **Effective date + Apply to all rows** control stamps every row at once — the common case, since 24 of 28 imported years share one date. Rows left blank are not submitted, so an empty year can't be saved as zeros; an empty year doubles as the add form. **No clone action** (deliberate, unlike fns 7/8/9). 253 rows from `ps_seasonapt.txt`. Function 11 done: **CP Points Deduction for Non-Home Resorts** (`/resorts/lvc-season-points`) — `LvcSeasonPoint` CRUD over the points chart applied when a **CP member books a resort other than their home resort** (home = `coCode '02'`); the counterpart of fn 10 and the reason `pssa_lvcpts0..6` are zero in `ps_seasonapt`. Same resort-year editing shape as fn 10 (Resort picker + Year input + Prev/Next, legacy-style read-only header, grid of apartment type × `['S','G','D']` with per-row Effective Date, seven day cells `Sun(0)`…`Sat(6)`, derived **Total/Wk**, per-row delete, **Effective date + Apply to all rows**), plus an editable **Charged To** product dropdown (`lvcCoCode`, validated against `Product.coCode`). The picker is the **inverse** of fn 10's — active resorts with `coCode !== '02'` (48 of them) — and the server rejects a CP resort with 400. **Apartment types are validated against fn 3 but pairs already stored here are grandfathered**, because only 5 of the 412 source pairs are registered (partner nomenclature like `SLEEPA` / `HOTEL UNIT`); unregistered ones show a `(legacy)` hint. **No clone action** (deliberate, same as fn 10). 4,513 rows from `ps_lvcapt.txt` across 264 resorts, years 2000-2028. Function 12 done: **Leisure Vacation Club (LVC) Code Maintenance and Setup** (`/resorts/lvc-codes`) — `LvcCode` CRUD over the exchange-programme master: the arrangement under which a member books outside their own product, either between our own products (`LVC-CP`, 03/15 ↔ 02) or into an external partner's **MAR (Make Available Resorts)** (`LVC-SGI`, `LVC-CLC`, …). List+search on code/name/product code, add/edit modal with `lvcCode` read-only in edit mode and a product dropdown, **A/U status toggle** (same shape as the Resort toggle, and the same deliberate no-success-dialog exception), `ConfirmDeleteModal` on a hard delete with **no usage guard** (nothing references `LvcCode` yet). **The `incoming`/`outgoing`/`faxBatch` counters are imported but appear nowhere on the screen and are absent from the zod schema, so CRUD can never write them.** `coCode` is a **product dropdown** validated server-side against `Product.coCode` (400 on an unknown code), with the product name resolved client-side in the list. 23 rows from `lvc_master.txt`. **Functions 1-12 are complete — the Resorts Setup module is done.** See the **Resorts Setup — function list** table above for the authoritative menu labels and numbering. |
+| Resorts Setup | ✅ Done | New `RESORTS_SETUP` AppModule (seed defaults: IT+Resort Ops FULL, Member Services VIEW, Finance/Credit NONE). Landing page `/resorts` (PBS-style menu, sidebar group "Resorts"). Function 1 done: **Products Setup** (`/resorts/products`) — `Product` CRUD over the operating-company / product master (list+search on code/name/contact, add/edit modal with the product code read-only in edit mode, `ConfirmDeleteModal`). **Delete is refused 409** when any Agreement/AmcSchedule/Resort/LvcCode still carries the `coCode` — there is no DB-level FK, so this controller count is the only guard; the message names the counts and surfaces inside the confirm modal. 29 rows from `ps_company.txt` (first 9 of 17 cols; the initial 7-row export was filtered and was re-extracted in full). Nothing else reads this table yet — `ProductBadge` still hardcodes the LHC/CP names. Function 2 done: **Resorts Setup** (`/resorts/setup`) — Resort master CRUD (list+search, add/edit modal shared via `ResortFormModal.tsx`, status toggle A/U, delete; buttons gated by canCreate/canEdit/canDelete; Eye icon on every row → detail). **Resort Detail** (`/resorts/setup/:id`) — details card + Edit + 4 info tabs (Getting There / Resort Facilities / Places of Interest / Unit Amenities) from `ResortInfoLine`; per-tab single-textarea editor, remark-style free text (400 chars total per category, validated client+server, no auto-uppercase — legacy print lines are mixed-case). Function 3 done: **Apartment Types Setup** (`/resorts/apartment-types`) — `ApartmentType` CRUD (list+search, add/edit modal, delete; resort picker from Resort master, lockType Select disabled/forced-LN unless resort `lockOnOff='Y'`; 9 business-supplied seed rows via `migrate-resorts.ts`). Function 4 done: **Apartments/Units Setup** (`/resorts/units`) — `ResortUnit` CRUD (paginated list with resort filter + search, add/edit modal with apartment-type dropdown restricted to the selected resort's types, RCI Reserved checkbox; 481 rows from `apt_mast.txt`). Function 5 done: **Units Availability Setup by Dates** (`/resorts/availability`) — block-centric CRUD over `AptBlock` (paginated list sorted startDate desc, cascade add form Resort→ApartmentType→Unit→start/end dates, styled delete-confirm modal). Each save auto-maintains the generated `ResAvailMast` per-day grid (`act/bal +1` per day on create, `-1` on delete, reverse-then-apply on edit; overlap-guarded 409). Per-row Eye icon → modal of the block's day grid. Header **Resorts Availability** button opens a **draggable, non-modal** popup (`DraggableWindow.tsx`) = ResAvailMast pivoted resort×date, cell=balNight (red ≤2, weekends highlighted), Product Type LHC (coCode 03 only)/CP, date + `<<`/`>>` 15-day paging; the chart lives in the shared `components/ResortAvailabilityChart.tsx` so both Function 5 and Function 6 render it. Function 6 done: **Resorts Maintenance** (`/resorts/maintenance`) — `ResortMaintenance` CRUD (paginated list sorted startDate desc with resort filter + **Month/Year period filter** + search incl. reason, 2-level add cascade Resort→Unit with the apartment type shown in the option label and derived server-side, remarks/reason field, styled delete-confirm modal, per-row Eye icon → day grid, same **Resorts Availability** popup button). Each save maintains `ResAvailMast.balNight` only (`-1` per day on create, `+1` on delete, reverse-then-apply on edit; `actNight` never touched, rows never created/deleted; overlap-guarded 409) — so the availability chart needed no change. 7,327 rows from `resmt.txt`. Function 7 done: **Public & School Holidays Setup** (`/resorts/holidays`) — `Holiday` CRUD over **one** table holding both kinds, presented as a **tabbed page** (Public Holidays / School Holidays) whose tab lives in the URL (`?tab=school`) alongside the year filter and search, so Back restores the whole view. Each tab keeps its own columns (Public: Date/Day/Year/Holiday; School: Academic Year/Start/End/Days/Holiday), its own year-filter label and its own **Clone to next year** sub-function copying a year to year+1 on the same month/day (both ends for a school range) for staff to correct. One shared add/edit modal branches on the tab: a public holiday is a single date whose `year` is **derived server-side**, a school holiday is a range with an **editable** `academicYear` (pre-filled from the start date only while blank) since a session can cross the calendar boundary. School-only guards: overlapping ranges and a repeated name within one academic year are both rejected 409. Global calendar — no resort/state scope, so no availability-grid interaction. 12 public + 4 school business-supplied 2026 rows via `prisma/seed-holidays.ts`. **Merged 2026-07-31 from the former fns 7/8** (`PublicHoliday` + `SchoolHoliday`), which were ~90% duplicated code; `/resorts/school-holidays` now redirects to the School tab, and fns 9-12 renumbered down to 8-11. Function 8 done: **CP's Seasons Setup** (`/resorts/seasons`, renamed from "CP's Seasons & Points Setup" — the points chart is function 9, `CpSeasonPoint`) — `CpSeasonDate` CRUD over a **per-day** G/S/D calendar, presented **one month at a time** in the legacy Informix 3-across `[dd-mm-yyyy] [S]` grid (Year input + Month dropdown + **Prev/Next** month buttons; season cells are inline selects; **Save month** bulk-upserts every date shown; **Delete month** removes the whole month). An empty month doubles as the add form, pre-filled Silver. Plus **Clone to next year**. 424 rows from `ps_seasondate.txt`. **CP-only** — see the per-product calendar note above `### Holiday`. Function 9 done: **CP Points Deduction** (`/resorts/season-points`) — `SeasonPoint` CRUD over **one** table holding both points charts, presented as a **tabbed page** (Home Resorts / Non-Home Resorts) whose tab lives in the URL (`?type=away`) alongside the resort and year, so Back restores the whole view. **Home** = a `coCode '02'` resort (CP-PBR today) — the points fn 8's G/S/D grade resolves into. **Non-home** = every other resort (our own LHC resorts and the partner/exchange `V-*` codes) reached through an LVC exchange programme; this is the reason `pssa_lvcpts0..6` are zero in `ps_seasonapt`. Both tabs share the whole editing shape: Resort picker + Year input + Prev/Next, a legacy-style read-only header block, a grid scaffolded from the resort's apartment types × `['S','G','D']` with a per-row Effective Date and seven day cells (`Sun(0)`…`Sat(6)`), a live **Total/Wk** column (derived, never stored), a per-row delete, and a header **Effective date + Apply to all rows** control — the common case, since 24 of 28 imported home years share one date. Rows left blank are not submitted, so an empty year can't be saved as zeros; an empty year doubles as the add form. The resort pickers are exact inverses (`coCode === '02'` vs `!== '02'`, 48 resorts) and the server rejects a kind mismatch with 400 via `requireResortOfType()`. The Non-Home tab adds an editable **Charged To** product dropdown (`lvcCoCode`, validated against `Product.coCode`); the Home tab stores null. **Apartment types are validated against fn 3 but pairs already stored are grandfathered**, because only 5 of the 412 non-home source pairs are registered (partner nomenclature like `SLEEPA` / `HOTEL UNIT`); unregistered ones show a `(legacy)` hint. **No clone action** (deliberate, unlike fns 7 and 8). 253 home rows from `ps_seasonapt.txt` + 4,513 non-home rows from `ps_lvcapt.txt` across 264 resorts, years 2000-2028. **Merged 2026-07-31 from the former fns 9/10** (`CpSeasonPoint` + `LvcSeasonPoint`), which shared ~78% of controller and ~86% of page code; `/resorts/lvc-season-points` now redirects to the Non-Home tab, fn 11 renumbered to 10, and the merge closed a gap where the old CP delete-year skipped its resort scope check. Function 10 done: **Leisure Vacation Club (LVC) Code Maintenance and Setup** (`/resorts/lvc-codes`) — `LvcCode` CRUD over the exchange-programme master: the arrangement under which a member books outside their own product, either between our own products (`LVC-CP`, 03/15 ↔ 02) or into an external partner's **MAR (Make Available Resorts)** (`LVC-SGI`, `LVC-CLC`, …). List+search on code/name/product code, add/edit modal with `lvcCode` read-only in edit mode and a product dropdown, **A/U status toggle** (same shape as the Resort toggle, and the same deliberate no-success-dialog exception), `ConfirmDeleteModal` on a hard delete with **no usage guard** (nothing references `LvcCode` yet). **The `incoming`/`outgoing`/`faxBatch` counters are imported but appear nowhere on the screen and are absent from the zod schema, so CRUD can never write them.** `coCode` is a **product dropdown** validated server-side against `Product.coCode` (400 on an unknown code), with the product name resolved client-side in the list. 23 rows from `lvc_master.txt`. **Functions 1-10 are complete — the Resorts Setup module is done.** See the **Resorts Setup — function list** table above for the authoritative menu labels and numbering. |
 | Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done. PBS Pay By Month/Year (`/pbs/pay-by-month`) done: Excel with 2 worksheets (monthly + yearly summary), tabbed preview. PBS Claim Report (`/pbs/claim-report`) done: Excel with 2 worksheets (non-ND claims + ND claims), tabbed preview. Not In PBS Report (`/pbs/not-in-pbs`) done: text file output matching Informix format, preview table. PBS Variance Report (`/pbs/variance`) done: Excel comparing rightful vs Zurich scheme type, preview with variance highlighting. All PBS reports use per-user `requireReportAccess` (not department permission); menu items hidden when not granted. Remaining: Proforma, Certificate Tracking, Auto Transfer, 1 report (PBS Report). |
 
 ## Navigation / permissions

@@ -300,39 +300,29 @@ export interface AptBlockAvailability {
 // Same shape as AptBlockAvailability — the per-day grid for a maintenance record's range
 export type ResortMaintenanceAvailability = AptBlockAvailability;
 
-// Public Holidays (Resorts Setup fn 6) — global calendar, no resort/state scope
-export interface PublicHoliday {
+// Holidays (Resorts Setup fn 7) — one global calendar, no resort/state scope, covering
+// both public holidays (single dates) and school breaks (date ranges).
+export type HolidayType = 'PUBLIC' | 'SCHOOL';
+
+export interface Holiday {
   id: string;
-  holidayDate: string;   // ISO string, UTC midnight
-  year: number;          // derived server-side from holidayDate
+  holidayType: HolidayType;
+  startDate: string;       // ISO string, UTC midnight. PUBLIC: the holiday date.
+  endDate: string | null;  // null for PUBLIC (single day)
+  year: number;            // PUBLIC: derived server-side. SCHOOL: the academic year, editable.
   description: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface PublicHolidayCloneResult {
+export interface HolidayCloneResult {
   sourceYear: number;
   targetYear: number;
   created: number;
 }
 
-// School Holidays (Resorts Setup fn 7) — global calendar of date ranges, filed under
-// an academic year (editable, not derived — a session can cross the calendar boundary)
-export interface SchoolHoliday {
-  id: string;
-  academicYear: number;
-  startDate: string;   // ISO string, UTC midnight
-  endDate: string;     // ISO string, UTC midnight
-  description: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Same shape as the public-holiday clone result
-export type SchoolHolidayCloneResult = PublicHolidayCloneResult;
-
 // CP Season calendar (Resorts Setup fn 8) — one row per calendar day, graded G/S/D.
-// Read by CP booking only; the Public/School holiday calendars are LHC-only.
+// Read by CP booking only; the Holiday calendar (public + school) is LHC-only.
 export type CpSeason = 'G' | 'S' | 'D';
 
 export interface CpSeasonDate {
@@ -366,19 +356,27 @@ export interface CpSeasonMonthDeleteResult {
   deleted: number;
 }
 
-// Same shape as the public-holiday clone result
-export type CpSeasonCloneResult = PublicHolidayCloneResult;
+// Same shape as the holiday clone result
+export type CpSeasonCloneResult = HolidayCloneResult;
 
-// CP Season Points (Resorts Setup fn 9) — points deducted per night by resort x
-// apartment type x season x day of week. CpSeasonDate grades the day; this turns
-// the grade into a number. The weekly total is derived, never stored.
-export interface CpSeasonPoint {
+// Season Points (Resorts Setup fn 9) — ONE chart for the points deducted per night by
+// resort x apartment type x season x day of week, discriminated by pointsType:
+//   HOME — the member's own product's resort (coCode '02'). CpSeasonDate grades the day;
+//          this turns the grade into a number.
+//   AWAY — every other resort, reached through an LVC exchange programme.
+// The weekly total is derived, never stored.
+export type PointsType = 'HOME' | 'AWAY';
+
+export interface SeasonPoint {
   id: string;
+  pointsType: PointsType;
   resortId: string;
   resortCode: string;
+  coCode: string;             // the resort's own product
+  lvcCoCode: string | null;   // AWAY only — the product whose members are charged
   apartmentType: string;
   year: number;
-  effectiveDate: string; // ISO string, UTC midnight
+  effectiveDate: string;      // ISO string, UTC midnight
   season: CpSeason;
   ptsSun: number;
   ptsMon: number;
@@ -393,15 +391,20 @@ export interface CpSeasonPoint {
 
 // One resort-year. Combos with no row yet are absent — the page scaffolds the full
 // apartment type x season grid from `apartmentTypes` and leaves the gaps blank.
-export interface CpSeasonPointYear {
+// `apartmentTypes` is the union of the resort's registered types (Apartment Types Setup)
+// and the types already stored here — partner resorts have none registered, so
+// scaffolding from fn 3 alone would render an empty grid.
+export interface SeasonPointYear {
   resortCode: string;
   year: number;
+  pointsType: PointsType;
   resort: { resortCode: string; resortName: string; shortName: string | null; coCode: string };
-  apartmentTypes: { apartmentType: string; description: string | null }[];
-  data: CpSeasonPoint[];
+  lvcCoCode: string | null;   // null on the HOME tab
+  apartmentTypes: { apartmentType: string; description: string | null; registered: boolean }[];
+  data: SeasonPoint[];
 }
 
-export interface CpSeasonPointSaveResult {
+export interface SeasonPointSaveResult {
   resortCode: string;
   year: number;
   rows: number;
@@ -409,50 +412,11 @@ export interface CpSeasonPointSaveResult {
   updated: number;
 }
 
-export interface CpSeasonPointDeleteResult {
+export interface SeasonPointDeleteResult {
   resortCode: string;
   year: number;
   deleted: number;
 }
-
-// LVC Season Points (Resorts Setup fn 12) — points charged to a CP member per night
-// when they book a resort OTHER than their home (coCode '02') resort. The counterpart
-// of CpSeasonPoint. The weekly total is derived, never stored.
-export interface LvcSeasonPoint {
-  id: string;
-  resortId: string;
-  resortCode: string;
-  coCode: string;        // the resort's own product
-  apartmentType: string;
-  lvcCoCode: string;     // the product whose members are charged — '02' (CP) throughout
-  year: number;
-  effectiveDate: string; // ISO string, UTC midnight
-  season: CpSeason;
-  ptsSun: number;
-  ptsMon: number;
-  ptsTue: number;
-  ptsWed: number;
-  ptsThu: number;
-  ptsFri: number;
-  ptsSat: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// One resort-year. `apartmentTypes` is the union of the resort's registered types
-// (Apartment Types Setup) and the types already stored here — partner resorts have
-// none registered, so scaffolding from fn 3 alone would render an empty grid.
-export interface LvcSeasonPointYear {
-  resortCode: string;
-  year: number;
-  resort: { resortCode: string; resortName: string; shortName: string | null; coCode: string };
-  lvcCoCode: string;
-  apartmentTypes: { apartmentType: string; description: string | null; registered: boolean }[];
-  data: LvcSeasonPoint[];
-}
-
-export type LvcSeasonPointSaveResult = CpSeasonPointSaveResult;
-export type LvcSeasonPointDeleteResult = CpSeasonPointDeleteResult;
 
 export interface AvailabilityChartCol {
   date: string;

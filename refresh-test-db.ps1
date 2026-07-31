@@ -242,14 +242,14 @@ Write-Host "  Will CLEAR and RELOAD:"
 Write-Host "    Member, Agreement, Nominee"
 Write-Host "    AmcSchedule, AmcInvoice"
 Write-Host "    PbsScheme, PbsClaim (Zurich Payback)"
-Write-Host "    Salesperson, Product, LvcCode, Resort, ResortMaintenance, CpSeasonDate, CpSeasonPoint, LvcSeasonPoint"
+Write-Host "    Salesperson, Product, LvcCode, Resort, ResortMaintenance, CpSeasonDate, SeasonPoint"
 Write-Host "    BookingEntitlement (LHC 03/15), CpBookingEntitlement (CP 02)"
 Write-Host ""
 Write-Host "  Will PRESERVE:"
 Write-Host "    User, Department, DeptModulePermission"
 Write-Host "    State, CancellationReason"
 Write-Host "    AmcPrice, AmcPricePoints"
-Write-Host "    PublicHoliday, SchoolHoliday (topped up by upsert, existing rows kept)"
+Write-Host "    Holiday - public + school (topped up by upsert, existing rows kept)"
 Write-Host ("=" * 62)
 Write-Host ""
 
@@ -307,7 +307,7 @@ Write-Host ""
 Write-Host ("[1/7] Clearing Informix data tables...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
-TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "LvcSeasonPoint", "CpSeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "Product", "LvcCode", "CpSeasonDate", "Member" CASCADE;
+TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "SeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "Product", "LvcCode", "CpSeasonDate", "Member" CASCADE;
 "@
 
 # ── Step 2: Core member + agreement import ────────────────────────────────────
@@ -347,19 +347,17 @@ Invoke-Migration "prisma/migrate-apt-block.ts"     "migrate-apt-block.ts"
 # only -- res_avail_mast.txt already has maintenance deducted from bal_night, so this
 # script deliberately applies NO per-day grid deltas (that happens on app CRUD only).
 Invoke-Migration "prisma/migrate-maintenance.ts"   "migrate-maintenance.ts"
-# CP season points chart (points deducted per night by apartment type x season x day
-# of week). Needs Resort present for the FK. CP-only, like the season calendar below.
+# Season points chart (points deducted per night by apartment type x season x day of
+# week) -- ONE table, discriminated by pointsType. Both scripts need Resort for the FK.
+# HOME: the member's own product's resort (coCode 02).
 Invoke-Migration "prisma/migrate-cp-season-points.ts" "migrate-cp-season-points.ts"
-# LVC season points chart -- the counterpart of the above: points charged to a CP member
-# booking a resort OTHER than their home (coCode 02) resort. Also needs Resort for the FK.
+# AWAY: a resort OTHER than their home, reached through an LVC exchange programme.
 Invoke-Migration "prisma/migrate-lvc-season-points.ts" "migrate-lvc-season-points.ts"
-# Public Holidays. Business-supplied (no Informix file) and NOT truncated above --
-# there is no FK to Resort. The seed upserts, so this only tops up missing rows and
-# leaves dates staff have already corrected alone.
-Invoke-Migration "prisma/seed-public-holidays.ts"  "seed-public-holidays.ts"
-# School Holidays. Same deal -- business-supplied, no FK, upsert-only top-up.
-Invoke-Migration "prisma/seed-school-holidays.ts"  "seed-school-holidays.ts"
-# CP season calendar. Unlike the two holiday seeds this HAS an Informix source, so it
+# Public + School Holidays (one table, discriminated by holidayType). Business-supplied
+# (no Informix file) and NOT truncated above -- there is no FK to Resort. The seed upserts,
+# so this only tops up missing rows and leaves dates staff have already corrected alone.
+Invoke-Migration "prisma/seed-holidays.ts"         "seed-holidays.ts"
+# CP season calendar. Unlike the holiday seed this HAS an Informix source, so it
 # is truncated above and fully reimported (clobbers CRUD edits post-go-live).
 Invoke-Migration "prisma/migrate-cp-seasons.ts"    "migrate-cp-seasons.ts"
 
@@ -410,11 +408,10 @@ SELECT
   (SELECT COUNT(*) FROM "ResAvailMast")       AS res_avail,
   (SELECT COUNT(*) FROM "AptBlock")           AS apt_blocks,
   (SELECT COUNT(*) FROM "ResortMaintenance")  AS maintenance,
-  (SELECT COUNT(*) FROM "PublicHoliday")      AS public_holidays,
-  (SELECT COUNT(*) FROM "SchoolHoliday")      AS school_holidays,
+  (SELECT COUNT(*) FROM "Holiday")            AS holidays,
   (SELECT COUNT(*) FROM "CpSeasonDate")       AS cp_season_dates,
-  (SELECT COUNT(*) FROM "CpSeasonPoint")      AS cp_season_points,
-  (SELECT COUNT(*) FROM "LvcSeasonPoint")     AS lvc_season_points,
+  (SELECT COUNT(*) FROM "SeasonPoint" WHERE "pointsType" = 'HOME') AS home_season_points,
+  (SELECT COUNT(*) FROM "SeasonPoint" WHERE "pointsType" = 'AWAY') AS away_season_points,
   (SELECT COUNT(*) FROM "BookingEntitlement")   AS booking_ent,
   (SELECT COUNT(*) FROM "CpBookingEntitlement") AS cp_booking_ent,
   (SELECT COUNT(*) FROM "AmcInvoiceCounter")  AS amc_inv_counters,

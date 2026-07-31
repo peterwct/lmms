@@ -105,7 +105,7 @@ async function main() {
 
   const flush = async () => {
     if (DRY_RUN || !batch.length) { batch = []; return; }
-    const r = await prisma.lvcSeasonPoint.createMany({ data: batch, skipDuplicates: true });
+    const r = await prisma.seasonPoint.createMany({ data: batch, skipDuplicates: true });
     inserted += r.count;
     batch = [];
   };
@@ -147,6 +147,8 @@ async function main() {
     batch.push({
       id:        randomUUID(),
       updatedAt: new Date(),
+      // These rows are the AWAY chart: a resort other than the member's home
+      pointsType: 'AWAY',
       resortId,
       resortCode,
       coCode:    t(c[1]) ?? '',
@@ -171,15 +173,15 @@ async function main() {
   }
   await flush();
 
-  console.log(`\n  OK LVC season points: ${total} parsed, ${skipped} skipped`);
+  console.log(`\n  OK away season points: ${total} parsed, ${skipped} skipped`);
   console.log(`     Diamond ${counts.D}, Gold ${counts.G}, Silver ${counts.S}`);
   console.log(`     Across ${resortCodes.size} resorts`);
   if (!DRY_RUN) console.log(`     ${inserted} inserted (${total - inserted} were duplicates of existing rows)`);
 
   if (!DRY_RUN) {
-    const count = await prisma.lvcSeasonPoint.count();
-    const agg = await prisma.lvcSeasonPoint.aggregate({ _min: { year: true }, _max: { year: true } });
-    console.log(`  DB count: ${count}`);
+    const count = await prisma.seasonPoint.count({ where: { pointsType: 'AWAY' } });
+    const agg = await prisma.seasonPoint.aggregate({ where: { pointsType: 'AWAY' }, _min: { year: true }, _max: { year: true } });
+    console.log(`  DB count (AWAY): ${count}`);
     if (agg._min.year && agg._max.year) {
       console.log(`  Years: ${agg._min.year} to ${agg._max.year}`);
     }

@@ -475,8 +475,7 @@ model Resort {
   aptBlocks        AptBlock[]
   resAvail         ResAvailMast[]
   maintenance      ResortMaintenance[]
-  seasonPoints     CpSeasonPoint[]
-  lvcSeasonPoints  LvcSeasonPoint[]
+  seasonPoints     SeasonPoint[]
 }
 
 model ResortInfoLine {
@@ -576,42 +575,35 @@ model ResortMaintenance {
   @@unique([resortCode, unitNo, startDate])
 }
 
-// Public Holidays (Resorts Setup fn 6) — business-supplied national holiday calendar.
-// No Informix source. Global: holidays are nationwide, not per-resort or per-state.
+// Holidays (Resorts Setup fn 7) — one business-supplied national calendar covering BOTH
+// public holidays (single dates) and school breaks (date ranges), discriminated by
+// holidayType. No Informix source. Global: nationwide, not per-resort or per-state.
 // Cloned forward a year at a time (same month/day) and then corrected by staff, since
-// lunar/Islamic holidays shift annually.
-model PublicHoliday {
-  id          String   @id
-  holidayDate DateTime // UTC midnight (business date)
-  year        Int      // derived server-side from holidayDate; drives the filter + clone
+// lunar/Islamic holidays and school terms both shift annually.
+//
+// holidayType is a plain String validated by z.enum in the controller, NOT a Prisma enum
+// — adding a kind later must not require a migration (same reasoning as CpSeasonDate.season).
+model Holiday {
+  id          String    @id
+  holidayType String    // 'PUBLIC' | 'SCHOOL'
+  startDate   DateTime  // UTC midnight (business date). PUBLIC: the holiday date itself.
+  endDate     DateTime? // null for PUBLIC (single day); required for SCHOOL
+  year        Int       // PUBLIC: derived server-side from startDate. SCHOOL: the academic year, editable.
   description String
-  createdAt   DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime @db.Timestamptz(3)
-  @@unique([holidayDate, description])
-  @@index([year])
-}
-
-// School Holidays (Resorts Setup fn 7) — business-supplied national school break
-// calendar. No Informix source. Global: no resort or state scope. Filed under an
-// academic year (editable, NOT derived from the dates) because a session can cross
-// the calendar boundary. Cloned forward a year at a time and then corrected by staff.
-model SchoolHoliday {
-  id           String   @id
-  academicYear Int      // editable; the form pre-fills it from startDate's year
-  startDate    DateTime // UTC midnight (business date)
-  endDate      DateTime // UTC midnight (business date)
-  description  String
-  createdAt    DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime @db.Timestamptz(3)
-  // Also serves academicYear-only lookups as an index prefix — no separate @@index needed
-  @@unique([academicYear, description])
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @db.Timestamptz(3)
+  // Looser than the old SchoolHoliday key [academicYear, description] — "one TERM 1 per
+  // academic year" is re-enforced in the controller (descriptionTaken), because a year-scoped
+  // unique would wrongly block multi-day public holidays that repeat a name on other dates.
+  @@unique([holidayType, startDate, description])
+  @@index([holidayType, year])
 }
 
 // CP Season calendar (Resorts Setup fn 8) — from Informix ps_seasondate.txt.
 // One row per calendar day, graded G/S/D; drives CP points pricing per night.
 // Global: the source has no resort column.
 // PRODUCT SCOPE: this is the ONLY holiday/peak calendar CP booking reads.
-// PublicHoliday and SchoolHoliday are LHC-only — never join or derive across them.
+// Holiday (public + school) is LHC-only — never join or derive across them.
 model CpSeasonDate {
   id        String   @id
   date      DateTime @unique // UTC midnight (business date) — one season per day
@@ -622,69 +614,52 @@ model CpSeasonDate {
   @@index([year])
 }
 
-// CP Season Points (Resorts Setup fn 9) — from Informix ps_seasonapt.txt.
-// The points deducted per night for a CP booking, by resort x apartment type x
-// season x day of week. CpSeasonDate (fn 8) grades the day G/S/D; this table turns
-// that grade into a number. CP-only: resortCode must belong to a coCode='02' resort.
-// Only the first 12 source columns are imported — pssa_lvcpts0..6 are zero on every row.
+// Season Points (Resorts Setup fn 9) — ONE chart for the points deducted per night, by
+// resort x apartment type x season x day of week, discriminated by pointsType:
+//   HOME — the member's own product's resort (coCode '02', CP-PBR today), from Informix
+//          ps_seasonapt.txt. CpSeasonDate (fn 8) grades the day G/S/D; this table turns
+//          that grade into a number. Only the first 12 source cols are imported —
+//          pssa_lvcpts0..6 are zero on every row.
+//   AWAY — every other resort (our own LHC resorts and the partner/exchange V-* codes),
+//          reached through an LVC exchange programme, from Informix ps_lvcapt.txt (first
+//          14 of 20 cols). This is why pssa_lvcpts0..6 are zero in ps_seasonapt: the away
+//          points lived in their own Informix table.
 // The weekly total shown on screen is derived (sum of the 7 days), never stored.
-model CpSeasonPoint {
+//
+// pointsType is a plain String validated by z.enum in the controller, NOT a Prisma enum
+// (same reasoning as Holiday.holidayType and CpSeasonDate.season), and is DERIVED
+// server-side from the resort's coCode on every save — never taken from the payload.
+model SeasonPoint {
   id            String   @id
+  pointsType    String   // 'HOME' | 'AWAY'
   resortId      String
   resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
-  resortCode    String   // denormalized natural key
-  apartmentType String   // validated against ApartmentType (no hard FK; types are renamable)
-  year          Int      // pssa_year — the year these points apply to
-  effectiveDate DateTime // pssa_effdate — UTC midnight (business date); part of the unique key
-  season        String   // G=Gold, S=Silver, D=Diamond
-  ptsSun        Int      // pssa_norpts0
-  ptsMon        Int      // pssa_norpts1
-  ptsTue        Int      // pssa_norpts2
-  ptsWed        Int      // pssa_norpts3
-  ptsThu        Int      // pssa_norpts4
-  ptsFri        Int      // pssa_norpts5
-  ptsSat        Int      // pssa_norpts6
-  createdAt     DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime @db.Timestamptz(3)
-  // Mirrors Informix u925_83. effectiveDate is part of the key because a year may
-  // legitimately hold more than one effective-dated revision of the same combo
-  // (2015/SLEEP4/G has two) — dropping it would lose rows.
-  @@unique([resortCode, apartmentType, year, effectiveDate, season], map: "CpSeasonPoint_natkey_key")
-  @@index([resortCode, year])
-}
-
-// LVC Season Points — "CP Points Deduction for Non-Home Resorts" (Resorts Setup fn 11).
-// From Informix ps_lvcapt.txt.
-// The points deducted per night when a CP member books a resort OTHER than their
-// home resort. A home resort is coCode='02' (CP-PBR); everything else — our own LHC
-// resorts and the partner/exchange V-* resorts — is an LVC booking priced from here.
-// This is the counterpart of CpSeasonPoint, and the reason pssa_lvcpts0..6 are zero
-// in ps_seasonapt: the LVC points live in their own table.
-// Only the first 14 of 20 source columns are imported (audit/lock trailer dropped).
-model LvcSeasonPoint {
-  id            String   @id
-  resortId      String
-  resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
-  resortCode    String   // denormalized natural key — the LVC/exchange resort being booked
-  coCode        String   // the resort's OWN product; constant per resortCode (verified)
-  apartmentType String   // validated against ApartmentType (no hard FK; types are renamable)
-  lvcCoCode     String   @default("02") // the product whose members are charged — CP on every imported row
+  resortCode    String   // denormalized natural key — the resort being booked
+  coCode        String   // the resort's OWN product, denormalized from Resort
+  lvcCoCode     String?  // AWAY only — the product whose members are charged; null for HOME
+  apartmentType String   // validated against ApartmentType on save; stored pairs grandfathered
   year          Int      // the year these points apply to
   effectiveDate DateTime // UTC midnight (business date); part of the unique key
   season        String   // G=Gold, S=Silver, D=Diamond
-  ptsSun        Int      // lvcapt col 7 — 0 = Sunday
+  ptsSun        Int      // source col 0 — Sunday
   ptsMon        Int
   ptsTue        Int
   ptsWed        Int
   ptsThu        Int
   ptsFri        Int
-  ptsSat        Int      // lvcapt col 13 — 6 = Saturday
+  ptsSat        Int      // source col 6 — Saturday
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @db.Timestamptz(3)
-  // Same shape as CpSeasonPoint_natkey_key: unique across all 4,513 source rows, while
-  // dropping effectiveDate would collide on 16 of them. map: is required — the generated
-  // name would exceed PostgreSQL's 63-char identifier limit.
-  @@unique([resortCode, apartmentType, year, effectiveDate, season], map: "LvcSeasonPoint_natkey_key")
+  // Mirrors Informix u925_83. effectiveDate is part of the key because a year may
+  // legitimately hold more than one effective-dated revision of the same combo — HOME's
+  // 2015/SLEEP4/G has two, and dropping it collides on 16 AWAY rows.
+  //
+  // pointsType is deliberately NOT in the key: a resort is either home or away, so
+  // resortCode already determines it. Keeping the key as-is preserves BOTH pre-merge
+  // uniques exactly — verified 0 collisions across all 4,766 rows.
+  //
+  // map: is required — the generated name would exceed PostgreSQL's 63-char limit.
+  @@unique([resortCode, apartmentType, year, effectiveDate, season], map: "SeasonPoint_natkey_key")
   @@index([resortCode, year])
 }
 

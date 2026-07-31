@@ -33,11 +33,9 @@ import apartmentTypeRoutes from './routes/apartmentTypes';
 import resortUnitRoutes  from './routes/resortUnits';
 import aptBlockRoutes    from './routes/aptBlocks';
 import resortMaintenanceRoutes from './routes/resortMaintenance';
-import publicHolidayRoutes from './routes/publicHolidays';
-import schoolHolidayRoutes from './routes/schoolHolidays';
+import holidayRoutes from './routes/holidays';
 import cpSeasonRoutes from './routes/cpSeasons';
-import cpSeasonPointRoutes from './routes/cpSeasonPoints';
-import lvcSeasonPointRoutes from './routes/lvcSeasonPoints';
+import seasonPointRoutes from './routes/seasonPoints';
 
 // Member-scoped sub-routes
 import { authenticate, requirePasswordChanged } from './middleware/auth';
@@ -77,11 +75,9 @@ app.use('/api/apartment-types',   apartmentTypeRoutes);
 app.use('/api/resort-units',      resortUnitRoutes);
 app.use('/api/apt-blocks',        aptBlockRoutes);
 app.use('/api/resort-maintenance', resortMaintenanceRoutes);
-app.use('/api/public-holidays',   publicHolidayRoutes);
-app.use('/api/school-holidays',   schoolHolidayRoutes);
+app.use('/api/holidays',          holidayRoutes);
 app.use('/api/cp-seasons',        cpSeasonRoutes);
-app.use('/api/cp-season-points',  cpSeasonPointRoutes);
-app.use('/api/lvc-season-points', lvcSeasonPointRoutes);
+app.use('/api/season-points',     seasonPointRoutes);
 
 // ─── Member-scoped agreement + AMC routes ─────────────────────────────────────
 app.get(

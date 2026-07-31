@@ -9,8 +9,8 @@
  * One row per calendar day — the source is a full daily calendar, not ranges.
  * The 2026-01-01..2027-02-28 export is 424 rows, fully contiguous (no gaps).
  *
- * PRODUCT SCOPE: this calendar is read by CP booking only. PublicHoliday and
- * SchoolHoliday are LHC-only — the three are parallel, unrelated calendars.
+ * PRODUCT SCOPE: this calendar is read by CP booking only. The Holiday calendar
+ * (public + school) is LHC-only — the two are parallel, unrelated calendars.
  *
  * Does NOT truncate — the caller does (migrate-table.ps1 -Table CpSeasonDate,
  * refresh-test-db.ps1), matching migrate-resort-units.ts.

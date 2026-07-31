@@ -8,7 +8,7 @@ import { writeAudit } from '../utils/audit';
 // G=Gold / S=Silver / D=Diamond, driving CP points pricing per night.
 //
 // PRODUCT SCOPE: this is the only holiday/peak calendar CP booking reads.
-// PublicHoliday and SchoolHoliday are LHC-only — never join or derive across them.
+// The Holiday calendar (public + school) is LHC-only — never join or derive across them.
 //
 // Dates are UTC-midnight business dates, parsed with Date.UTC, never `new Date(str)`.
 
