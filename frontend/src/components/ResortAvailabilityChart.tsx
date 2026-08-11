@@ -37,8 +37,8 @@ export function ResortAvailabilityChart() {
       <div className="flex flex-wrap items-center justify-center gap-3">
         <label className="text-sm text-gray-600">Product Type:</label>
         <Select value={product} onChange={e => setProduct(e.target.value as 'LHC' | 'CP')} className="w-52">
-          <option value="LHC">Leisure Holidays Club</option>
-          <option value="CP">Country Points (CP)</option>
+          <option value="LHC">Leisure Holiday Club (LHC)</option>
+          <option value="CP">ConnectionPoints (CP)</option>
         </Select>
         <label className="text-sm text-gray-600">Date:</label>
         <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40" />

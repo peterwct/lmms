@@ -19,7 +19,7 @@ interface ResortsMenuItem {
 // and the Home (9) / Non-Home (10) points charts became one tabbed page at 9. Nothing
 // downstream changed — no route moved in either merge.
 const SETUP_ITEMS: ResortsMenuItem[] = [
-  { num: 1, label: 'Products Code Maintenance and Setup',    to: '/resorts/products',     icon: <Package className="h-4 w-4" />, enabled: true },
+  { num: 1, label: 'Company Master - New Company/Product Code', to: '/resorts/products',     icon: <Package className="h-4 w-4" />, enabled: true },
   { num: 2, label: 'Resorts Master Maintenance and Setup',   to: '/resorts/setup',        icon: <Hotel className="h-4 w-4" />, enabled: true },
   { num: 3, label: 'Apartment Sleep Types Maintenance and Setup', to: '/resorts/apartment-types', icon: <BedDouble className="h-4 w-4" />, enabled: true },
   { num: 4, label: "Apartment's Unit No. Maintenance and Setup",  to: '/resorts/units',   icon: <DoorOpen className="h-4 w-4" />, enabled: true },

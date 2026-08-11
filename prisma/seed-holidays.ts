@@ -3,7 +3,7 @@
  * which share one table discriminated by holidayType.
  *
  * There is no Informix UNLOAD file for either — the 2026 lists are business-supplied,
- * so they are baked in below (same approach as APARTMENT_TYPES / CHECK_TIMES in
+ * so they are baked in below (same approach as CHECK_TIMES in
  * migrate-resorts.ts). Public dates are stored EXACTLY as supplied: several are the eve
  * of the gazetted holiday (Labour Day 30/04, National Day 30/08, Christmas 24/12) and
  * that is intentional — do not "correct" them.

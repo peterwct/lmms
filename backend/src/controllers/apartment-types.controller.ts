@@ -23,18 +23,27 @@ const resortSelect = { select: { shortName: true, resortName: true, lockOnOff: t
 
 export async function listApartmentTypes(req: Request, res: Response): Promise<void> {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  // Active resorts only (business rule, 2026-08-10). apt_category.txt carries 487 types
+  // across 320 resorts, but only 13 resorts are Active -- the rest are retired legacy and
+  // partner codes that would bury the working set. This mirrors, for the list itself, the
+  // active-only rule the resort pickers already follow (see useActiveResorts).
+  // Rows on an inactive resort are hidden, not deleted: they still back the season-points
+  // grandfathering and reappear if the resort is reactivated.
   const types = await prisma.apartmentType.findMany({
-    where: q
-      ? {
-          OR: [
-            { resortCode:    { contains: q, mode: 'insensitive' } },
-            { apartmentType: { contains: q, mode: 'insensitive' } },
-            { description:   { contains: q, mode: 'insensitive' } },
-            { resort: { resortName: { contains: q, mode: 'insensitive' } } },
-            { resort: { shortName:  { contains: q, mode: 'insensitive' } } },
-          ],
-        }
-      : undefined,
+    where: {
+      resort: { status: 'A' },
+      ...(q
+        ? {
+            OR: [
+              { resortCode:    { contains: q, mode: 'insensitive' } },
+              { apartmentType: { contains: q, mode: 'insensitive' } },
+              { description:   { contains: q, mode: 'insensitive' } },
+              { resort: { resortName: { contains: q, mode: 'insensitive' } } },
+              { resort: { shortName:  { contains: q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    },
     include: { resort: resortSelect },
     orderBy: [{ resortCode: 'asc' }, { apartmentType: 'asc' }],
   });

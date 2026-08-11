@@ -26,6 +26,10 @@
                           lvc_master.txt; first 7 of 14 cols). Truncates + reimports.
                           Post-go-live LVC codes are maintained in MMS -- re-running
                           clobbers any edits made in the app.
+      ApartmentType     - Apartment sleep types (migrate-apt-category.ts from
+                          apt_category.txt; first 4 of 11 cols -- per-type check-in/out
+                          times and the audit trailer are skipped). Truncates + reimports.
+                          Supersedes the 9 rows formerly hardcoded in migrate-resorts.ts.
       Resort            - Resort master + resort info (migrate-resorts.ts from
                           resort_mast.txt + migrate-resort-info.ts from
                           ps_resort_info.txt). Truncates + reimports both.
@@ -70,7 +74,7 @@
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Product', 'LvcCode', 'Resort', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance', 'CpSeasonDate', 'CpSeasonPoint', 'LvcSeasonPoint')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Product', 'LvcCode', 'Resort', 'ApartmentType', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance', 'CpSeasonDate', 'CpSeasonPoint', 'LvcSeasonPoint')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -224,8 +228,15 @@ $TableConfig = @{
         # truncates and clobbers any edits made through the Resorts Setup CRUD.
         # Leaf tables truncated explicitly (TRUNCATE CASCADE unreliable).
         TruncateSql = @('TRUNCATE "SeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
-        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_mast.txt', 'res_avail_mast.txt', 'apt_block.txt', 'resmt.txt', 'ps_seasonapt.txt', 'ps_lvcapt.txt')
-        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-resort-units.ts', 'prisma/migrate-res-avail.ts', 'prisma/migrate-apt-block.ts', 'prisma/migrate-maintenance.ts', 'prisma/migrate-cp-season-points.ts', 'prisma/migrate-lvc-season-points.ts')
+        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_category.txt', 'apt_mast.txt', 'res_avail_mast.txt', 'apt_block.txt', 'resmt.txt', 'ps_seasonapt.txt', 'ps_lvcapt.txt')
+        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-apt-category.ts', 'prisma/migrate-resort-units.ts', 'prisma/migrate-res-avail.ts', 'prisma/migrate-apt-block.ts', 'prisma/migrate-maintenance.ts', 'prisma/migrate-cp-season-points.ts', 'prisma/migrate-lvc-season-points.ts')
+    }
+    ApartmentType = @{
+        # Apartment sleep types (apt_category.txt partial export: 4 of 11 cols).
+        # Post-go-live types are maintained in MMS -- re-running clobbers CRUD edits.
+        TruncateSql = @('TRUNCATE "ApartmentType";')
+        RequiredFiles = @('apt_category.txt')
+        Scripts = @('prisma/migrate-apt-category.ts')
     }
     ResortUnit = @{
         # Apartments/Units register (apt_mast.txt partial export: 5 of 15 cols).

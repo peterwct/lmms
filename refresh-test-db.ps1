@@ -119,9 +119,14 @@
     UNLOAD TO 'ps_resort_info.txt' DELIMITER '|'
     SELECT * FROM ps_resort_info;
 
+    UNLOAD TO 'apt_category.txt' DELIMITER '|'
+    SELECT aptc_resort_code, aptc_type, aptc_remark, aptc_lock_type FROM apt_category;
+
     UNLOAD TO 'apt_mast.txt' DELIMITER '|'
     SELECT apt_code, apt_resort_code, apt_rci_reserved, apt_unit_type, apt_occupancy FROM apt_mast
-	WHERE apt_resort_code in ("CP-PBR", "L-10016", "L-10024", "L-10025", "L-10026", "L-101", "L-103A") ;
+	where apt_resort_code in 
+	(select  re_resort_code from resort_mast
+	 where re_resort_status = "A");
 
     UNLOAD TO 'res_avail_mast.txt' DELIMITER '|'
     SELECT * FROM res_avail_mast;
@@ -209,6 +214,7 @@ $requiredFiles = @(
     'lvc_master.txt',
     'resort_mast.txt',
     'ps_resort_info.txt',
+    'apt_category.txt',
     'apt_mast.txt',
     'res_avail_mast.txt',
     'apt_block.txt',
@@ -338,6 +344,9 @@ Invoke-Migration "prisma/migrate-products.ts"      "migrate-products.ts"
 Invoke-Migration "prisma/migrate-lvc-codes.ts"     "migrate-lvc-codes.ts"
 Invoke-Migration "prisma/migrate-resorts.ts"       "migrate-resorts.ts"
 Invoke-Migration "prisma/migrate-resort-info.ts"   "migrate-resort-info.ts"
+# Apartment sleep types (fn 3). Needs Resort for the FK. Runs before migrate-resort-units
+# so unit rows land against types that already exist.
+Invoke-Migration "prisma/migrate-apt-category.ts"  "migrate-apt-category.ts"
 Invoke-Migration "prisma/migrate-resort-units.ts"  "migrate-resort-units.ts"
 # Units Availability (per-day grid + input blocks). apt-block needs ResortUnit
 # present for the apartmentType lookup, so it runs after migrate-resort-units.
