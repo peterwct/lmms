@@ -122,20 +122,27 @@
     UNLOAD TO 'apt_category.txt' DELIMITER '|'
     SELECT aptc_resort_code, aptc_type, aptc_remark, aptc_lock_type FROM apt_category;
 
-    UNLOAD TO 'apt_mast.txt' DELIMITER '|'
-    SELECT apt_code, apt_resort_code, apt_rci_reserved, apt_unit_type, apt_occupancy FROM apt_mast
-	where apt_resort_code in 
-	(select  re_resort_code from resort_mast
-	 where re_resort_status = "A");
+    -- apt_mast / apt_block / resmt are NOT plain SELECTs any more. Four resorts had
+    -- their unit registers trimmed to the live inventory (L-10024 Greenhill A1-A34,
+    -- L-10025 Golden City B1-B22, L-10026 Leisure Cove floors 4-5, CP-PBR Perdana
+    -- the 32xx family), and all three tables must carry the SAME unit whitelist or a
+    -- refresh reloads blocks/maintenance for units that no longer exist.
+    -- Run these three scripts instead of hand-writing the UNLOADs:
+    --     dbaccess <db> E:\Websites\lmms\migrate\apt_mast_unload.sql     -> apt_mast.txt
+    --     dbaccess <db> E:\Websites\lmms\migrate\apt_block_unload.sql    -> apt_block.txt
+    --     dbaccess <db> E:\Websites\lmms\migrate\resmt_unload.sql        -> resmt.txt
+    -- Expected: 358 / 2191 / 10904 rows.
+
+    -- OPTIONAL, and recommended: the active-resorts sweep. Exports every resort
+    -- OTHER than those four that is Active in resort_mast, so no active resort can
+    -- end up without its units. migrate-resort-units.ts loads it when the file is
+    -- present and de-duplicates against apt_mast.txt on (resortCode, unitNo); when
+    -- absent it is skipped and the refresh proceeds normally.
+    --     dbaccess <db> E:\Websites\lmms\migrate\apt_mast_active_unload.sql
+    --                                                        -> apt_mast_active.txt
 
     UNLOAD TO 'res_avail_mast.txt' DELIMITER '|'
     SELECT * FROM res_avail_mast;
-
-    UNLOAD TO 'apt_block.txt' DELIMITER '|'
-    SELECT * FROM apt_block;
-
-    UNLOAD TO 'resmt.txt' DELIMITER '|'
-    SELECT * FROM resmt where rm_resort_code in ("CP-PBR", "L-10016", "L-10024", "L-10025", "L-10026", "L-101", "L-103A");
 
     UNLOAD TO 'ps_seasondate.txt' DELIMITER '|'
     SELECT * FROM ps_seasondate where year(pssd_seadate) >= 2026;

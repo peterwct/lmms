@@ -147,8 +147,13 @@ export async function getAvailabilityChart(req: Request, res: Response): Promise
   const start = toUtcMidnight(dateStr);
   const end = new Date(start.getTime() + (days - 1) * DAY_MS);
 
+  // ACTIVE resorts only. The chart scaffolds a row per resort x apartment type and
+  // fills missing days with 0, so a retired resort renders a full row of zeros: before
+  // this filter the LHC chart drew 56 rows of which only 5 were live, and CP 10 of 3.
+  // Server-side like the Apartment Types list (this is the screen's own endpoint, not
+  // a shared resort cache) -- see listApartmentTypes in apartment-types.controller.ts.
   const resorts = await prisma.resort.findMany({
-    where: { coCode: { in: coCodes } },
+    where: { coCode: { in: coCodes }, status: 'A' },
     select: { resortCode: true, shortName: true, coCode: true },
   });
   const resortCodes = resorts.map(r => r.resortCode);

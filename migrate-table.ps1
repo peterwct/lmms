@@ -63,6 +63,7 @@
     .\migrate-table.ps1 -Table Product                     # Product / company master (ps_company.txt; first 9 cols; truncates + reimports)
     .\migrate-table.ps1 -Table LvcCode                     # LVC exchange codes (lvc_master.txt; first 7 cols; truncates + reimports)
     .\migrate-table.ps1 -Table Resort                      # Resort master + info + units + availability + blocks (truncates + reimports)
+    .\migrate-table.ps1 -Table ResortUnit                  # Apartments/Units register only (apt_mast.txt + optional apt_mast_active.txt; truncates + reimports)
     .\migrate-table.ps1 -Table ResAvailMast                # Per-day availability grid only (res_avail_mast.txt; truncates + reimports)
     .\migrate-table.ps1 -Table AptBlock                    # Availability blocks only (apt_block.txt; truncates + reimports)
     .\migrate-table.ps1 -Table ResortMaintenance           # Maintenance register only (resmt.txt; truncates + reimports)
@@ -229,6 +230,7 @@ $TableConfig = @{
         # Leaf tables truncated explicitly (TRUNCATE CASCADE unreliable).
         TruncateSql = @('TRUNCATE "SeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
         RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_category.txt', 'apt_mast.txt', 'res_avail_mast.txt', 'apt_block.txt', 'resmt.txt', 'ps_seasonapt.txt', 'ps_lvcapt.txt')
+        OptionalFiles = @('apt_mast_active.txt')
         Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-apt-category.ts', 'prisma/migrate-resort-units.ts', 'prisma/migrate-res-avail.ts', 'prisma/migrate-apt-block.ts', 'prisma/migrate-maintenance.ts', 'prisma/migrate-cp-season-points.ts', 'prisma/migrate-lvc-season-points.ts')
     }
     ApartmentType = @{
@@ -240,9 +242,13 @@ $TableConfig = @{
     }
     ResortUnit = @{
         # Apartments/Units register (apt_mast.txt partial export: 5 of 15 cols).
+        # apt_mast_active.txt is an OPTIONAL second export in the same layout
+        # (migrate/apt_mast_active_unload.sql) sweeping in every other ACTIVE resort;
+        # migrate-resort-units.ts reads both and de-duplicates on (resortCode, unitNo).
         # Post-go-live units are maintained in MMS -- re-running clobbers CRUD edits.
         TruncateSql = @('TRUNCATE "ResortUnit";')
         RequiredFiles = @('apt_mast.txt')
+        OptionalFiles = @('apt_mast_active.txt')
         Scripts = @('prisma/migrate-resort-units.ts')
     }
     ResAvailMast = @{
@@ -312,6 +318,16 @@ if ($missing) {
     exit 1
 }
 
+# -- Optional source files. Used when present, skipped without complaint when not.
+#    apt_mast_active.txt (ResortUnit) is the active-resorts sweep -- see
+#    migrate/apt_mast_active_unload.sql. migrate-resort-units.ts reads it if it
+#    is there and de-duplicates against apt_mast.txt on (resortCode, unitNo).
+$optionalPresent = @()
+$optionalAbsent  = @()
+foreach ($f in $config.OptionalFiles) {
+    if (Test-Path (Join-Path $migrateDir $f)) { $optionalPresent += $f } else { $optionalAbsent += $f }
+}
+
 # -- Show plan
 Write-Host ""
 Write-Host ("=" * 62)
@@ -320,6 +336,12 @@ Write-Host ("=" * 62)
 Write-Host "  Target  : $DatabaseUrl"
 Write-Host "  Mode    : $(if ($DryRun) { 'DRY RUN' } else { 'LIVE' })"
 Write-Host "  Files   : $($config.RequiredFiles -join ', ')"
+if ($optionalPresent) {
+    Write-Host "  Extra   : $($optionalPresent -join ', ')  [found - will be loaded]" -ForegroundColor Green
+}
+if ($optionalAbsent) {
+    Write-Host "  Extra   : $($optionalAbsent -join ', ')  [not present - skipped]" -ForegroundColor DarkGray
+}
 Write-Host "  Scripts : $($config.Scripts.Count)"
 Write-Host ("=" * 62)
 Write-Host ""
