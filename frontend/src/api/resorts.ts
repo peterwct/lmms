@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, LvcCode, PointsType, SeasonPointDeleteResult, SeasonPointSaveResult, SeasonPointVersion, SeasonPointVersionSummary, Product, Holiday, HolidayCloneResult, HolidayType, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList } from '../types';
+import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, LvcCode, PointsType, SeasonPointDeleteResult, SeasonPointSaveResult, SeasonPointVersion, SeasonPointVersionSummary, Product, Holiday, HolidayCloneResult, HolidayType, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, UnitAvailability } from '../types';
 
 export const productsApi = {
   list:   (q?: string) => api.get<{ data: Product[] }>('/products', { params: q ? { q } : undefined }),
@@ -42,15 +42,20 @@ export const aptBlocksApi = {
   update: (id: string, data: Record<string, unknown>) => api.put<{ data: AptBlock }>(`/apt-blocks/${id}`, data),
   remove: (id: string) => api.delete(`/apt-blocks/${id}`),
   availability: (id: string) => api.get<AptBlockAvailability>(`/apt-blocks/${id}/availability`),
+  // Availability records per unit at this resort — feeds the Resorts Maintenance form
+  units: (resortCode: string) => api.get<{ data: UnitAvailability[] }>('/apt-blocks/units', { params: { resortCode } }),
   chart: (params: { product: 'LHC' | 'CP'; date: string; days?: number }) =>
     api.get<AvailabilityChart>('/apt-blocks/availability-chart', { params }),
 };
 
 export const resortMaintenanceApi = {
-  list: (params: { q?: string; resortCode?: string; year?: number; month?: number; page?: number; pageSize?: number }) =>
+  // unitNo + from/to (YYYY-MM-DD, overlap) scope the list to one unit's records inside an
+  // availability window — the form's calendar uses it to grey out days already taken
+  list: (params: { q?: string; resortCode?: string; unitNo?: string; from?: string; to?: string; year?: number; month?: number; page?: number; pageSize?: number }) =>
     api.get<ResortMaintenanceList>('/resort-maintenance', { params }),
   years: () => api.get<{ data: number[] }>('/resort-maintenance/years'),
-  create: (data: Record<string, unknown>) => api.post<{ data: ResortMaintenance }>('/resort-maintenance', data),
+  // Create takes 1..3 date ranges for one unit and returns the whole batch it wrote
+  create: (data: Record<string, unknown>) => api.post<{ data: ResortMaintenance[] }>('/resort-maintenance', data),
   update: (id: string, data: Record<string, unknown>) => api.put<{ data: ResortMaintenance }>(`/resort-maintenance/${id}`, data),
   remove: (id: string) => api.delete(`/resort-maintenance/${id}`),
   availability: (id: string) => api.get<ResortMaintenanceAvailability>(`/resort-maintenance/${id}/availability`),

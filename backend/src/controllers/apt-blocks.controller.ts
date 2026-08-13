@@ -130,6 +130,34 @@ export async function listAptBlocks(req: Request, res: Response): Promise<void> 
   res.json({ data: blocks, total, page, pageSize });
 }
 
+// Availability records per unit at this resort. Feeds the Resorts Maintenance form, which
+// may only offer units already in the booking pool and makes the user pick ONE of these
+// records before keying date ranges inside it. Units absent from the result have no
+// availability at all, which is what greys them out in that unit picker.
+// Index-only: resortCode is the leftmost prefix of the [resortCode, unitNo, startDate,
+// endDate] unique, and nothing is included, so even V-LDBR's 2,139 blocks stay a small
+// single payload. startDate desc matches the fn 5 list order, putting the current record
+// at the top of the picker.
+export async function listUnitsWithAvailability(req: Request, res: Response): Promise<void> {
+  const resortCode = typeof req.query.resortCode === 'string' ? req.query.resortCode.trim() : '';
+  if (!resortCode) { res.status(400).json({ error: 'resortCode is required' }); return; }
+
+  const blocks = await prisma.aptBlock.findMany({
+    where: { resortCode },
+    select: { id: true, unitNo: true, startDate: true, endDate: true },
+    orderBy: [{ unitNo: 'asc' }, { startDate: 'desc' }],
+  });
+
+  const byUnit = new Map<string, { id: string; startDate: Date; endDate: Date }[]>();
+  for (const b of blocks) {
+    const list = byUnit.get(b.unitNo);
+    const entry = { id: b.id, startDate: b.startDate, endDate: b.endDate };
+    if (list) list.push(entry); else byUnit.set(b.unitNo, [entry]);
+  }
+
+  res.json({ data: [...byUnit].map(([unitNo, unitBlocks]) => ({ unitNo, blocks: unitBlocks })) });
+}
+
 const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 

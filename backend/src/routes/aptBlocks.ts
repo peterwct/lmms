@@ -8,6 +8,7 @@ router.use(authenticate, requirePasswordChanged);
 
 router.get('/',                 requirePermission('RESORTS_SETUP', 'view'),   ctrl.listAptBlocks);
 router.get('/availability-chart', requirePermission('RESORTS_SETUP', 'view'), ctrl.getAvailabilityChart);
+router.get('/units',            requirePermission('RESORTS_SETUP', 'view'),   ctrl.listUnitsWithAvailability);
 router.get('/:id/availability', requirePermission('RESORTS_SETUP', 'view'),   ctrl.getAptBlockAvailability);
 router.post('/',       requirePermission('RESORTS_SETUP', 'create'), ctrl.createAptBlock);
 router.put('/:id',     requirePermission('RESORTS_SETUP', 'edit'),   ctrl.updateAptBlock);

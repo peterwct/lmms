@@ -256,6 +256,14 @@ export interface AptBlockList {
   pageSize: number;
 }
 
+// One unit's availability records (fn 5 AptBlock), newest first. Resorts Maintenance
+// makes the user pick one before keying date ranges inside it; a unit missing from the
+// list has no availability at all and cannot go under maintenance.
+export interface UnitAvailability {
+  unitNo: string;
+  blocks: { id: string; startDate: string; endDate: string }[];
+}
+
 export interface ResortMaintenance {
   id: string;
   resortId: string;
