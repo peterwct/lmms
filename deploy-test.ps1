@@ -69,6 +69,36 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $LOCAL_ROOT = $PSScriptRoot
 
+# ── reject unknown parameters ─────────────────────────────────────────────────
+# A plain param() block silently drops unrecognised switches into $args, so a typo
+# ran a FULL deploy with the mistyped flag quietly ignored. That is how -MigradeDb
+# deployed new code against an un-migrated database on 2026-08-13, which then 500'd
+# on every write. Abort before anything is built or copied, and name the bad token.
+#
+# Note this must NOT use [CmdletBinding()]: that would reject the typo too, but with
+# PowerShell's own opaque "positional parameter cannot be found" message instead of
+# a suggestion. Legitimate prefixes (-Migrate for -MigrateDb) still bind normally.
+if ($args.Count -gt 0) {
+    $valid = @($MyInvocation.MyCommand.Parameters.Keys)
+    Write-Host ""
+    Write-Host "  ABORTED - unrecognised parameter(s):" -ForegroundColor Red
+    foreach ($bad in $args) {
+        $stem = ([string]$bad).TrimStart('-')
+        $head = $stem.Substring(0, [Math]::Min(4, $stem.Length)).ToLower()
+        $near = @($valid | Where-Object { $_.ToLower().StartsWith($head) })
+        if ($near.Count -gt 0) {
+            Write-Host ("    " + $bad + "   -- did you mean -" + $near[0] + " ?") -ForegroundColor Red
+        } else {
+            Write-Host ("    " + $bad) -ForegroundColor Red
+        }
+    }
+    Write-Host ""
+    Write-Host ("  Valid parameters: " + (($valid | ForEach-Object { "-$_" }) -join "  ")) -ForegroundColor Yellow
+    Write-Host "  Nothing was built, copied or deployed." -ForegroundColor Yellow
+    Write-Host ""
+    exit 1
+}
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 function Step([string]$msg) { Write-Host "`n  $msg" -ForegroundColor Cyan }

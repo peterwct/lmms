@@ -43,7 +43,8 @@ export async function listLvcCodes(req: Request, res: Response): Promise<void> {
           ],
         }
       : undefined,
-    orderBy: { lvcCode: 'asc' },
+    // Active first, then Inactive (A < U), each alphabetical -- mirrors listResorts
+    orderBy: [{ status: 'asc' }, { lvcCode: 'asc' }],
   });
   res.json({ data: codes });
 }

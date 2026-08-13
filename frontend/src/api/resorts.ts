@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, LvcCode, PointsType, SeasonPointDeleteResult, SeasonPointSaveResult, SeasonPointYear, Product, Holiday, HolidayCloneResult, HolidayType, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList } from '../types';
+import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, LvcCode, PointsType, SeasonPointDeleteResult, SeasonPointSaveResult, SeasonPointVersion, SeasonPointVersionSummary, Product, Holiday, HolidayCloneResult, HolidayType, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList } from '../types';
 
 export const productsApi = {
   list:   (q?: string) => api.get<{ data: Product[] }>('/products', { params: q ? { q } : undefined }),
@@ -81,10 +81,10 @@ export const cpSeasonsApi = {
   clone: (data: { sourceYear: number }) => api.post<{ data: CpSeasonCloneResult }>('/cp-seasons/clone', data),
 };
 
+// No effectiveDate per row — one date per version, on the envelope
 export type SeasonPointRowInput = {
   apartmentType: string;
   season: string;
-  effectiveDate: string;
   ptsSun: number; ptsMon: number; ptsTue: number; ptsWed: number;
   ptsThu: number; ptsFri: number; ptsSat: number;
 };
@@ -92,17 +92,19 @@ export type SeasonPointRowInput = {
 // One client for both charts — `type` selects HOME (own-product resorts) or AWAY
 // (exchange resorts). lvcCoCode, the product charged, is AWAY-only.
 export const seasonPointsApi = {
-  // The screen works a resort-year at a time — no pagination
-  year: (params: { type: PointsType; resortCode: string; year: number }) =>
-    api.get<SeasonPointYear>('/season-points', { params }),
-  years: (params: { resortCode: string }) =>
-    api.get<{ data: number[] }>('/season-points/years', { params }),
-  saveYear: (data: { pointsType: PointsType; resortCode: string; year: number; lvcCoCode?: string; rows: SeasonPointRowInput[] }) =>
-    api.post<{ data: SeasonPointSaveResult }>('/season-points/year', data),
-  deleteYear: (params: { type: PointsType; resortCode: string; year: number }) =>
-    api.delete<{ data: SeasonPointDeleteResult }>('/season-points/year', { params }),
-  // Drops a single superseded effective-dated revision without wiping the year
-  remove: (id: string) => api.delete(`/season-points/${id}`),
+  // One VERSION at a time — no pagination. Omit effectiveDate for the one in force today.
+  version: (params: { type: PointsType; resortCode: string; effectiveDate?: string }) =>
+    api.get<SeasonPointVersion>('/season-points', { params }),
+  versions: (params: { resortCode: string }) =>
+    api.get<{ data: SeasonPointVersionSummary[] }>('/season-points/versions', { params }),
+  // `replaces` is the version's stored date when editing, so the date can be corrected
+  // in place; omit it when creating. Save is replace-all within the version.
+  saveVersion: (data: {
+    pointsType: PointsType; resortCode: string; effectiveDate: string;
+    replaces?: string; lvcCoCode?: string; rows: SeasonPointRowInput[];
+  }) => api.post<{ data: SeasonPointSaveResult }>('/season-points/version', data),
+  deleteVersion: (params: { type: PointsType; resortCode: string; effectiveDate: string }) =>
+    api.delete<{ data: SeasonPointDeleteResult }>('/season-points/version', { params }),
 };
 
 export const apartmentTypesApi = {

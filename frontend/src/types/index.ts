@@ -375,8 +375,7 @@ export interface SeasonPoint {
   coCode: string;             // the resort's own product
   lvcCoCode: string | null;   // AWAY only — the product whose members are charged
   apartmentType: string;
-  year: number;
-  effectiveDate: string;      // ISO string, UTC midnight
+  effectiveDate: string;      // ISO string, UTC midnight — the VERSION this row belongs to
   season: CpSeason;
   ptsSun: number;
   ptsMon: number;
@@ -389,32 +388,43 @@ export interface SeasonPoint {
   updatedAt: string;
 }
 
-// One resort-year. Combos with no row yet are absent — the page scaffolds the full
+// One chart VERSION — all rows sharing (resortCode, effectiveDate), in force until a later
+// version supersedes it. Combos with no row yet are absent: the page scaffolds the full
 // apartment type x season grid from `apartmentTypes` and leaves the gaps blank.
 // `apartmentTypes` is the union of the resort's registered types (Apartment Types Setup)
 // and the types already stored here — partner resorts have none registered, so
 // scaffolding from fn 3 alone would render an empty grid.
-export interface SeasonPointYear {
+export interface SeasonPointVersion {
   resortCode: string;
-  year: number;
+  effectiveDate: string | null;   // null when the resort has no version yet
   pointsType: PointsType;
   resort: { resortCode: string; resortName: string; shortName: string | null; coCode: string };
-  lvcCoCode: string | null;   // null on the HOME tab
+  lvcCoCode: string | null;       // null on the HOME tab
   apartmentTypes: { apartmentType: string; description: string | null; registered: boolean }[];
   data: SeasonPoint[];
 }
 
+// A row of the version list. `isCurrent` is the version in force today; anything dated
+// later is Scheduled, anything earlier than the current one is Superseded.
+export interface SeasonPointVersionSummary {
+  effectiveDate: string;
+  rows: number;
+  apartmentTypes: number;
+  seasons: number;
+  lvcCoCode: string | null;
+  isCurrent: boolean;
+}
+
 export interface SeasonPointSaveResult {
   resortCode: string;
-  year: number;
+  effectiveDate: string;
   rows: number;
-  created: number;
-  updated: number;
+  replaced: number;   // rows the save replaced; 0 means this was a new version
 }
 
 export interface SeasonPointDeleteResult {
   resortCode: string;
-  year: number;
+  effectiveDate: string;
   deleted: number;
 }
 

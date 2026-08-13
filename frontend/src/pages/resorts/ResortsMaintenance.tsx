@@ -15,6 +15,7 @@ import { ConfirmDeleteModal } from '../../components/ui/ConfirmDeleteModal';
 import { DraggableWindow } from '../../components/ui/DraggableWindow';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
+import { RecordCount } from '../../components/ui/RecordCount';
 import { Pagination } from '../../components/ui/Pagination';
 import { ResortAvailabilityChart } from '../../components/ResortAvailabilityChart';
 import type { Resort, ResortMaintenance } from '../../types';
@@ -385,6 +386,12 @@ export function ResortsMaintenance() {
             <Button size="sm" onClick={() => setModal({ open: true, record: null })}><Plus className="h-4 w-4" /> Add maintenance</Button>
           )}
         </CardHeader>
+
+        {!isLoading && (
+          <div className="border-b bg-gray-50/60 px-4 py-2">
+            <RecordCount total={list?.total} />
+          </div>
+        )}
 
         {isLoading ? <PageSpinner /> : (
           <>

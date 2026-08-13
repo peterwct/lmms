@@ -13,6 +13,7 @@ import { ResultDialog } from '../../components/ui/ResultDialog';
 import { ConfirmDeleteModal } from '../../components/ui/ConfirmDeleteModal';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
+import { RecordCount } from '../../components/ui/RecordCount';
 import type { LvcCode, Product } from '../../types';
 
 const STATUS_LABELS: Record<string, string> = { A: 'A — Active', U: 'U — Inactive' };
@@ -201,6 +202,12 @@ export function LvcCodes() {
             <Button size="sm" onClick={() => setModal({ open: true, lvc: null })}><Plus className="h-4 w-4" /> Add LVC code</Button>
           )}
         </CardHeader>
+
+        {!isLoading && (
+          <div className="border-b bg-gray-50/60 px-4 py-2">
+            <RecordCount total={codes?.length} />
+          </div>
+        )}
 
         {isLoading ? <PageSpinner /> : (
           <div className="overflow-x-auto">

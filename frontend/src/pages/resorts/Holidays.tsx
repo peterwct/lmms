@@ -14,6 +14,7 @@ import { ResultDialog } from '../../components/ui/ResultDialog';
 import { ConfirmDeleteModal } from '../../components/ui/ConfirmDeleteModal';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
+import { RecordCount } from '../../components/ui/RecordCount';
 import type { Holiday, HolidayType } from '../../types';
 
 // Public holidays (single dates) and school holidays (date ranges) share one table and
@@ -396,6 +397,12 @@ export function Holidays() {
             </div>
           )}
         </CardHeader>
+
+        {!isLoading && (
+          <div className="border-b bg-gray-50/60 px-4 py-2">
+            <RecordCount total={holidays?.length} />
+          </div>
+        )}
 
         {isLoading ? <PageSpinner /> : (
           <div className="overflow-x-auto">

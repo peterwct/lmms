@@ -14,6 +14,7 @@ import { ResultDialog } from '../../components/ui/ResultDialog';
 import { ConfirmDeleteModal } from '../../components/ui/ConfirmDeleteModal';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
+import { RecordCount } from '../../components/ui/RecordCount';
 import { ProductBadge } from '../../components/ProductBadge';
 import type { ApartmentType, Resort } from '../../types';
 
@@ -200,6 +201,12 @@ export function ApartmentTypes() {
             <Button size="sm" onClick={() => setModal({ open: true, apt: null })}><Plus className="h-4 w-4" /> Add apartment type</Button>
           )}
         </CardHeader>
+
+        {!isLoading && (
+          <div className="border-b bg-gray-50/60 px-4 py-2">
+            <RecordCount total={types?.length} />
+          </div>
+        )}
 
         {isLoading ? <PageSpinner /> : (
           <div className="overflow-x-auto">

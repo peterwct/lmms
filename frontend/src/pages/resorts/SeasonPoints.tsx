@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Trash2, Save } from 'lucide-react';
+import { ChevronLeft, Trash2, Save, Plus, Pencil } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { seasonPointsApi, productsApi } from '../../api/resorts';
@@ -20,6 +20,18 @@ import type { CpSeason, PointsType, SeasonPoint } from '../../types';
 // Home and non-home points share one table and this one screen; the tab picks which
 // chart is being maintained. A home resort is coCode '02' (CP-PBR today) — everything
 // else is reached through an LVC exchange programme and priced on the Non-Home tab.
+//
+// VERSIONS, NOT YEARS: a chart is all rows sharing (resortCode, effectiveDate) and stays
+// in force until a later one supersedes it. A new one is created only when a rate changes
+// or a room type is introduced — never annually. ONE effective date per version, set once
+// in the editor header, so there is no per-row date and no year navigation.
+//
+// NAMING: the UI calls these "rates" ("New Rate", "Delete rate"); the code, the API and
+// the schema call them versions. Same thing — don't rename one half without the other.
+//
+// A new rate opens PRE-FILLED from the rate in force (the editor loads it for the resort
+// header and apartment types anyway), and must take effect AFTER the resort's latest rate
+// — mirrored server-side in saveSeasonPointVersion.
 
 const SEASON_LABELS: Record<string, string> = { D: 'Diamond', G: 'Gold', S: 'Silver' };
 const SEASON_ORDER: CpSeason[] = ['S', 'G', 'D'];
@@ -44,19 +56,18 @@ const DAYS = [
 
 type DayKey = (typeof DAYS)[number]['key'];
 
-// A grid row: either scaffolded (no id yet) or backed by a stored record
+// A grid row: either scaffolded (no stored row yet) or backed by one. With one date per
+// version the natural key is just (apartmentType, season), so there is one row per combo.
 interface Draft {
   key: string;            // stable react key + edits map key
   id: string | null;      // stored row id, null when scaffolded
   apartmentType: string;
   season: CpSeason;
-  effectiveDate: string;  // YYYY-MM-DD
   pts: Record<DayKey, string>;   // strings so a cleared cell stays blank, not 0
 }
 
 const iso = (s: string) => s.slice(0, 10);
-const rowKey = (apartmentType: string, season: string, effectiveDate: string) =>
-  `${apartmentType}|${season}|${effectiveDate}`;
+const rowKey = (apartmentType: string, season: string) => `${apartmentType}|${season}`;
 
 const blankPts = (): Record<DayKey, string> =>
   Object.fromEntries(DAYS.map(d => [d.key, ''])) as Record<DayKey, string>;
@@ -69,6 +80,11 @@ const isFilled = (d: Draft) => DAYS.some(day => d.pts[day.key].trim() !== '');
 const rowTotal = (d: Draft) =>
   DAYS.reduce((sum, day) => sum + (parseInt(d.pts[day.key], 10) || 0), 0);
 
+const fmtDate = (s: string) => {
+  const [y, m, d] = iso(s).split('-');
+  return `${d}-${m}-${y}`;
+};
+
 export function SeasonPoints() {
   const { canCreate, canEdit, canDelete } = useAuth();
   const qc = useQueryClient();
@@ -76,34 +92,38 @@ export function SeasonPoints() {
 
   const editable = canCreate('RESORTS_SETUP') || canEdit('RESORTS_SETUP');
 
-  // Tab lives in the URL alongside resort + year, so Back restores the whole view
+  // Tab lives in the URL alongside resort + version, so Back restores the whole view
   const slug = searchParams.get('type') === 'away' ? 'away' : 'home';
   const type: PointsType = slug === 'away' ? 'AWAY' : 'HOME';
   const isAway = type === 'AWAY';
 
-  const yearParam = parseInt(searchParams.get('year') ?? '', 10);
-  const year = yearParam >= 1900 && yearParam <= 2999 ? yearParam : new Date().getFullYear();
   const resortCode = searchParams.get('resort') ?? '';
+  // absent -> the version list; a date -> edit that version; 'new' -> a blank version
+  const effParam = searchParams.get('eff') ?? '';
+  const isNew = effParam === 'new';
+  const editing = effParam !== '';
 
-  const [yearInput, setYearInput] = useState(String(year));
   const [edits, setEdits] = useState<Record<string, Draft>>({});
-  const [bulkDate, setBulkDate] = useState('');
+  const [effDate, setEffDate] = useState('');
   const [chargedTo, setChargedTo] = useState('');
-  const [deleteYearOpen, setDeleteYearOpen] = useState(false);
-  const [deleteRow, setDeleteRow] = useState<Draft | null>(null);
+  const [deleteVersionOpen, setDeleteVersionOpen] = useState(false);
   const [delErr, setDelErr] = useState('');
   const [saveErr, setSaveErr] = useState('');
   const [result, setResult] = useState<string | null>(null);
 
-  useEffect(() => { setYearInput(String(year)); }, [year]);
+  const goResort = (rc: string) =>
+    setSearchParams({ type: slug, resort: rc }, { replace: true });
 
-  const goTo = (rc: string, y: number) =>
-    setSearchParams({ type: slug, resort: rc, year: String(y) }, { replace: true });
+  const openVersion = (eff: string) =>
+    setSearchParams({ type: slug, resort: resortCode, eff }, { replace: true });
+
+  const backToList = () =>
+    setSearchParams({ type: slug, resort: resortCode }, { replace: true });
 
   // A resort valid on one tab is invalid on the other, so switching drops it and
   // falls through to the default-resort effect below.
   const switchTab = (nextSlug: string) =>
-    setSearchParams({ type: nextSlug, year: String(year) }, { replace: true });
+    setSearchParams({ type: nextSlug }, { replace: true });
 
   // Active-only comes from the hook; an inactive resort's data is still reachable by URL.
   // Home = our own CP product; away = every exchange resort.
@@ -115,13 +135,24 @@ export function SeasonPoints() {
 
   // Default to the first resort of this kind once the list arrives
   useEffect(() => {
-    if (!resortCode && tabResorts.length) goTo(tabResorts[0].resortCode, year);
-  }, [resortCode, tabResorts, year]);
+    if (!resortCode && tabResorts.length) goResort(tabResorts[0].resortCode);
+  }, [resortCode, tabResorts]);
 
-  const { data: yearData, isLoading } = useQuery({
-    queryKey: ['season-points', type, resortCode, year],
-    queryFn: () => seasonPointsApi.year({ type, resortCode, year }).then(r => r.data),
+  const { data: versions, isLoading: versionsLoading } = useQuery({
+    queryKey: ['season-point-versions', resortCode],
+    queryFn: () => seasonPointsApi.versions({ resortCode }).then(r => r.data.data),
     enabled: !!resortCode,
+  });
+
+  // A new version still needs the resort header and its apartment types, so it loads the
+  // in-force version (no date) and simply ignores the rows.
+  const { data: versionData, isLoading } = useQuery({
+    queryKey: ['season-points', type, resortCode, isNew ? 'new' : effParam],
+    queryFn: () =>
+      seasonPointsApi
+        .version({ type, resortCode, ...(isNew || !effParam ? {} : { effectiveDate: effParam }) })
+        .then(r => r.data),
+    enabled: !!resortCode && editing,
   });
 
   // Products name both the resort's own company and the charged-to company; there is
@@ -134,62 +165,48 @@ export function SeasonPoints() {
     products?.find(p => p.coCode === coCode)?.coName ?? '—';
 
   const resort = tabResorts.find(r => r.resortCode === resortCode);
-  const resortCoCode = resort?.coCode ?? yearData?.resort.coCode;
-  const stored = useMemo(() => yearData?.data ?? [], [yearData]);
+  const resortCoCode = resort?.coCode ?? versionData?.resort.coCode;
+  // In `new` mode the query returns the rate in force; its rows seed the grid so a new
+  // rate starts as a copy of the current one, for the user to amend.
+  const stored = useMemo(() => versionData?.data ?? [], [versionData]);
 
-  // Scaffold every apartment type x season combo, then add any stored row that falls
-  // outside it — a year may hold a second effective-dated revision of the same combo
-  // (the migrated home 2015/SLEEP4/G does), which must stay visible.
+  // The rate's stored date — what the save replaces when the date is being corrected.
+  // Blank in `new` mode, so the save creates rather than moves the copied-from rate.
+  const storedEff = isNew ? '' : versionData?.effectiveDate ? iso(versionData.effectiveDate) : '';
+
+  // The date the new rate was copied from, for the banner
+  const copiedFrom = isNew && versionData?.effectiveDate ? iso(versionData.effectiveDate) : '';
+
+  // One row per apartment type x season. No per-row date means no "extra revisions" tail.
   const drafts = useMemo<Draft[]>(() => {
-    const types = yearData?.apartmentTypes ?? [];
-    const byKey = new Map(stored.map(r => [rowKey(r.apartmentType, r.season, iso(r.effectiveDate)), r]));
-    const used = new Set<string>();
+    const types = versionData?.apartmentTypes ?? [];
     const out: Draft[] = [];
-
     for (const t of types) {
       for (const season of SEASON_ORDER) {
-        // The scaffold slot takes the earliest stored revision of this combo, if any
         const match = stored.find(r => r.apartmentType === t.apartmentType && r.season === season);
-        if (match) {
-          const k = rowKey(match.apartmentType, match.season, iso(match.effectiveDate));
-          used.add(k);
-          out.push({
-            key: k, id: match.id,
-            apartmentType: match.apartmentType, season: match.season,
-            effectiveDate: iso(match.effectiveDate), pts: storedPts(match),
-          });
-        } else {
-          out.push({
-            key: rowKey(t.apartmentType, season, ''), id: null,
-            apartmentType: t.apartmentType, season, effectiveDate: '', pts: blankPts(),
-          });
-        }
+        out.push({
+          key: rowKey(t.apartmentType, season),
+          // A copied row is not a stored row of the rate being created
+          id: isNew ? null : match?.id ?? null,
+          apartmentType: t.apartmentType,
+          season,
+          pts: match ? storedPts(match) : blankPts(),
+        });
       }
     }
-
-    // Extra effective-dated revisions, appended after the scaffold
-    for (const [k, r] of byKey) {
-      if (used.has(k)) continue;
-      out.push({
-        key: k, id: r.id,
-        apartmentType: r.apartmentType, season: r.season,
-        effectiveDate: iso(r.effectiveDate), pts: storedPts(r),
-      });
-    }
-
     return out;
-  }, [yearData, stored]);
+  }, [versionData, stored, isNew]);
 
-  // Types the server will accept without a new Apartment Types Setup entry
   const registered = useMemo(
-    () => new Set((yearData?.apartmentTypes ?? []).filter(t => t.registered).map(t => t.apartmentType)),
-    [yearData],
+    () => new Set((versionData?.apartmentTypes ?? []).filter(t => t.registered).map(t => t.apartmentType)),
+    [versionData],
   );
 
-  // Reset pending edits whenever the displayed tab / resort-year changes
-  useEffect(() => { setEdits({}); setSaveErr(''); setBulkDate(''); }, [type, resortCode, year]);
-  // Charged-to follows the loaded year until the user overrides it (away only)
-  useEffect(() => { setChargedTo(yearData?.lvcCoCode ?? CP_CO_CODE); }, [yearData]);
+  // Reset pending edits whenever the displayed tab / resort / version changes
+  useEffect(() => { setEdits({}); setSaveErr(''); }, [type, resortCode, effParam]);
+  // The header date and charged-to follow the loaded version until the user overrides them
+  useEffect(() => { setEffDate(isNew ? '' : storedEff); }, [storedEff, isNew]);
+  useEffect(() => { setChargedTo(versionData?.lvcCoCode ?? CP_CO_CODE); }, [versionData]);
 
   const rows = useMemo(() => drafts.map(d => edits[d.key] ?? d), [drafts, edits]);
 
@@ -201,21 +218,18 @@ export function SeasonPoints() {
     patch(d, { pts: { ...cur.pts, [dayKey]: value.replace(/[^0-9]/g, '').slice(0, 4) } });
   };
 
-  // Most years use a single effective date across all rows — set them in one click
-  const applyDateToAll = () => {
-    if (!bulkDate) return;
-    setEdits(prev => {
-      const next = { ...prev };
-      for (const d of drafts) next[d.key] = { ...(next[d.key] ?? d), effectiveDate: bulkDate };
-      return next;
-    });
-  };
-
   const dirtyCount = Object.keys(edits).length;
   const filled = rows.filter(isFilled);
-  const missingDate = filled.filter(r => !r.effectiveDate);
-  const isNewYear = !isLoading && stored.length === 0;
-  const chargedToDirty = isAway && !!yearData && chargedTo !== yearData.lvcCoCode;
+  const chargedToDirty = isAway && !!versionData && chargedTo !== versionData.lvcCoCode;
+  const effDirty = !isNew && !!storedEff && effDate !== storedEff;
+  const dirty = dirtyCount > 0 || chargedToDirty || effDirty;
+
+  // Mirrors the backend guard: a NEW rate must take effect after the resort's latest one,
+  // since rates supersede in date order. Editing an existing rate is exempt.
+  const latestEff = versions?.length
+    ? versions.reduce((mx, v) => (iso(v.effectiveDate) > mx ? iso(v.effectiveDate) : mx), '')
+    : '';
+  const effTooEarly = isNew && !!effDate && !!latestEff && effDate <= latestEff;
 
   const kindWord = isAway ? 'Non-home' : 'Home';
 
@@ -224,61 +238,55 @@ export function SeasonPoints() {
       const payload: SeasonPointRowInput[] = filled.map(r => ({
         apartmentType: r.apartmentType,
         season: r.season,
-        effectiveDate: r.effectiveDate,
-        ...(Object.fromEntries(
-          DAYS.map(d => [d.key, parseInt(r.pts[d.key], 10) || 0]),
-        ) as Record<DayKey, number>),
+        ...(Object.fromEntries(DAYS.map(d => [d.key, parseInt(r.pts[d.key], 10) || 0])) as Record<DayKey, number>),
       }));
-      return seasonPointsApi.saveYear({
+      return seasonPointsApi.saveVersion({
         pointsType: type,
         resortCode,
-        year,
-        // Away-only; the server ignores it on home and stores null
+        effectiveDate: effDate,
+        // Naming the stored date lets the server move this version rather than clash with it
+        ...(isNew || !storedEff ? {} : { replaces: storedEff }),
         ...(isAway ? { lvcCoCode: chargedTo || CP_CO_CODE } : {}),
         rows: payload,
       });
     },
-    onSuccess: (r) => {
-      const { rows: n, created, updated } = r.data.data;
+    onSuccess: (res) => {
+      const { rows: n, replaced } = res.data.data;
       qc.invalidateQueries({ queryKey: ['season-points'] });
+      qc.invalidateQueries({ queryKey: ['season-point-versions', resortCode] });
       setEdits({});
-      setResult(`${kindWord} season points saved — ${resortCode} ${year}, ${n} row(s) (${created} new, ${updated} updated).`);
+      setResult(
+        replaced > 0
+          ? `${kindWord} season points saved — ${resortCode}, rate effective ${fmtDate(effDate)}, ${n} row(s).`
+          : `${kindWord} season points rate created — ${resortCode}, effective ${fmtDate(effDate)}, ${n} row(s). ` +
+            'It stays in force until a later rate supersedes it.',
+      );
+      // Keep the URL on the version just written, in case its date was corrected
+      openVersion(effDate);
     },
     onError: (err) => setSaveErr(apiError(err)),
   });
 
-  const deleteYearMut = useMutation({
-    mutationFn: () => seasonPointsApi.deleteYear({ type, resortCode, year }),
-    onSuccess: (r) => {
-      const { deleted } = r.data.data;
+  const deleteVersionMut = useMutation({
+    mutationFn: () => seasonPointsApi.deleteVersion({ type, resortCode, effectiveDate: storedEff }),
+    onSuccess: (res) => {
+      const { deleted } = res.data.data;
       qc.invalidateQueries({ queryKey: ['season-points'] });
-      setEdits({});
-      setDeleteYearOpen(false);
+      qc.invalidateQueries({ queryKey: ['season-point-versions', resortCode] });
+      setDeleteVersionOpen(false);
       setResult(
-        `${kindWord} season points deleted — ${resortCode} ${year}, ${deleted} row(s) removed. ` +
-        (isAway
-          ? 'A CP member booking this resort has no points to deduct until it is set up again.'
-          : 'CP booking has no points for this year until it is set up again.')
+        `${kindWord} season points rate deleted — ${resortCode}, effective ${fmtDate(storedEff)}, ${deleted} row(s) removed.`,
       );
+      backToList();
     },
     onError: (err) => setDelErr(apiError(err)),
   });
 
-  const deleteRowMut = useMutation({
-    mutationFn: (row: Draft) => seasonPointsApi.remove(row.id!),
-    onSuccess: (_r, row) => {
-      qc.invalidateQueries({ queryKey: ['season-points'] });
-      setEdits({});
-      setDeleteRow(null);
-      setResult(`Season points row deleted — ${resortCode} ${row.apartmentType} ${SEASON_LABELS[row.season]} ${year}, effective ${row.effectiveDate}.`);
-    },
-    onError: (err) => setDelErr(apiError(err)),
-  });
-
-  const applyYear = (e: React.FormEvent) => {
-    e.preventDefault();
-    const y = parseInt(yearInput, 10);
-    if (y >= 1900 && y <= 2999) goTo(resortCode, y);
+  const statusOf = (v: { effectiveDate: string; isCurrent: boolean }) => {
+    if (v.isCurrent) return { label: 'Current', cls: 'bg-green-50 text-green-700 border-green-200' };
+    const today = new Date().toISOString().slice(0, 10);
+    if (iso(v.effectiveDate) > today) return { label: 'Scheduled', cls: 'bg-blue-50 text-blue-700 border-blue-200' };
+    return { label: 'Superseded', cls: 'bg-gray-50 text-gray-500 border-gray-200' };
   };
 
   return (
@@ -290,9 +298,11 @@ export function SeasonPoints() {
         <h1 className="mt-1 text-xl font-semibold text-gray-900">CP Points Deduction - Maintenance and Setup</h1>
         <p className="mt-1 text-sm text-gray-500">
           {isAway
-            ? 'Points deducted from a CP member per night when they book a resort other than their home resort — one resort-year at a time.'
-            : 'Points deducted from a CP member per night at their own home resort, by apartment type, season and day of week — one resort-year at a time.'}
-          {' '}The season of each date is set in CP&apos;s Seasons Maintenance and Setup.
+            ? 'Points deducted from a CP member per night when they book a resort other than their home resort.'
+            : 'Points deducted from a CP member per night at their own home resort, by apartment type, season and day of week.'}
+          {' '}A rate stays in force until a later one supersedes it — create a new rate only when a
+          rate changes or a room type is introduced. The season of each date is set in CP&apos;s Seasons
+          Maintenance and Setup.
         </p>
       </div>
 
@@ -315,13 +325,9 @@ export function SeasonPoints() {
         </div>
 
         <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-          <form onSubmit={applyYear} className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className={isAway ? 'w-72' : 'w-56'}>
-              <Select
-                value={resortCode}
-                onChange={e => goTo(e.target.value, year)}
-                title="Resort"
-              >
+              <Select value={resortCode} onChange={e => goResort(e.target.value)} title="Resort">
                 {tabResorts.length === 0 && (
                   <option value="">{isAway ? 'No exchange resorts' : 'No CP resorts'}</option>
                 )}
@@ -332,37 +338,86 @@ export function SeasonPoints() {
                 ))}
               </Select>
             </div>
-            <div className="w-28">
-              <Input
-                type="number"
-                min={1900}
-                max={2999}
-                value={yearInput}
-                onChange={e => setYearInput(e.target.value)}
-                onBlur={applyYear}
-                title="Year"
-                placeholder="Year"
-              />
-            </div>
-            <div className="flex items-center gap-1">
-              <Button type="button" size="sm" variant="secondary" onClick={() => goTo(resortCode, year - 1)} title="Previous year">
-                <ChevronLeft className="h-4 w-4" /> Prev
+            {editing && (
+              <Button type="button" size="sm" variant="secondary" onClick={backToList}>
+                <ChevronLeft className="h-4 w-4" /> All rates
               </Button>
-              <Button type="button" size="sm" variant="secondary" onClick={() => goTo(resortCode, year + 1)} title="Next year">
-                Next <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </form>
+            )}
+          </div>
           <div className="flex items-center gap-2">
-            {canDelete('RESORTS_SETUP') && stored.length > 0 && (
-              <Button size="sm" variant="secondary" onClick={() => { setDelErr(''); setDeleteYearOpen(true); }}>
-                <Trash2 className="h-4 w-4" /> Delete year
+            {!editing && canCreate('RESORTS_SETUP') && resortCode && (
+              <Button size="sm" onClick={() => openVersion('new')}>
+                <Plus className="h-4 w-4" /> New Rate
+              </Button>
+            )}
+            {editing && !isNew && storedEff && canDelete('RESORTS_SETUP') && stored.length > 0 && (
+              <Button size="sm" variant="secondary" onClick={() => { setDelErr(''); setDeleteVersionOpen(true); }}>
+                <Trash2 className="h-4 w-4" /> Delete rate
               </Button>
             )}
           </div>
         </CardHeader>
 
-        {isLoading || !resortCode ? <PageSpinner /> : (
+        {/* ---------------------------------------------------------------- version list */}
+        {!editing ? (
+          versionsLoading || !resortCode ? <PageSpinner /> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Effective From</th>
+                    <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-right">Room Types</th>
+                    <th className="px-4 py-3 text-right">Seasons</th>
+                    <th className="px-4 py-3 text-right">Rows</th>
+                    {isAway && <th className="px-4 py-3 text-left">Charged To</th>}
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {(versions ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={isAway ? 7 : 6} className="px-4 py-8 text-center text-sm text-gray-500">
+                        No points set up for {resortCode}.
+                        {canCreate('RESORTS_SETUP') && ' Use New Rate to create the first one.'}
+                      </td>
+                    </tr>
+                  ) : (versions ?? []).map(v => {
+                    const st = statusOf(v);
+                    return (
+                      <tr key={v.effectiveDate} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="px-4 py-2 font-mono text-gray-800">{fmtDate(v.effectiveDate)}</td>
+                        <td className="px-4 py-2">
+                          <span className={clsx('rounded border px-2 py-0.5 text-xs', st.cls)}>{st.label}</span>
+                        </td>
+                        <td className="px-4 py-2 text-right font-mono">{v.apartmentTypes}</td>
+                        <td className="px-4 py-2 text-right font-mono">{v.seasons}</td>
+                        <td className="px-4 py-2 text-right font-mono">{v.rows}</td>
+                        {isAway && (
+                          <td className="px-4 py-2">
+                            <span className="font-mono">[{v.lvcCoCode ?? '—'}]</span>{' '}
+                            <span className="text-gray-600">{productName(v.lvcCoCode ?? undefined)}</span>
+                          </td>
+                        )}
+                        <td className="px-4 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => openVersion(iso(v.effectiveDate))}
+                            title={editable ? 'Edit this rate' : 'View this rate'}
+                            className="text-gray-400 hover:text-blue-600"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : isLoading || !resortCode ? <PageSpinner /> : (
+          /* ------------------------------------------------------------ version editor */
           <div className="p-4">
             {/* Header block mirroring the legacy ps_seasonapt / ps_lvcapt screens */}
             <div className="mb-3 grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
@@ -372,7 +427,7 @@ export function SeasonPoints() {
               </div>
               <div className="flex gap-2">
                 <span className="w-32 text-gray-500">Resort Name</span>
-                <span className="text-gray-800">{resort?.resortName ?? yearData?.resort.resortName ?? '—'}</span>
+                <span className="text-gray-800">{resort?.resortName ?? versionData?.resort.resortName ?? '—'}</span>
               </div>
               <div className="flex gap-2">
                 <span className="w-32 text-gray-500">Resort Product</span>
@@ -410,35 +465,41 @@ export function SeasonPoints() {
 
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-mono text-sm font-semibold text-gray-800">
-                {isAway ? 'Non-Home Points' : 'Home Points'} — {year}
+                {isAway ? 'Non-Home Points' : 'Home Points'}
+                {isNew ? ' — new rate' : storedEff ? ` — effective ${fmtDate(storedEff)}` : ''}
               </h2>
-              {isNewYear ? (
+              {isNew ? (
                 <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                  No points set up for {resortCode} {year} — fill in the rows you need and save.
+                  {copiedFrom
+                    ? `New rate for ${resortCode} — values copied from the rate effective ${fmtDate(copiedFrom)}. Set the effective date, amend, then save.`
+                    : `New rate for ${resortCode} — set the effective date, fill in the rows, then save.`}
                 </span>
               ) : (
                 <span className="text-xs text-gray-500">
                   {stored.length} row(s) stored
                   {dirtyCount > 0 && <span className="ml-2 text-amber-700 font-medium">· {dirtyCount} unsaved change(s)</span>}
+                  {effDirty && <span className="ml-2 text-amber-700 font-medium">· effective date changed</span>}
                   {chargedToDirty && <span className="ml-2 text-amber-700 font-medium">· charged-to changed</span>}
                 </span>
               )}
             </div>
 
-            {editable && (
-              <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-gray-500">Effective date</span>
-                <div className="w-40">
-                  <Input type="date" value={bulkDate} onChange={e => setBulkDate(e.target.value)} title="Effective date to apply" />
-                </div>
-                <Button type="button" size="sm" variant="secondary" onClick={applyDateToAll} disabled={!bulkDate}>
-                  Apply to all rows
-                </Button>
-                <span className="text-xs text-gray-400">
-                  Most years share one effective date; a row can still be dated individually.
-                </span>
+            {/* ONE effective date for the whole version — there is no per-row date */}
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-gray-500">Effective from</span>
+              <div className="w-40">
+                <Input
+                  type="date"
+                  value={effDate}
+                  disabled={!editable}
+                  onChange={e => setEffDate(e.target.value)}
+                  title="Date this chart takes effect"
+                />
               </div>
-            )}
+              <span className="text-xs text-gray-400">
+                Applies to the whole chart, and stays in force until a later rate supersedes it.
+              </span>
+            </div>
 
             {rows.length === 0 ? (
               <p className="py-6 text-center text-sm text-gray-500">
@@ -451,18 +512,16 @@ export function SeasonPoints() {
                     <tr className="border-b border-gray-200 text-gray-500">
                       <th className="px-2 py-1 text-left font-normal">Apt Type</th>
                       <th className="px-2 py-1 text-left font-normal">Season</th>
-                      <th className="px-2 py-1 text-left font-normal">Effective Date</th>
                       {DAYS.map(d => (
                         <th key={d.key} className="px-1 py-1 text-center font-normal">{d.label} ({d.idx})</th>
                       ))}
                       <th className="px-2 py-1 text-right font-normal">Total/Wk</th>
-                      <th className="px-2 py-1" />
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((row) => {
                       const total = rowTotal(row);
-                      const dirty = edits[row.key] !== undefined;
+                      const rowDirty = edits[row.key] !== undefined;
                       const untracked = row.id === null;
                       return (
                         <tr key={row.key} className="border-b border-gray-100">
@@ -480,16 +539,6 @@ export function SeasonPoints() {
                           <td className={`px-2 py-0.5 whitespace-nowrap ${untracked ? 'text-gray-400' : 'text-gray-800'}`}>
                             {row.season} <span className="text-xs text-gray-400">{SEASON_LABELS[row.season]}</span>
                           </td>
-                          <td className="px-2 py-0.5">
-                            <input
-                              type="date"
-                              value={row.effectiveDate}
-                              disabled={!editable}
-                              onChange={e => patch(row, { effectiveDate: e.target.value })}
-                              className={`w-36 rounded border border-gray-200 px-1 py-0.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-500 ${
-                                dirty ? 'text-amber-700' : 'text-gray-800'}`}
-                            />
-                          </td>
                           {DAYS.map(d => (
                             <td key={d.key} className="px-1 py-0.5">
                               <input
@@ -500,24 +549,12 @@ export function SeasonPoints() {
                                 onChange={e => setPts(row, d.key, e.target.value)}
                                 title={`${d.label} — day ${d.idx}`}
                                 className={`w-12 rounded border border-gray-200 px-1 py-0.5 text-right font-mono text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-500 ${
-                                  dirty ? 'text-amber-700 font-semibold' : 'text-gray-800'}`}
+                                  rowDirty ? 'text-amber-700 font-semibold' : 'text-gray-800'}`}
                               />
                             </td>
                           ))}
                           <td className={`px-2 py-0.5 text-right ${total ? 'text-gray-800' : 'text-gray-300'}`}>
                             {total || '—'}
-                          </td>
-                          <td className="px-2 py-0.5 text-right">
-                            {canDelete('RESORTS_SETUP') && row.id && (
-                              <button
-                                type="button"
-                                onClick={() => { setDelErr(''); setDeleteRow(row); }}
-                                title="Delete this row"
-                                className="text-gray-400 hover:text-red-600"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            )}
                           </td>
                         </tr>
                       );
@@ -527,9 +564,15 @@ export function SeasonPoints() {
               </div>
             )}
 
-            {missingDate.length > 0 && (
+            {!effDate && filled.length > 0 && (
               <p className="mt-3 text-sm text-amber-700">
-                {missingDate.length} row(s) have points but no effective date — set one before saving.
+                Set an effective date for this rate before saving.
+              </p>
+            )}
+            {effTooEarly && (
+              <p className="mt-3 text-sm text-red-600">
+                {resortCode} already has a rate effective {fmtDate(latestEff)} — a new rate must take
+                effect after that date.
               </p>
             )}
             {saveErr && <p className="mt-3 text-sm text-red-600">{saveErr}</p>}
@@ -539,20 +582,24 @@ export function SeasonPoints() {
                 <Button
                   onClick={() => { setSaveErr(''); saveMut.mutate(); }}
                   loading={saveMut.isPending}
-                  disabled={(dirtyCount === 0 && !chargedToDirty) || filled.length === 0 || missingDate.length > 0}
+                  disabled={!effDate || effTooEarly || filled.length === 0 || (!isNew && !dirty)}
                 >
-                  <Save className="h-4 w-4" /> Save year
+                  <Save className="h-4 w-4" /> {isNew ? 'Create rate' : 'Save rate'}
                 </Button>
-                {(dirtyCount > 0 || chargedToDirty) && (
+                {dirty && (
                   <Button
                     variant="secondary"
-                    onClick={() => { setEdits({}); setChargedTo(yearData?.lvcCoCode ?? CP_CO_CODE); }}
+                    onClick={() => {
+                      setEdits({});
+                      setEffDate(isNew ? '' : storedEff);
+                      setChargedTo(versionData?.lvcCoCode ?? CP_CO_CODE);
+                    }}
                   >
                     Cancel changes
                   </Button>
                 )}
                 <span className="text-xs text-gray-400">
-                  Rows left blank are not saved. Total per week is calculated, not stored.
+                  Rows left blank are not saved, and a blanked row is removed. Total per week is calculated, not stored.
                 </span>
               </div>
             )}
@@ -563,43 +610,23 @@ export function SeasonPoints() {
       <ResultDialog message={result} onClose={() => setResult(null)} />
 
       <ConfirmDeleteModal
-        open={deleteYearOpen}
-        title={`Delete this year's ${isAway ? 'non-home' : 'home'} season points?`}
+        open={deleteVersionOpen}
+        title={`Delete this ${isAway ? 'non-home' : 'home'} points rate?`}
         description={
-          'This removes every points row for this resort and year. ' +
-          (isAway
-            ? 'A CP member booking this resort has no points to deduct without them. '
-            : 'CP booking has no points for this year without them. ') +
+          'This removes every points row in this rate. ' +
+          'The previous rate, if any, becomes the one in force. ' +
           'This cannot be undone.'
         }
         rows={[
           { label: 'Resort', value: <span className="font-medium">{resortCode}</span> },
-          { label: 'Year', value: <span className="font-mono">{year}</span> },
+          { label: 'Effective from', value: <span className="font-mono">{storedEff ? fmtDate(storedEff) : '—'}</span> },
           { label: 'Rows', value: <span className="font-mono">{stored.length}</span> },
         ]}
         error={delErr}
-        loading={deleteYearMut.isPending}
-        confirmLabel="Delete year"
-        onConfirm={() => deleteYearMut.mutate()}
-        onClose={() => setDeleteYearOpen(false)}
-      />
-
-      <ConfirmDeleteModal
-        open={deleteRow !== null}
-        title="Delete this points row?"
-        description="This removes a single effective-dated row. The rest of the year is left untouched."
-        rows={deleteRow ? [
-          { label: 'Resort', value: <span className="font-medium">{resortCode}</span> },
-          { label: 'Apartment type', value: <span className="font-mono">{deleteRow.apartmentType}</span> },
-          { label: 'Season', value: <span>{deleteRow.season} — {SEASON_LABELS[deleteRow.season]}</span> },
-          { label: 'Year / effective', value: <span className="font-mono">{year} / {deleteRow.effectiveDate}</span> },
-          { label: 'Total per week', value: <span className="font-mono">{rowTotal(deleteRow)}</span> },
-        ] : []}
-        error={delErr}
-        loading={deleteRowMut.isPending}
-        confirmLabel="Delete row"
-        onConfirm={() => deleteRow && deleteRowMut.mutate(deleteRow)}
-        onClose={() => setDeleteRow(null)}
+        loading={deleteVersionMut.isPending}
+        confirmLabel="Delete rate"
+        onConfirm={() => deleteVersionMut.mutate()}
+        onClose={() => setDeleteVersionOpen(false)}
       />
     </div>
   );

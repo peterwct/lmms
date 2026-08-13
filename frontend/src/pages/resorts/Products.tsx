@@ -13,6 +13,7 @@ import { ResultDialog } from '../../components/ui/ResultDialog';
 import { ConfirmDeleteModal } from '../../components/ui/ConfirmDeleteModal';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { PageSpinner } from '../../components/ui/Spinner';
+import { RecordCount } from '../../components/ui/RecordCount';
 import type { Product } from '../../types';
 
 const ENT_TYPE_LABELS: Record<string, string> = {
@@ -194,6 +195,12 @@ export function Products() {
             <Button size="sm" onClick={() => setModal({ open: true, product: null })}><Plus className="h-4 w-4" /> Add product</Button>
           )}
         </CardHeader>
+
+        {!isLoading && (
+          <div className="border-b bg-gray-50/60 px-4 py-2">
+            <RecordCount total={products?.length} />
+          </div>
+        )}
 
         {isLoading ? <PageSpinner /> : (
           <div className="overflow-x-auto">

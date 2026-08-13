@@ -638,8 +638,7 @@ model SeasonPoint {
   coCode        String   // the resort's OWN product, denormalized from Resort
   lvcCoCode     String?  // AWAY only — the product whose members are charged; null for HOME
   apartmentType String   // validated against ApartmentType on save; stored pairs grandfathered
-  year          Int      // the year these points apply to
-  effectiveDate DateTime // UTC midnight (business date); part of the unique key
+  effectiveDate DateTime // UTC midnight (business date) — the VERSION this row belongs to
   season        String   // G=Gold, S=Silver, D=Diamond
   ptsSun        Int      // source col 0 — Sunday
   ptsMon        Int
@@ -650,17 +649,21 @@ model SeasonPoint {
   ptsSat        Int      // source col 6 — Saturday
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @db.Timestamptz(3)
-  // Mirrors Informix u925_83. effectiveDate is part of the key because a year may
-  // legitimately hold more than one effective-dated revision of the same combo — HOME's
-  // 2015/SLEEP4/G has two, and dropping it collides on 16 AWAY rows.
+  // A points chart is an effective-dated VERSION: all rows sharing (resortCode,
+  // effectiveDate) are one chart, which stays in force until a later version supersedes
+  // it. A new version is created only when a rate changes or a room type is introduced —
+  // NOT annually. There is exactly ONE effective date per resort per version.
+  //
+  // RESOLUTION RULE for booking: the chart in force for a stay date D is the version with
+  // the greatest effectiveDate <= D for that resort. There is no end date and no `year`.
   //
   // pointsType is deliberately NOT in the key: a resort is either home or away, so
-  // resortCode already determines it. Keeping the key as-is preserves BOTH pre-merge
-  // uniques exactly — verified 0 collisions across all 4,766 rows.
+  // resortCode already determines it. lvcCoCode is a version-level attribute, written
+  // uniformly across the version's rows.
   //
   // map: is required — the generated name would exceed PostgreSQL's 63-char limit.
-  @@unique([resortCode, apartmentType, year, effectiveDate, season], map: "SeasonPoint_natkey_key")
-  @@index([resortCode, year])
+  @@unique([resortCode, effectiveDate, apartmentType, season], map: "SeasonPoint_natkey_key")
+  @@index([resortCode, effectiveDate])
 }
 
 model SuReason {

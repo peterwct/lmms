@@ -21,9 +21,11 @@ import { writeAudit } from '../utils/audit';
 // editable by URL (237 of the 264 away resorts are inactive) — the picker is what
 // filters to active resorts.
 //
-// The screen edits a whole resort-year at a time. effectiveDate is part of the natural
-// key, not a per-year stamp: a year may hold more than one effective-dated revision of
-// the same (type, season) combo — the migrated HOME 2015/SLEEP4/G does.
+// VERSIONS, NOT YEARS: a chart is all rows sharing (resortCode, effectiveDate) and stays
+// in force until a later version supersedes it. A new version is created only when a rate
+// changes or a room type is introduced — never annually. There is ONE effective date per
+// resort per version, so the screen edits a whole version at a time. The chart in force
+// for a stay date D is the version with the greatest effectiveDate <= D.
 //
 // Dates are UTC-midnight business dates, parsed with Date.UTC, never `new Date(str)`.
 
@@ -37,12 +39,15 @@ const pointsType = z.enum(POINTS_TYPES);
 const dateStr = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}/, 'Date must be YYYY-MM-DD');
 const pts = z.number().int().min(0).max(9999);
 
-// Bulk save of one resort-year — this is both the "add a new year" and the
-// "edit an existing year" path, since the screen edits a year at a time.
-const saveYearSchema = z.object({
+// Bulk save of one version — both the "new version" and the "edit an existing version"
+// path. effectiveDate sits on the envelope, not the rows: one date per resort per version.
+// `replaces` names the version being edited, so its date can be corrected in place.
+const saveVersionSchema = z.object({
   pointsType,
-  resortCode: z.string().trim().min(1).max(8),
-  year:       z.number().int().min(1900).max(2999),
+  resortCode:    z.string().trim().min(1).max(8),
+  effectiveDate: dateStr,
+  // The version currently stored under this date, when editing. Omitted when creating.
+  replaces:      dateStr.optional(),
   // AWAY only: the product whose members these points are charged to. '02' on every
   // imported row; editable so a future non-CP exchange direction can be set up.
   // Ignored on HOME, which stores null.
@@ -50,7 +55,6 @@ const saveYearSchema = z.object({
   rows: z.array(z.object({
     apartmentType: z.string().trim().min(1).max(10),
     season:        z.enum(SEASONS),
-    effectiveDate: dateStr,
     ptsSun: pts, ptsMon: pts, ptsTue: pts, ptsWed: pts, ptsThu: pts, ptsFri: pts, ptsSat: pts,
   })).min(1).max(120),
 });
@@ -59,6 +63,13 @@ const saveYearSchema = z.object({
 function toUtcMidnight(s: string): Date {
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)!;
   return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+}
+
+// Today as a UTC-midnight business date, so it compares against stored effectiveDates
+// without the server's +08 offset pushing it a day either way.
+function utcToday(): Date {
+  const n = new Date();
+  return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()));
 }
 
 type Resort = NonNullable<Awaited<ReturnType<typeof prisma.resort.findUnique>>>;
@@ -119,31 +130,56 @@ async function allowedApartmentTypes(resortCode: string): Promise<Set<string>> {
   return new Set([...registered, ...inUse].map(r => r.apartmentType));
 }
 
-// One resort-year at a time, so this returns every row for that pair with NO
-// pagination. The apartment types come along so the client can scaffold the full
-// type x season grid in a single round trip; combos with no row yet aren't in `data`.
+// One version at a time, so this returns every row of it with NO pagination. The
+// apartment types come along so the client can scaffold the full type x season grid in a
+// single round trip; combos with no row yet aren't in `data`.
 //
 // `apartmentTypes` is the UNION of the resort's registered types and the types already
 // stored here, each flagged `registered` — scaffolding from ApartmentType alone would
 // render an empty grid for every partner resort.
+//
+// effectiveDate is optional: omitted, it returns the version in force TODAY (the greatest
+// effectiveDate <= now), which is what the editor opens on by default.
 export async function listSeasonPoints(req: Request, res: Response): Promise<void> {
   const parsedType = pointsType.safeParse(req.query.type);
   if (!parsedType.success) { res.status(400).json({ error: 'type must be HOME or AWAY' }); return; }
   const type = parsedType.data;
 
   const resortCode = typeof req.query.resortCode === 'string' ? req.query.resortCode.trim() : '';
-  const year = parseInt(String(req.query.year), 10);
   if (!resortCode) { res.status(400).json({ error: 'A resort code is required' }); return; }
-  if (!(year >= 1900 && year <= 2999)) { res.status(400).json({ error: 'A valid year is required' }); return; }
+
+  const effParam = typeof req.query.effectiveDate === 'string' ? req.query.effectiveDate.trim() : '';
+  if (effParam && !/^\d{4}-\d{2}-\d{2}/.test(effParam)) {
+    res.status(400).json({ error: 'effectiveDate must be YYYY-MM-DD' }); return;
+  }
 
   const check = await requireResortOfType(resortCode, type);
   if (!check.ok) { res.status(check.status).json({ error: check.error }); return; }
 
+  // No date given -> the version in force today; none in force yet -> the earliest one
+  let effectiveDate: Date | null = effParam ? toUtcMidnight(effParam) : null;
+  if (!effectiveDate) {
+    const inForce =
+      (await prisma.seasonPoint.findFirst({
+        where: { resortCode, effectiveDate: { lte: utcToday() } },
+        orderBy: { effectiveDate: 'desc' },
+        select: { effectiveDate: true },
+      })) ??
+      (await prisma.seasonPoint.findFirst({
+        where: { resortCode },
+        orderBy: { effectiveDate: 'asc' },
+        select: { effectiveDate: true },
+      }));
+    effectiveDate = inForce?.effectiveDate ?? null;
+  }
+
   const [rows, registered, inUse] = await Promise.all([
-    prisma.seasonPoint.findMany({
-      where: { resortCode, year },
-      orderBy: [{ apartmentType: 'asc' }, { season: 'asc' }, { effectiveDate: 'asc' }],
-    }),
+    effectiveDate
+      ? prisma.seasonPoint.findMany({
+          where: { resortCode, effectiveDate },
+          orderBy: [{ apartmentType: 'asc' }, { season: 'asc' }],
+        })
+      : Promise.resolve([]),
     prisma.apartmentType.findMany({
       where: { resortCode },
       select: { apartmentType: true, description: true },
@@ -168,10 +204,10 @@ export async function listSeasonPoints(req: Request, res: Response): Promise<voi
   const { resortCode: rc, resortName, shortName, coCode } = check.resort;
   res.json({
     resortCode,
-    year,
+    effectiveDate,
     pointsType: type,
     resort: { resortCode: rc, resortName, shortName, coCode },
-    // The year's stored charged-to product, so the header select opens on the right
+    // The version's stored charged-to product, so the header select opens on the right
     // value. Meaningless for HOME, which stores null.
     lvcCoCode: type === 'AWAY' ? (rows[0]?.lvcCoCode ?? CP_CO_CODE) : null,
     apartmentTypes,
@@ -179,26 +215,70 @@ export async function listSeasonPoints(req: Request, res: Response): Promise<voi
   });
 }
 
-// Distinct years set up for a resort, newest first — feeds the Year quick-picker
-export async function getSeasonPointYears(req: Request, res: Response): Promise<void> {
+// Every version set up for a resort, newest first — this is the landing view. `isCurrent`
+// marks the one in force today (greatest effectiveDate <= today); a version dated ahead of
+// today is Scheduled, and the ones before the current are Superseded.
+export async function getSeasonPointVersions(req: Request, res: Response): Promise<void> {
   const resortCode = typeof req.query.resortCode === 'string' ? req.query.resortCode.trim() : '';
   if (!resortCode) { res.status(400).json({ error: 'A resort code is required' }); return; }
 
-  const rows = await prisma.seasonPoint.groupBy({
-    by: ['year'],
+  const rows = await prisma.seasonPoint.findMany({
     where: { resortCode },
-    orderBy: { year: 'desc' },
+    select: { effectiveDate: true, apartmentType: true, season: true, lvcCoCode: true },
   });
-  res.json({ data: rows.map(r => r.year) });
+
+  type Version = {
+    effectiveDate: Date;
+    rows: number;
+    apartmentTypes: Set<string>;
+    seasons: Set<string>;
+    lvcCoCode: string | null;
+  };
+  const byDate = new Map<number, Version>();
+  for (const r of rows) {
+    const k = r.effectiveDate.getTime();
+    let v = byDate.get(k);
+    if (!v) {
+      v = {
+        effectiveDate: r.effectiveDate, rows: 0,
+        apartmentTypes: new Set(), seasons: new Set(), lvcCoCode: r.lvcCoCode,
+      };
+      byDate.set(k, v);
+    }
+    v.rows += 1;
+    v.apartmentTypes.add(r.apartmentType);
+    v.seasons.add(r.season);
+  }
+
+  const today = utcToday().getTime();
+  const past = [...byDate.values()].filter(v => v.effectiveDate.getTime() <= today);
+  const currentKey = past.length ? Math.max(...past.map(v => v.effectiveDate.getTime())) : null;
+
+  const data = [...byDate.values()]
+    .sort((a, b) => b.effectiveDate.getTime() - a.effectiveDate.getTime())
+    .map(v => ({
+      effectiveDate: v.effectiveDate,
+      rows: v.rows,
+      apartmentTypes: v.apartmentTypes.size,
+      seasons: v.seasons.size,
+      lvcCoCode: v.lvcCoCode,
+      isCurrent: v.effectiveDate.getTime() === currentKey,
+    }));
+
+  res.json({ data });
 }
 
-// Save a whole resort-year in one go. The client omits rows left entirely blank,
-// so opening an untouched year and saving cannot create zero-point rows.
-export async function saveSeasonPointYear(req: Request, res: Response): Promise<void> {
-  const parsed = saveYearSchema.safeParse(req.body);
+// Save a whole version in one go — REPLACE-ALL within the version, the same shape as
+// PUT /api/resorts/:id/info. Rows dropped from the payload are deleted, so clearing a
+// retired room type is just blanking its cells. The client omits rows left entirely
+// blank, so opening an untouched grid and saving cannot create zero-point rows.
+export async function saveSeasonPointVersion(req: Request, res: Response): Promise<void> {
+  const parsed = saveVersionSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() }); return; }
 
-  const { pointsType: type, resortCode, year, rows } = parsed.data;
+  const { pointsType: type, resortCode, rows } = parsed.data;
+  const effectiveDate = toUtcMidnight(parsed.data.effectiveDate);
+  const replaces = parsed.data.replaces ? toUtcMidnight(parsed.data.replaces) : null;
 
   const check = await requireResortOfType(resortCode, type);
   if (!check.ok) { res.status(check.status).json({ error: check.error }); return; }
@@ -219,109 +299,121 @@ export async function saveSeasonPointYear(req: Request, res: Response): Promise<
     }
   }
 
-  const prepared = rows.map(r => ({ ...r, effectiveDate: toUtcMidnight(r.effectiveDate) }));
-
-  // A stale form must not submit the same natural key twice — the upserts would
-  // race within the transaction and the last write would silently win.
-  const seen = new Set(prepared.map(r => `${r.apartmentType}|${r.season}|${r.effectiveDate.getTime()}`));
-  if (seen.size !== prepared.length) {
-    res.status(400).json({ error: 'The same apartment type, season and effective date appears more than once' });
+  // One date per version means the natural key reduces to (apartmentType, season), so a
+  // stale form must not submit that pair twice.
+  const seen = new Set(rows.map(r => `${r.apartmentType}|${r.season}`));
+  if (seen.size !== rows.length) {
+    res.status(400).json({ error: 'The same apartment type and season appears more than once' });
     return;
   }
 
-  const before = await prisma.seasonPoint.count({ where: { resortCode, year } });
+  // Landing on a date another version already occupies would silently merge two charts
+  const movingDate = !replaces || replaces.getTime() !== effectiveDate.getTime();
+  if (movingDate) {
+    const clash = await prisma.seasonPoint.findFirst({ where: { resortCode, effectiveDate } });
+    if (clash) {
+      res.status(409).json({
+        error: `${resortCode} already has a rate effective ${parsed.data.effectiveDate}. Edit that rate, or pick another date.`,
+      });
+      return;
+    }
+  }
+
+  // A NEW rate must start AFTER the resort's latest existing one — versions supersede in
+  // date order, so backdating one behind the current rate would make it dead on arrival.
+  // Editing an existing rate is exempt: an older superseded rate must stay correctable,
+  // and the clash guard above already stops two rates sharing a date.
+  if (!replaces) {
+    const latest = await prisma.seasonPoint.aggregate({
+      where: { resortCode }, _max: { effectiveDate: true },
+    });
+    const latestEff = latest._max.effectiveDate;
+    if (latestEff && effectiveDate <= latestEff) {
+      res.status(400).json({
+        error: `${resortCode} already has a rate effective ${latestEff.toISOString().slice(0, 10)}. A new rate must take effect after that date.`,
+      });
+      return;
+    }
+  }
+
+  const target = replaces ?? effectiveDate;
+  const before = await prisma.seasonPoint.count({ where: { resortCode, effectiveDate: target } });
 
   await prisma.$transaction(async (tx) => {
-    for (const r of prepared) {
-      const points = {
+    // Replace-all: drop the version being edited (at its OLD date when it is being moved),
+    // then write the payload at the new date.
+    await tx.seasonPoint.deleteMany({ where: { resortCode, effectiveDate: target } });
+    await tx.seasonPoint.createMany({
+      data: rows.map(r => ({
+        id: randomUUID(),
+        // Both the kind and the resort's own product come from Resort, never the payload
+        pointsType: type,
+        resortId: resort.id,
+        resortCode,
+        coCode: resort.coCode,
+        lvcCoCode,
+        apartmentType: r.apartmentType,
+        effectiveDate,
+        season: r.season,
         ptsSun: r.ptsSun, ptsMon: r.ptsMon, ptsTue: r.ptsTue, ptsWed: r.ptsWed,
         ptsThu: r.ptsThu, ptsFri: r.ptsFri, ptsSat: r.ptsSat,
-      };
-      await tx.seasonPoint.upsert({
-        where: {
-          resortCode_apartmentType_year_effectiveDate_season: {
-            resortCode, apartmentType: r.apartmentType, year, effectiveDate: r.effectiveDate, season: r.season,
-          },
-        },
-        update: { ...points, lvcCoCode, updatedAt: new Date() },
-        create: {
-          id: randomUUID(),
-          // Both the kind and the resort's own product come from Resort, never the payload
-          pointsType: type,
-          resortId: resort.id,
-          resortCode,
-          coCode: resort.coCode,
-          lvcCoCode,
-          apartmentType: r.apartmentType,
-          year,
-          effectiveDate: r.effectiveDate,
-          season: r.season,
-          ...points,
-          updatedAt: new Date(),
-        },
-      });
-    }
+        updatedAt: new Date(),
+      })),
+    });
   }, { maxWait: 15_000, timeout: 120_000 });
 
-  const after = await prisma.seasonPoint.count({ where: { resortCode, year } });
-  const created = after - before;
-  const result = { resortCode, year, rows: prepared.length, created, updated: prepared.length - created };
+  const result = {
+    resortCode,
+    effectiveDate: parsed.data.effectiveDate,
+    rows: rows.length,
+    replaced: before,
+  };
 
   await writeAudit({
     userId: req.user.id,
-    action: `Saved ${label(type)} season points ${resortCode} ${year} (${prepared.length} rows)`,
+    action: `Saved ${label(type)} season points ${resortCode} effective ${parsed.data.effectiveDate} (${rows.length} rows)`,
     actionType: before > 0 ? 'UPDATE' : 'CREATE',
     targetType: 'SeasonPoint',
-    metadata: { ...result, pointsType: type, lvcCoCode },
+    metadata: {
+      ...result,
+      pointsType: type,
+      lvcCoCode,
+      movedFrom: replaces && movingDate ? parsed.data.replaces : undefined,
+    },
   });
 
   res.status(before > 0 ? 200 : 201).json({ data: result });
 }
 
-// Delete every row for a resort-year — the year-scoped counterpart of the save
-export async function deleteSeasonPointYear(req: Request, res: Response): Promise<void> {
+// Delete a whole version. There is no per-row delete: a version is edited as a unit, and
+// dropping one (type, season) is done by blanking its cells and re-saving.
+export async function deleteSeasonPointVersion(req: Request, res: Response): Promise<void> {
   const parsedType = pointsType.safeParse(req.query.type);
   if (!parsedType.success) { res.status(400).json({ error: 'type must be HOME or AWAY' }); return; }
   const type = parsedType.data;
 
   const resortCode = typeof req.query.resortCode === 'string' ? req.query.resortCode.trim() : '';
-  const year = parseInt(String(req.query.year), 10);
+  const effParam = typeof req.query.effectiveDate === 'string' ? req.query.effectiveDate.trim() : '';
   if (!resortCode) { res.status(400).json({ error: 'A resort code is required' }); return; }
-  if (!(year >= 1900 && year <= 2999)) { res.status(400).json({ error: 'A valid year is required' }); return; }
+  if (!/^\d{4}-\d{2}-\d{2}/.test(effParam)) { res.status(400).json({ error: 'effectiveDate must be YYYY-MM-DD' }); return; }
 
-  // The old CP delete-year skipped this check while the LVC one ran it — closed in the merge
   const check = await requireResortOfType(resortCode, type);
   if (!check.ok) { res.status(check.status).json({ error: check.error }); return; }
 
-  const result = await prisma.seasonPoint.deleteMany({ where: { resortCode, year } });
-  if (result.count === 0) { res.status(404).json({ error: `No season points found for ${resortCode} ${year}` }); return; }
+  const effectiveDate = toUtcMidnight(effParam);
+  const result = await prisma.seasonPoint.deleteMany({ where: { resortCode, effectiveDate } });
+  if (result.count === 0) {
+    res.status(404).json({ error: `No season points found for ${resortCode} effective ${effParam}` });
+    return;
+  }
 
   await writeAudit({
     userId: req.user.id,
-    action: `Deleted ${label(type)} season points ${resortCode} ${year} (${result.count} rows)`,
+    action: `Deleted ${label(type)} season points ${resortCode} effective ${effParam} (${result.count} rows)`,
     actionType: 'DELETE',
     targetType: 'SeasonPoint',
-    metadata: { pointsType: type, resortCode, year, deleted: result.count },
+    metadata: { pointsType: type, resortCode, effectiveDate: effParam, deleted: result.count },
   });
 
-  res.json({ data: { resortCode, year, deleted: result.count } });
-}
-
-// Delete a single row. Needed to drop a superseded effective-dated revision
-// (e.g. the migrated HOME 2015/SLEEP4/G duplicate) without wiping the whole year.
-export async function deleteSeasonPoint(req: Request, res: Response): Promise<void> {
-  const id = req.params.id;
-  try {
-    const row = await prisma.seasonPoint.delete({ where: { id } });
-    await writeAudit({
-      userId: req.user.id,
-      action: `Deleted ${label(row.pointsType as PointsType)} season points row: ${row.resortCode} ${row.apartmentType} ${row.year} ${row.season}`,
-      actionType: 'DELETE',
-      targetType: 'SeasonPoint',
-    });
-    res.json({ message: 'Season points row deleted' });
-  } catch (e: unknown) {
-    if ((e as { code?: string }).code === 'P2025') { res.status(404).json({ error: 'Season points row not found' }); }
-    else { throw e; }
-  }
+  res.json({ data: { resortCode, effectiveDate: effParam, deleted: result.count } });
 }
