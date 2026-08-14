@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus, Pencil, Trash2, Search, Eye, CalendarRange } from 'lucide-react';
+import { ChevronLeft, Plus, Trash2, Search, Eye, CalendarRange } from 'lucide-react';
 import { apartmentTypesApi, aptBlocksApi, resortUnitsApi } from '../../api/resorts';
 import { useActiveResorts } from '../../hooks/useActiveResorts';
 import { apiError } from '../../api/client';
@@ -32,16 +32,18 @@ const describe = (b: AptBlock) =>
   `${b.resortCode} unit ${b.unitNo}${b.apartmentType ? ` (${b.apartmentType})` : ''}, ` +
   `${dateOnly(b.startDate)} to ${dateOnly(b.endDate)}`;
 
+// Availability is ADD-ONLY (2026-08-14, business decision). A record cannot be edited —
+// correcting one means deleting it and adding it again, so the grid deltas and the fn 6
+// maintenance guards only ever see whole records appear or disappear.
 interface ModalProps {
   open: boolean;
-  block: AptBlock | null;   // null = add mode
   resorts: Resort[];
   apartmentTypes: ApartmentType[];
   onClose: () => void;
-  onSaved: (saved: AptBlock, mode: 'add' | 'edit') => void;
+  onSaved: (saved: AptBlock) => void;
 }
 
-function AptBlockFormModal({ open, block, resorts, apartmentTypes, onClose, onSaved }: ModalProps) {
+function AptBlockFormModal({ open, resorts, apartmentTypes, onClose, onSaved }: ModalProps) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [error, setError] = useState('');
@@ -49,121 +51,89 @@ function AptBlockFormModal({ open, block, resorts, apartmentTypes, onClose, onSa
   useEffect(() => {
     if (!open) return;
     setError('');
-    setForm(block ? {
-      resortCode: block.resortCode,
-      apartmentType: block.apartmentType ?? '',
-      unitNo: block.unitNo,
-      startDate: dateOnly(block.startDate),
-      endDate: dateOnly(block.endDate),
-    } : { ...EMPTY_FORM });
-  }, [open, block]);
+    setForm({ ...EMPTY_FORM });
+  }, [open]);
 
   // Apartment types set up for the chosen resort
   const typeOptions = apartmentTypes.filter(a => a.resortCode === form.resortCode);
 
-  // Units for the chosen resort (add mode only) — filtered to the chosen apartment type
+  // Units for the chosen resort — filtered to the chosen apartment type
   const { data: units } = useQuery({
     queryKey: ['resort-units', 'for-block', form.resortCode],
     queryFn: () => resortUnitsApi.list({ resortCode: form.resortCode, pageSize: 200 }).then(r => r.data.data),
-    enabled: open && !block && !!form.resortCode,
+    enabled: open && !!form.resortCode,
   });
   const unitOptions = (units ?? []).filter(u => u.apartmentType === form.apartmentType);
 
   const saveMut = useMutation({
-    mutationFn: () => {
-      if (block) {
-        return aptBlocksApi.update(block.id, { startDate: form.startDate, endDate: form.endDate });
-      }
-      return aptBlocksApi.create({
-        resortCode: form.resortCode,
-        apartmentType: form.apartmentType,
-        unitNo: form.unitNo,
-        startDate: form.startDate,
-        endDate: form.endDate,
-      });
-    },
+    mutationFn: () => aptBlocksApi.create({
+      resortCode: form.resortCode,
+      apartmentType: form.apartmentType,
+      unitNo: form.unitNo,
+      startDate: form.startDate,
+      endDate: form.endDate,
+    }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['apt-blocks'] });
       qc.invalidateQueries({ queryKey: ['availability-chart'] });
-      onSaved(res.data.data, block ? 'edit' : 'add');
+      onSaved(res.data.data);
       onClose();
     },
     onError: (err) => setError(apiError(err)),
   });
 
   const datesValid = form.startDate !== '' && form.endDate !== '' && form.startDate <= form.endDate;
-  const canSave = block
-    ? datesValid
-    : !!form.resortCode && !!form.apartmentType && !!form.unitNo && datesValid;
+  const canSave = !!form.resortCode && !!form.apartmentType && !!form.unitNo && datesValid;
 
   return (
-    <Modal open={open} title={block ? 'Edit Availability Block' : 'Add Availability Block'} onClose={onClose}>
+    <Modal open={open} title="Add Availability Record" onClose={onClose}>
       <div className="space-y-3">
-        {block ? (
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Resort</label>
-              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm font-mono text-gray-800">{block.resortCode}</div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Apartment type</label>
-              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-800">{block.apartmentType ?? '—'}</div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
-              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm font-mono text-gray-800">{block.unitNo}</div>
-            </div>
-          </div>
-        ) : (
-          <>
-            <Select
-              label="Resort"
-              value={form.resortCode}
-              onChange={e => setForm(f => ({ ...f, resortCode: e.target.value, apartmentType: '', unitNo: '' }))}
-              required
-            >
-              <option value="">Select resort...</option>
-              {resorts.map(r => (
-                <option key={r.id} value={r.resortCode}>{r.resortCode} — {r.resortName}</option>
-              ))}
-            </Select>
-            <Select
-              label="Apartment type"
-              value={form.apartmentType}
-              onChange={e => setForm(f => ({ ...f, apartmentType: e.target.value, unitNo: '' }))}
-              disabled={!form.resortCode}
-              required
-            >
-              <option value="">Select apartment type...</option>
-              {typeOptions.map(a => (
-                <option key={a.id} value={a.apartmentType}>
-                  {a.apartmentType}{a.description ? ` — ${a.description}` : ''}
-                </option>
-              ))}
-            </Select>
-            {form.resortCode && typeOptions.length === 0 && (
-              <p className="text-xs text-amber-600 -mt-2">
-                No apartment types set up for this resort — add them in Apartment Sleep Types Maintenance and Setup first.
-              </p>
-            )}
-            <Select
-              label="Unit no"
-              value={form.unitNo}
-              onChange={e => setForm(f => ({ ...f, unitNo: e.target.value }))}
-              disabled={!form.apartmentType}
-              required
-            >
-              <option value="">Select unit...</option>
-              {unitOptions.map(u => (
-                <option key={u.id} value={u.unitNo}>{u.unitNo}</option>
-              ))}
-            </Select>
-            {form.apartmentType && unitOptions.length === 0 && (
-              <p className="text-xs text-amber-600 -mt-2">
-                No units of this type set up for this resort — add them in Apartment&apos;s Unit No. Maintenance and Setup first.
-              </p>
-            )}
-          </>
+        <Select
+          label="Resort"
+          value={form.resortCode}
+          onChange={e => setForm(f => ({ ...f, resortCode: e.target.value, apartmentType: '', unitNo: '' }))}
+          required
+        >
+          <option value="">Select resort...</option>
+          {resorts.map(r => (
+            <option key={r.id} value={r.resortCode}>{r.resortCode} — {r.resortName}</option>
+          ))}
+        </Select>
+        <Select
+          label="Apartment type"
+          value={form.apartmentType}
+          onChange={e => setForm(f => ({ ...f, apartmentType: e.target.value, unitNo: '' }))}
+          disabled={!form.resortCode}
+          required
+        >
+          <option value="">Select apartment type...</option>
+          {typeOptions.map(a => (
+            <option key={a.id} value={a.apartmentType}>
+              {a.apartmentType}{a.description ? ` — ${a.description}` : ''}
+            </option>
+          ))}
+        </Select>
+        {form.resortCode && typeOptions.length === 0 && (
+          <p className="text-xs text-amber-600 -mt-2">
+            No apartment types set up for this resort — add them in Apartment Sleep Types Maintenance and Setup first.
+          </p>
+        )}
+        <Select
+          label="Unit no"
+          value={form.unitNo}
+          onChange={e => setForm(f => ({ ...f, unitNo: e.target.value }))}
+          disabled={!form.apartmentType}
+          required
+        >
+          <option value="">Select unit...</option>
+          {unitOptions.map(u => (
+            <option key={u.id} value={u.unitNo}>{u.unitNo}</option>
+          ))}
+        </Select>
+        {form.apartmentType && unitOptions.length === 0 && (
+          <p className="text-xs text-amber-600 -mt-2">
+            No units of this type set up for this resort — add them in Apartment&apos;s Unit No. Maintenance and Setup first.
+          </p>
         )}
         <div className="grid grid-cols-2 gap-3">
           <Input
@@ -192,7 +162,7 @@ function AptBlockFormModal({ open, block, resorts, apartmentTypes, onClose, onSa
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       <div className="mt-4 flex gap-3">
         <Button onClick={() => saveMut.mutate()} loading={saveMut.isPending} disabled={!canSave}>
-          {block ? 'Save changes' : 'Add block'}
+          Add availability
         </Button>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
       </div>
@@ -262,7 +232,7 @@ function AvailabilityModal({ block, onClose }: { block: AptBlock | null; onClose
 }
 
 export function UnitsAvailability() {
-  const { canCreate, canEdit, canDelete } = useAuth();
+  const { canCreate, canDelete } = useAuth();
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const q = searchParams.get('q') ?? '';
@@ -270,7 +240,7 @@ export function UnitsAvailability() {
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
   const [searchInput, setSearchInput] = useState(q);
 
-  const [modal, setModal] = useState<{ open: boolean; block: AptBlock | null }>({ open: false, block: null });
+  const [addOpen, setAddOpen] = useState(false);
   const [viewBlock, setViewBlock] = useState<AptBlock | null>(null);
   const [chartOpen, setChartOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AptBlock | null>(null);
@@ -288,14 +258,17 @@ export function UnitsAvailability() {
     setSearchParams(p, { replace: true });
   };
 
+  // The page lands EMPTY — 5,162 records across 12 resorts is not a useful first screen,
+  // and staff always work one resort at a time. Nothing is fetched until a resort is picked.
   const { data: list, isLoading } = useQuery({
     queryKey: ['apt-blocks', q, resortCode, page],
     queryFn: () => aptBlocksApi.list({
       q: q || undefined,
-      resortCode: resortCode || undefined,
+      resortCode,
       page,
       pageSize: PAGE_SIZE,
     }).then(r => r.data),
+    enabled: !!resortCode,
   });
 
   // Active resorts only (see useActiveResorts)
@@ -313,7 +286,7 @@ export function UnitsAvailability() {
       qc.invalidateQueries({ queryKey: ['apt-blocks'] });
       qc.invalidateQueries({ queryKey: ['availability-chart'] });
       setDeleteTarget(null);
-      if (gone) setResult(`Availability block deleted — ${describe(gone)}. Its generated daily availability has been removed.`);
+      if (gone) setResult(`Availability deleted — ${describe(gone)}. Its generated daily availability has been removed.`);
     },
     onError: (err) => setDelErr(apiError(err)),
   });
@@ -334,12 +307,15 @@ export function UnitsAvailability() {
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
         <div className="mt-1 flex items-center gap-8">
-          <h1 className="text-xl font-semibold text-gray-900">Units Availability Maintenance and Setup by Dates</h1>
+          <h1 className="text-xl font-semibold text-gray-900">5. Resorts Unit Availability/Inventory Setup</h1>
           <Button size="sm" onClick={() => setChartOpen(true)}>
             <CalendarRange className="h-4 w-4" /> Resorts Availability
           </Button>
         </div>
-        <p className="mt-1 text-sm text-gray-500">Availability blocks per unit and date range.</p>
+        <p className="mt-1 text-sm text-gray-500">
+          Availability records per unit and date range. Records are add-only — to correct one, delete it
+          and add it again.
+        </p>
       </div>
 
       <Card>
@@ -347,7 +323,7 @@ export function UnitsAvailability() {
           <form onSubmit={doSearch} className="flex flex-wrap items-center gap-2">
             <div className="w-48">
               <Select value={resortCode} onChange={e => setParams({ resort: e.target.value, page: 1 })}>
-                <option value="">All resorts</option>
+                <option value="">Select resort...</option>
                 {resorts?.map(r => (
                   <option key={r.id} value={r.resortCode}>{r.resortCode} — {r.shortName ?? r.resortName}</option>
                 ))}
@@ -364,17 +340,21 @@ export function UnitsAvailability() {
             {(q || resortCode) && <Button type="button" size="sm" variant="secondary" onClick={clearSearch}>Clear</Button>}
           </form>
           {canCreate('RESORTS_SETUP') && (
-            <Button size="sm" onClick={() => setModal({ open: true, block: null })}><Plus className="h-4 w-4" /> Add block</Button>
+            <Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" /> Add availability</Button>
           )}
         </CardHeader>
 
-        {!isLoading && (
+        {resortCode && !isLoading && (
           <div className="border-b bg-gray-50/60 px-4 py-2">
             <RecordCount total={list?.total} />
           </div>
         )}
 
-        {isLoading ? <PageSpinner /> : (
+        {!resortCode ? (
+          <p className="px-4 py-12 text-center text-sm text-gray-400">
+            Select a resort to view its availability records.
+          </p>
+        ) : isLoading ? <PageSpinner /> : (
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -404,12 +384,6 @@ export function UnitsAvailability() {
                             className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-blue-600">
                             <Eye className="h-3.5 w-3.5" />
                           </button>
-                          {canEdit('RESORTS_SETUP') && (
-                            <button onClick={() => setModal({ open: true, block: b })} title="Edit"
-                              className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-blue-600">
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                          )}
                           {canDelete('RESORTS_SETUP') && (
                             <button
                               onClick={() => { setDelErr(''); setDeleteTarget(b); }}
@@ -422,7 +396,7 @@ export function UnitsAvailability() {
                     </tr>
                   ))}
                   {list?.data.length === 0 && (
-                    <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No availability blocks found</td></tr>
+                    <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No availability records found</td></tr>
                   )}
                 </tbody>
               </table>
@@ -441,15 +415,12 @@ export function UnitsAvailability() {
       </Card>
 
       <AptBlockFormModal
-        open={modal.open}
-        block={modal.block}
+        open={addOpen}
         resorts={resorts ?? []}
         apartmentTypes={apartmentTypes ?? []}
-        onClose={() => setModal({ open: false, block: null })}
-        onSaved={(b, mode) => setResult(
-          mode === 'add'
-            ? `Availability block added — ${describe(b)}. Daily availability has been generated for that range.`
-            : `Availability block updated — ${describe(b)}. Daily availability has been re-synced.`
+        onClose={() => setAddOpen(false)}
+        onSaved={b => setResult(
+          `Availability added — ${describe(b)}. Daily availability has been generated for that range.`
         )}
       />
 
@@ -459,8 +430,8 @@ export function UnitsAvailability() {
 
       <ConfirmDeleteModal
         open={!!deleteTarget}
-        title="Delete availability block?"
-        description="This permanently deletes the block and removes the daily availability it generated. It is refused if the unit has any maintenance record within these dates. This cannot be undone."
+        title="Delete availability record?"
+        description="This permanently deletes the record and removes the daily availability it generated. It is refused if the unit has any maintenance record within these dates. Records cannot be edited, so correcting one means deleting and re-adding it. This cannot be undone."
         rows={deleteTarget ? [
           { label: 'Resort',      value: <><span className="font-mono font-medium">{deleteTarget.resortCode}</span> — {deleteTarget.resort.resortName}</> },
           { label: 'Unit / Type', value: <><span className="font-mono font-medium">{deleteTarget.unitNo}</span> · {deleteTarget.apartmentType ?? '—'}</> },
@@ -468,7 +439,7 @@ export function UnitsAvailability() {
         ] : []}
         error={delErr}
         loading={deleteMut.isPending}
-        confirmLabel="Delete block"
+        confirmLabel="Delete record"
         onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
         onClose={() => setDeleteTarget(null)}
       />

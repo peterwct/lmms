@@ -336,8 +336,8 @@ function MaintenanceFormModal({ open, record, resorts, onClose, onSaved }: Modal
             )}
             {form.resortCode && unitOptions.length > 0 && availabilityLoaded && blocksByUnit.size === 0 && (
               <p className="text-xs text-amber-600 -mt-2">
-                No units at this resort have availability set up yet — add it in Units Availability
-                Maintenance and Setup by Dates first.
+                No units at this resort have availability set up yet — add it in Resorts Unit
+                Availability/Inventory Setup first.
               </p>
             )}
           </>
@@ -357,14 +357,14 @@ function MaintenanceFormModal({ open, record, resorts, onClose, onSaved }: Modal
         </Select>
         {form.unitNo && availabilityLoaded && unitBlocks.length === 0 && (
           <p className="text-xs text-amber-600 -mt-2">
-            This unit has no availability set up — add it in Units Availability Maintenance and Setup
-            by Dates first.
+            This unit has no availability set up — add it in Resorts Unit Availability/Inventory
+            Setup first.
           </p>
         )}
         {form.unitNo && availabilityLoaded && unitBlocks.length > 0 && blockOptions.length === 0 && (
           <p className="text-xs text-amber-600 -mt-2">
-            This unit&apos;s availability has all lapsed — extend it in Units Availability Maintenance
-            and Setup by Dates first.
+            This unit&apos;s availability has all lapsed — extend it in Resorts Unit
+            Availability/Inventory Setup first.
           </p>
         )}
         {record ? (
@@ -531,16 +531,19 @@ export function ResortsMaintenance() {
     setSearchParams(p, { replace: true });
   };
 
+  // The page lands EMPTY, like fn 5 — 10,904 records is not a useful first screen and
+  // staff work one resort at a time. Nothing is fetched until a resort is picked.
   const { data: list, isLoading } = useQuery({
     queryKey: ['resort-maintenance', q, resortCode, year, month, page],
     queryFn: () => resortMaintenanceApi.list({
       q: q || undefined,
-      resortCode: resortCode || undefined,
+      resortCode,
       year: year ? Number(year) : undefined,
       month: month ? Number(month) : undefined,
       page,
       pageSize: PAGE_SIZE,
     }).then(r => r.data),
+    enabled: !!resortCode,
   });
 
   // Active resorts only (see useActiveResorts)
@@ -579,7 +582,7 @@ export function ResortsMaintenance() {
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
         <div className="mt-1 flex items-center gap-8">
-          <h1 className="text-xl font-semibold text-gray-900">Resorts Unit Under Maintenance</h1>
+          <h1 className="text-xl font-semibold text-gray-900">6. Resorts Unit Under Maintenance</h1>
           <Button size="sm" onClick={() => setChartOpen(true)}>
             <CalendarRange className="h-4 w-4" /> Resorts Availability
           </Button>
@@ -602,7 +605,7 @@ export function ResortsMaintenance() {
           <form onSubmit={doSearch} className="flex flex-wrap items-center gap-2">
             <div className="w-48">
               <Select value={resortCode} onChange={e => setParams({ resort: e.target.value, page: 1 })}>
-                <option value="">All resorts</option>
+                <option value="">Select resort...</option>
                 {resorts?.map(r => (
                   <option key={r.id} value={r.resortCode}>{r.resortCode} — {r.shortName ?? r.resortName}</option>
                 ))}
@@ -640,13 +643,17 @@ export function ResortsMaintenance() {
           )}
         </CardHeader>
 
-        {!isLoading && (
+        {resortCode && !isLoading && (
           <div className="border-b bg-gray-50/60 px-4 py-2">
             <RecordCount total={list?.total} />
           </div>
         )}
 
-        {isLoading ? <PageSpinner /> : (
+        {!resortCode ? (
+          <p className="px-4 py-12 text-center text-sm text-gray-400">
+            Select a resort to view its maintenance records.
+          </p>
+        ) : isLoading ? <PageSpinner /> : (
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

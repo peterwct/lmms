@@ -5,9 +5,13 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { writeAudit } from '../utils/audit';
 
-// Units Availability Setup by Dates. A block = one row per (resort, unit, date range).
+// Resorts Unit Availability/Inventory Setup (fn 5). A block = one row per (resort, unit, date range).
 // Each save expands into per-day ResAvailMast rows (act/bal +1 per day; -1 on delete),
 // keyed by (resortCode, apartmentType, date). Overlapping ranges for the same unit are rejected.
+//
+// ADD-ONLY (2026-08-14, business decision): there is no update path. A record is created or
+// deleted, never edited, so the grid deltas and the fn 6 maintenance guard only ever see a
+// whole record appear or disappear. Correcting a record = delete + re-add.
 
 const MAX_RANGE_DAYS = 3660; // ~10 years — sanity cap on a single block's day expansion
 const DAY_MS = 86_400_000;
@@ -319,72 +323,6 @@ export async function createAptBlock(req: Request, res: Response): Promise<void>
     if ((e as { code?: string }).code === 'P2002') { res.status(409).json({ error: 'An identical block already exists for this unit' }); }
     else { throw e; }
   }
-}
-
-export async function updateAptBlock(req: Request, res: Response): Promise<void> {
-  const id = req.params.id;
-  // resortCode / unitNo / apartmentType are fixed after creation (move = delete + re-add)
-  const parsed = aptBlockSchema.pick({ startDate: true, endDate: true }).safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() }); return; }
-
-  const existing = await prisma.aptBlock.findUnique({ where: { id } });
-  if (!existing) { res.status(404).json({ error: 'Block not found' }); return; }
-
-  const startDate = toUtcMidnight(parsed.data.startDate);
-  const endDate = toUtcMidnight(parsed.data.endDate);
-  if (endDate < startDate) { res.status(400).json({ error: 'End date must be on or after start date' }); return; }
-
-  const newDays = eachUtcDay(startDate, endDate);
-  if (newDays.length > MAX_RANGE_DAYS) { res.status(400).json({ error: `Date range too large (max ${MAX_RANGE_DAYS} days)` }); return; }
-
-  if (await hasOverlap(existing.resortCode, existing.unitNo, startDate, endDate, id)) {
-    res.status(409).json({ error: 'This unit already has an availability block overlapping these dates' });
-    return;
-  }
-
-  // Growing a block is always safe; shrinking it is refused while maintenance sits in the
-  // part being cut away. Without this the delete guard below is bypassed by shrinking a
-  // block to a single day.
-  const stranded = await prisma.resortMaintenance.count({
-    where: {
-      resortCode: existing.resortCode,
-      unitNo: existing.unitNo,
-      startDate: { lte: existing.endDate },
-      endDate: { gte: existing.startDate },
-      OR: [{ startDate: { lt: startDate } }, { endDate: { gt: endDate } }],
-    },
-  });
-  if (stranded > 0) {
-    res.status(409).json({
-      error: `Cannot shrink — ${stranded} maintenance record(s) for unit ${existing.unitNo} would fall outside these dates. Clear them in Resorts Unit Under Maintenance first.`,
-    });
-    return;
-  }
-
-  // Resolve the block's apartment type (migrated rows may have null) so the grid can be maintained
-  const apartmentType = existing.apartmentType
-    ?? (await prisma.resortUnit.findUnique({ where: { resortCode_unitNo: { resortCode: existing.resortCode, unitNo: existing.unitNo } } }))?.apartmentType
-    ?? null;
-
-  const block = await prisma.$transaction(async (tx) => {
-    if (apartmentType) {
-      await applyDelta(tx, existing.resortId, existing.resortCode, apartmentType, eachUtcDay(existing.startDate, existing.endDate), -1);
-      await applyDelta(tx, existing.resortId, existing.resortCode, apartmentType, newDays, 1);
-    }
-    return tx.aptBlock.update({
-      where: { id },
-      data: { startDate, endDate, apartmentType, updatedAt: new Date() } as never,
-      include: { resort: resortSelect },
-    });
-  }, { maxWait: 15_000, timeout: 120_000 });
-
-  await writeAudit({
-    userId: req.user.id,
-    action: `Updated availability block: ${block.resortCode} ${block.unitNo} (${parsed.data.startDate} to ${parsed.data.endDate})`,
-    actionType: 'UPDATE',
-    targetType: 'AptBlock',
-  });
-  res.json({ data: block });
 }
 
 export async function deleteAptBlock(req: Request, res: Response): Promise<void> {

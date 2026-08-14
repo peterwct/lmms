@@ -9,7 +9,7 @@ import { PageSpinner } from './ui/Spinner';
 
 // Resort availability chart — ResAvailMast pivoted resort x date, cell = balNight
 // (units still bookable that day: actNight minus maintenance minus bookings).
-// Rendered inside a DraggableWindow from both the Units Availability and the
+// Rendered inside a DraggableWindow from both the Unit Availability/Inventory and the
 // Resorts Maintenance pages, so a save can be verified without leaving the page.
 
 export const CHART_DAYS = 15;

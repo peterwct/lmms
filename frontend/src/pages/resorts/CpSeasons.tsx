@@ -221,7 +221,7 @@ export function CpSeasons() {
         <Link to="/resorts" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600">
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
-        <h1 className="mt-1 text-xl font-semibold text-gray-900">CP's Seasons Maintenance and Setup</h1>
+        <h1 className="mt-1 text-xl font-semibold text-gray-900">8. CP's Seasons Maintenance and Setup</h1>
         <p className="mt-1 text-sm text-gray-500">
           Season grading per calendar day for CP — one month at a time. Set the season on each
           date, then save the month.

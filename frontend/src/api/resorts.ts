@@ -39,7 +39,6 @@ export const aptBlocksApi = {
   list: (params: { q?: string; resortCode?: string; page?: number; pageSize?: number }) =>
     api.get<AptBlockList>('/apt-blocks', { params }),
   create: (data: Record<string, unknown>) => api.post<{ data: AptBlock }>('/apt-blocks', data),
-  update: (id: string, data: Record<string, unknown>) => api.put<{ data: AptBlock }>(`/apt-blocks/${id}`, data),
   remove: (id: string) => api.delete(`/apt-blocks/${id}`),
   availability: (id: string) => api.get<AptBlockAvailability>(`/apt-blocks/${id}/availability`),
   // Availability records per unit at this resort — feeds the Resorts Maintenance form

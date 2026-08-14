@@ -177,7 +177,7 @@ export function LvcCodes() {
         <Link to="/resorts" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600">
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
-        <h1 className="mt-1 text-xl font-semibold text-gray-900">Leisure Vacation Club (LVC) Code Maintenance and Setup</h1>
+        <h1 className="mt-1 text-xl font-semibold text-gray-900">10. Leisure Vacation Club (LVC) Code Maintenance and Setup</h1>
         <p className="mt-1 text-sm text-gray-500">
           Exchange programmes under which a member books outside their own product — LVC-CP between
           our own products (03/15 ↔ 02), or an external partner's MAR (Make Available Resorts) such

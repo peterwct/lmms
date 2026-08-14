@@ -23,7 +23,7 @@ const SETUP_ITEMS: ResortsMenuItem[] = [
   { num: 2, label: 'Resorts Master Maintenance and Setup',   to: '/resorts/setup',        icon: <Hotel className="h-4 w-4" />, enabled: true },
   { num: 3, label: 'Apartment Sleep Types Maintenance and Setup', to: '/resorts/apartment-types', icon: <BedDouble className="h-4 w-4" />, enabled: true },
   { num: 4, label: "Apartment's Unit No. Maintenance and Setup",  to: '/resorts/units',   icon: <DoorOpen className="h-4 w-4" />, enabled: true },
-  { num: 5, label: 'Units Availability Maintenance and Setup by Dates', to: '/resorts/availability', icon: <CalendarRange className="h-4 w-4" />, enabled: true },
+  { num: 5, label: 'Resorts Unit Availability/Inventory Setup', to: '/resorts/availability', icon: <CalendarRange className="h-4 w-4" />, enabled: true },
   { num: 6, label: 'Resorts Unit Under Maintenance',         to: '/resorts/maintenance',  icon: <Wrench className="h-4 w-4" />, enabled: true },
   // Public and school holidays share one table and one tabbed page.
   { num: 7, label: 'Public & School Holidays Maintenance and Setup', to: '/resorts/holidays', icon: <CalendarDays className="h-4 w-4" />, enabled: true },
