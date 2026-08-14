@@ -282,7 +282,7 @@ export function ApartmentTypes() {
       <ConfirmDeleteModal
         open={!!deleteTarget}
         title="Delete apartment type?"
-        description="This permanently removes the apartment type from the resort. Units still referencing it will no longer match. This cannot be undone."
+        description="This permanently removes the apartment type from the resort. It is refused if any unit, availability record or season points row at this resort still uses it. This cannot be undone."
         rows={deleteTarget ? [
           { label: 'Resort',      value: <><span className="font-mono font-medium">{deleteTarget.resortCode}</span> — {deleteTarget.resort.resortName}</> },
           { label: 'Type',        value: <span className="font-medium">{deleteTarget.apartmentType}</span> },

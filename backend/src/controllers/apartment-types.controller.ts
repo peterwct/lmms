@@ -104,12 +104,30 @@ export async function updateApartmentType(req: Request, res: Response): Promise<
 
 export async function deleteApartmentType(req: Request, res: Response): Promise<void> {
   const id = req.params.id;
-  try {
-    const at = await prisma.apartmentType.delete({ where: { id } });
-    await writeAudit({ userId: req.user.id, action: `Deleted apartment type: ${at.resortCode} ${at.apartmentType}`, actionType: 'DELETE', targetType: 'ApartmentType' });
-    res.json({ message: 'Apartment type deleted' });
-  } catch (e: unknown) {
-    if ((e as { code?: string }).code === 'P2025') { res.status(404).json({ error: 'Apartment type not found' }); }
-    else { throw e; }
+
+  const at = await prisma.apartmentType.findUnique({ where: { id } });
+  if (!at) { res.status(404).json({ error: 'Apartment type not found' }); return; }
+
+  // Every one of these names the type by string with no FK (deliberately — types are
+  // renamable through this same CRUD), so the count is the only guard. ResAvailMast is
+  // listed in its own right: the grid was imported straight from res_avail_mast.txt, so
+  // it holds rows for types whose blocks were never exported. ResortMaintenance is left
+  // out on purpose — it derives its type from ResortUnit, which is already counted.
+  const where = { resortCode: at.resortCode, apartmentType: at.apartmentType };
+  const [units, blocks, gridRows, seasonPoints] = await Promise.all([
+    prisma.resortUnit.count({ where }),
+    prisma.aptBlock.count({ where }),
+    prisma.resAvailMast.count({ where }),
+    prisma.seasonPoint.count({ where }),
+  ]);
+  if (units + blocks + gridRows + seasonPoints > 0) {
+    res.status(409).json({
+      error: `Cannot delete — apartment type ${at.apartmentType} at ${at.resortCode} is used by ${units} unit(s), ${blocks} availability record(s), ${gridRows} availability grid row(s), ${seasonPoints} season points row(s).`,
+    });
+    return;
   }
+
+  await prisma.apartmentType.delete({ where: { id } });
+  await writeAudit({ userId: req.user.id, action: `Deleted apartment type: ${at.resortCode} ${at.apartmentType}`, actionType: 'DELETE', targetType: 'ApartmentType' });
+  res.json({ message: 'Apartment type deleted' });
 }

@@ -353,7 +353,7 @@ export function ResortUnits() {
       <ConfirmDeleteModal
         open={!!deleteTarget}
         title="Delete unit?"
-        description="This permanently removes the unit from the resort's register. This cannot be undone."
+        description="This permanently removes the unit from the resort's register. It is refused if the unit still has availability or maintenance records. This cannot be undone."
         rows={deleteTarget ? [
           { label: 'Resort',         value: <><span className="font-mono font-medium">{deleteTarget.resortCode}</span> — {deleteTarget.resort.resortName}</> },
           { label: 'Unit no',        value: <span className="font-mono font-medium">{deleteTarget.unitNo}</span> },

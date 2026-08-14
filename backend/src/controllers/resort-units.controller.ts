@@ -112,12 +112,27 @@ export async function updateResortUnit(req: Request, res: Response): Promise<voi
 
 export async function deleteResortUnit(req: Request, res: Response): Promise<void> {
   const id = req.params.id;
-  try {
-    const unit = await prisma.resortUnit.delete({ where: { id } });
-    await writeAudit({ userId: req.user.id, action: `Deleted resort unit: ${unit.resortCode} ${unit.unitNo}`, actionType: 'DELETE', targetType: 'ResortUnit' });
-    res.json({ message: 'Unit deleted' });
-  } catch (e: unknown) {
-    if ((e as { code?: string }).code === 'P2025') { res.status(404).json({ error: 'Unit not found' }); }
-    else { throw e; }
+
+  const unit = await prisma.resortUnit.findUnique({ where: { id } });
+  if (!unit) { res.status(404).json({ error: 'Unit not found' }); return; }
+
+  // AptBlock and ResortMaintenance carry the unit as a denormalized resortCode + unitNo
+  // pair and cascade off Resort, not ResortUnit, so this count is the only thing stopping
+  // a delete from orphaning fn 5 availability and fn 6 maintenance records. Rows of ANY
+  // date count: staff clear those first, and no orphan is ever left behind.
+  const where = { resortCode: unit.resortCode, unitNo: unit.unitNo };
+  const [blocks, maintenance] = await Promise.all([
+    prisma.aptBlock.count({ where }),
+    prisma.resortMaintenance.count({ where }),
+  ]);
+  if (blocks + maintenance > 0) {
+    res.status(409).json({
+      error: `Cannot delete — unit ${unit.unitNo} of ${unit.resortCode} is used by ${blocks} availability record(s), ${maintenance} maintenance record(s).`,
+    });
+    return;
   }
+
+  await prisma.resortUnit.delete({ where: { id } });
+  await writeAudit({ userId: req.user.id, action: `Deleted resort unit: ${unit.resortCode} ${unit.unitNo}`, actionType: 'DELETE', targetType: 'ResortUnit' });
+  res.json({ message: 'Unit deleted' });
 }
