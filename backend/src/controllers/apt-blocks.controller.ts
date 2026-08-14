@@ -95,6 +95,19 @@ async function hasOverlap(resortCode: string, unitNo: string, start: Date, end: 
   return !!clash;
 }
 
+// Maintenance (fn 6) records this unit has inside [start,end]. A maintenance range must
+// always sit inside one availability record, so a block cannot be removed — or shrunk —
+// out from under one: applyMaintDelta already deducted those days from balNight, and
+// applyDelta would then clamp at 0 and leave the grid inconsistent. Staff clear the
+// maintenance first.
+//
+// Bookings will need exactly the same guard once that module exists — add the count here.
+async function maintenanceWithin(resortCode: string, unitNo: string, start: Date, end: Date): Promise<number> {
+  return prisma.resortMaintenance.count({
+    where: { resortCode, unitNo, startDate: { lte: end }, endDate: { gte: start } },
+  });
+}
+
 export async function listAptBlocks(req: Request, res: Response): Promise<void> {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const resortCode = typeof req.query.resortCode === 'string' ? req.query.resortCode.trim() : '';
@@ -329,6 +342,25 @@ export async function updateAptBlock(req: Request, res: Response): Promise<void>
     return;
   }
 
+  // Growing a block is always safe; shrinking it is refused while maintenance sits in the
+  // part being cut away. Without this the delete guard below is bypassed by shrinking a
+  // block to a single day.
+  const stranded = await prisma.resortMaintenance.count({
+    where: {
+      resortCode: existing.resortCode,
+      unitNo: existing.unitNo,
+      startDate: { lte: existing.endDate },
+      endDate: { gte: existing.startDate },
+      OR: [{ startDate: { lt: startDate } }, { endDate: { gt: endDate } }],
+    },
+  });
+  if (stranded > 0) {
+    res.status(409).json({
+      error: `Cannot shrink — ${stranded} maintenance record(s) for unit ${existing.unitNo} would fall outside these dates. Clear them in Resorts Unit Under Maintenance first.`,
+    });
+    return;
+  }
+
   // Resolve the block's apartment type (migrated rows may have null) so the grid can be maintained
   const apartmentType = existing.apartmentType
     ?? (await prisma.resortUnit.findUnique({ where: { resortCode_unitNo: { resortCode: existing.resortCode, unitNo: existing.unitNo } } }))?.apartmentType
@@ -359,6 +391,14 @@ export async function deleteAptBlock(req: Request, res: Response): Promise<void>
   const id = req.params.id;
   const existing = await prisma.aptBlock.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ error: 'Block not found' }); return; }
+
+  const maintenance = await maintenanceWithin(existing.resortCode, existing.unitNo, existing.startDate, existing.endDate);
+  if (maintenance > 0) {
+    res.status(409).json({
+      error: `Cannot delete — unit ${existing.unitNo} has ${maintenance} maintenance record(s) within these dates. Clear them in Resorts Unit Under Maintenance first.`,
+    });
+    return;
+  }
 
   const apartmentType = existing.apartmentType
     ?? (await prisma.resortUnit.findUnique({ where: { resortCode_unitNo: { resortCode: existing.resortCode, unitNo: existing.unitNo } } }))?.apartmentType

@@ -460,7 +460,7 @@ export function UnitsAvailability() {
       <ConfirmDeleteModal
         open={!!deleteTarget}
         title="Delete availability block?"
-        description="This permanently deletes the block and removes the daily availability it generated. This cannot be undone."
+        description="This permanently deletes the block and removes the daily availability it generated. It is refused if the unit has any maintenance record within these dates. This cannot be undone."
         rows={deleteTarget ? [
           { label: 'Resort',      value: <><span className="font-mono font-medium">{deleteTarget.resortCode}</span> — {deleteTarget.resort.resortName}</> },
           { label: 'Unit / Type', value: <><span className="font-mono font-medium">{deleteTarget.unitNo}</span> · {deleteTarget.apartmentType ?? '—'}</> },
