@@ -10,6 +10,7 @@ router.get('/',                 requirePermission('RESORTS_SETUP', 'view'),   ct
 router.get('/availability-chart', requirePermission('RESORTS_SETUP', 'view'), ctrl.getAvailabilityChart);
 router.get('/units',            requirePermission('RESORTS_SETUP', 'view'),   ctrl.listUnitsWithAvailability);
 router.get('/:id/availability', requirePermission('RESORTS_SETUP', 'view'),   ctrl.getAptBlockAvailability);
+router.post('/batch',  requirePermission('RESORTS_SETUP', 'create'), ctrl.createAptBlockBatch);
 router.post('/',       requirePermission('RESORTS_SETUP', 'create'), ctrl.createAptBlock);
 router.delete('/:id',  requirePermission('RESORTS_SETUP', 'delete'), ctrl.deleteAptBlock);
 

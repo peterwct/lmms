@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus, Trash2, Search, Eye, CalendarRange } from 'lucide-react';
+import { ChevronLeft, Plus, Trash2, Search, Eye, CalendarRange, Layers } from 'lucide-react';
 import { apartmentTypesApi, aptBlocksApi, resortUnitsApi } from '../../api/resorts';
 import { useActiveResorts } from '../../hooks/useActiveResorts';
 import { apiError } from '../../api/client';
@@ -18,11 +18,20 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { RecordCount } from '../../components/ui/RecordCount';
 import { Pagination } from '../../components/ui/Pagination';
 import { ResortAvailabilityChart } from '../../components/ResortAvailabilityChart';
-import type { ApartmentType, AptBlock, Resort } from '../../types';
+import type { ApartmentType, AptBlock, MarBatchResult, Resort } from '../../types';
 
 const PAGE_SIZE = 50;
 
 const EMPTY_FORM = { resortCode: '', apartmentType: '', unitNo: '', startDate: '', endDate: '' };
+
+// Our own products. Their resorts have real, individually-numbered apartments, so they are set up
+// one unit at a time through Add availability. Everything else is MAR (Make Available Resorts) —
+// partner/exchange resorts that allocate N interchangeable units of a sleep type for a period,
+// numbered "N-occupancy" — and goes through the batch form. The server enforces the same split.
+const OWN_CO_CODES = ['03', '15', '02'];
+
+const MAR_MAX_UNITS = 200;
+const MAR_EMPTY_FORM = { resortCode: '', apartmentType: '', unitCount: '', occupancy: '', startDate: '', endDate: '' };
 
 // Stored dates are UTC midnight — show the calendar date, and feed <input type="date"> a YYYY-MM-DD value
 const dateOnly = (iso: string) => (iso ? iso.slice(0, 10) : '');
@@ -170,6 +179,165 @@ function AptBlockFormModal({ open, resorts, apartmentTypes, onClose, onSaved }: 
   );
 }
 
+// MAR batch: key the unit COUNT instead of picking units. The system generates the unit numbers
+// "1-occupancy .. N-occupancy", creates the ones that don't exist yet, and gives every one of them
+// an availability record over the same date range — all-or-nothing. Numbering restarts at 1 each
+// run, so a second run for the same resort + type reuses the units already registered and only
+// adds the new dates.
+function MarBatchFormModal({
+  open, resorts, apartmentTypes, onClose, onSaved,
+}: {
+  open: boolean;
+  resorts: Resort[];
+  apartmentTypes: ApartmentType[];
+  onClose: () => void;
+  onSaved: (saved: MarBatchResult) => void;
+}) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({ ...MAR_EMPTY_FORM });
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setError('');
+    setForm({ ...MAR_EMPTY_FORM });
+  }, [open]);
+
+  const typeOptions = apartmentTypes.filter(a => a.resortCode === form.resortCode);
+
+  const unitCount = parseInt(form.unitCount, 10);
+  const occupancy = parseInt(form.occupancy, 10);
+  const countValid = Number.isInteger(unitCount) && unitCount >= 1 && unitCount <= MAR_MAX_UNITS;
+  const occValid = Number.isInteger(occupancy) && occupancy >= 1 && occupancy <= 20;
+
+  // Show staff the generated numbers before they save
+  const preview = countValid && occValid
+    ? (unitCount <= 4
+        ? Array.from({ length: unitCount }, (_, i) => `${i + 1}-${occupancy}`).join(', ')
+        : `1-${occupancy}, 2-${occupancy}, ... ${unitCount}-${occupancy}`)
+    : '';
+
+  const saveMut = useMutation({
+    mutationFn: () => aptBlocksApi.batch({
+      resortCode: form.resortCode,
+      apartmentType: form.apartmentType,
+      unitCount,
+      occupancy,
+      startDate: form.startDate,
+      endDate: form.endDate,
+    }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['apt-blocks'] });
+      qc.invalidateQueries({ queryKey: ['availability-chart'] });
+      qc.invalidateQueries({ queryKey: ['resort-units'] }); // units may have been created
+      onSaved(res.data.data);
+      onClose();
+    },
+    onError: (err) => setError(apiError(err)),
+  });
+
+  const datesValid = form.startDate !== '' && form.endDate !== '' && form.startDate <= form.endDate;
+  const canSave = !!form.resortCode && !!form.apartmentType && countValid && occValid && datesValid;
+
+  return (
+    <Modal open={open} title="Add MAR Availability (batch)" onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-500">
+          For Make Available Resorts (exchange partners). Units are generated as
+          {' '}<span className="font-mono">1-occupancy</span>, <span className="font-mono">2-occupancy</span>, ...
+          {' '}and each gets one availability record over the dates below.
+        </p>
+        <Select
+          label="Resort"
+          value={form.resortCode}
+          onChange={e => setForm(f => ({ ...f, resortCode: e.target.value, apartmentType: '' }))}
+          required
+        >
+          <option value="">Select resort...</option>
+          {resorts.map(r => (
+            <option key={r.id} value={r.resortCode}>{r.resortCode} — {r.resortName}</option>
+          ))}
+        </Select>
+        <Select
+          label="Apartment type"
+          value={form.apartmentType}
+          onChange={e => setForm(f => ({ ...f, apartmentType: e.target.value }))}
+          disabled={!form.resortCode}
+          required
+        >
+          <option value="">Select apartment type...</option>
+          {typeOptions.map(a => (
+            <option key={a.id} value={a.apartmentType}>
+              {a.apartmentType}{a.description ? ` — ${a.description}` : ''}
+            </option>
+          ))}
+        </Select>
+        {form.resortCode && typeOptions.length === 0 && (
+          <p className="text-xs text-amber-600 -mt-2">
+            No apartment types set up for this resort — add them in Apartment Sleep Types Maintenance and Setup first.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Number of units required"
+            type="number"
+            min={1}
+            max={MAR_MAX_UNITS}
+            value={form.unitCount}
+            onChange={e => setForm(f => ({ ...f, unitCount: e.target.value }))}
+            required
+          />
+          <Input
+            label="Occupancy"
+            type="number"
+            min={1}
+            max={20}
+            value={form.occupancy}
+            onChange={e => setForm(f => ({ ...f, occupancy: e.target.value }))}
+            required
+          />
+        </div>
+        {preview && (
+          <p className="text-xs text-gray-600 -mt-1">
+            Units to set up: <span className="font-mono font-medium">{preview}</span> ({unitCount} unit{unitCount === 1 ? '' : 's'})
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Start date"
+            type="date"
+            value={form.startDate}
+            onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
+            required
+          />
+          <Input
+            label="End date"
+            type="date"
+            value={form.endDate}
+            min={form.startDate || undefined}
+            onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))}
+            required
+          />
+        </div>
+        {form.startDate !== '' && form.endDate !== '' && form.startDate > form.endDate && (
+          <p className="text-xs text-red-600 -mt-1">End date must be on or after start date.</p>
+        )}
+        <p className="text-xs text-gray-500">
+          Unit numbers already registered for this apartment type are reused — only their availability
+          is added. The whole batch is saved together, or not at all.
+        </p>
+      </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      <div className="mt-4 flex gap-3">
+        <Button onClick={() => saveMut.mutate()} loading={saveMut.isPending} disabled={!canSave}>
+          Add MAR availability
+        </Button>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+      </div>
+    </Modal>
+  );
+}
+
 function AvailabilityModal({ block, onClose }: { block: AptBlock | null; onClose: () => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ['apt-block-availability', block?.id],
@@ -241,6 +409,7 @@ export function UnitsAvailability() {
   const [searchInput, setSearchInput] = useState(q);
 
   const [addOpen, setAddOpen] = useState(false);
+  const [marOpen, setMarOpen] = useState(false);
   const [viewBlock, setViewBlock] = useState<AptBlock | null>(null);
   const [chartOpen, setChartOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AptBlock | null>(null);
@@ -271,8 +440,11 @@ export function UnitsAvailability() {
     enabled: !!resortCode,
   });
 
-  // Active resorts only (see useActiveResorts)
+  // Active resorts only (see useActiveResorts). The two Add forms take opposite halves of the
+  // list; the filter above deliberately keeps the whole of it so MAR records stay viewable.
   const { resorts } = useActiveResorts();
+  const ownResorts = useMemo(() => resorts.filter(r => OWN_CO_CODES.includes(r.coCode)), [resorts]);
+  const marResorts = useMemo(() => resorts.filter(r => !OWN_CO_CODES.includes(r.coCode)), [resorts]);
 
   const { data: apartmentTypes } = useQuery({
     queryKey: ['apartment-types', ''],
@@ -340,7 +512,14 @@ export function UnitsAvailability() {
             {(q || resortCode) && <Button type="button" size="sm" variant="secondary" onClick={clearSearch}>Clear</Button>}
           </form>
           {canCreate('RESORTS_SETUP') && (
-            <Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" /> Add availability</Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" /> Add availability</Button>
+              {marResorts.length > 0 && (
+                <Button size="sm" variant="secondary" onClick={() => setMarOpen(true)}>
+                  <Layers className="h-4 w-4" /> Add MAR availability
+                </Button>
+              )}
+            </div>
           )}
         </CardHeader>
 
@@ -416,11 +595,23 @@ export function UnitsAvailability() {
 
       <AptBlockFormModal
         open={addOpen}
-        resorts={resorts ?? []}
+        resorts={ownResorts}
         apartmentTypes={apartmentTypes ?? []}
         onClose={() => setAddOpen(false)}
         onSaved={b => setResult(
           `Availability added — ${describe(b)}. Daily availability has been generated for that range.`
+        )}
+      />
+
+      <MarBatchFormModal
+        open={marOpen}
+        resorts={marResorts}
+        apartmentTypes={apartmentTypes ?? []}
+        onClose={() => setMarOpen(false)}
+        onSaved={r => setResult(
+          `MAR availability added — ${r.resortCode} ${r.apartmentType}, ${r.blocksCreated} unit(s) ` +
+          `(${r.unitNos[0]} to ${r.unitNos[r.unitNos.length - 1]}; ${r.unitsCreated} new, ${r.unitsReused} existing), ` +
+          `${r.startDate} to ${r.endDate}. Daily availability has been generated for ${r.days} day(s).`
         )}
       />
 

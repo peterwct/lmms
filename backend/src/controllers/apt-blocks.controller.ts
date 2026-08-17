@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { writeAudit } from '../utils/audit';
+import { apartmentTypeExists } from './resort-units.controller';
 
 // Resorts Unit Availability/Inventory Setup (fn 5). A block = one row per (resort, unit, date range).
 // Each save expands into per-day ResAvailMast rows (act/bal +1 per day; -1 on delete),
@@ -26,6 +27,22 @@ const aptBlockSchema = z.object({
   endDate:       dateStr,
 });
 
+// MAR (Make Available Resorts) batch setup — the partner/exchange resorts reached through an
+// LVC exchange programme. They allocate N interchangeable units of a sleep type for a period
+// rather than naming real apartments, and the legacy data already numbers them "N-occupancy"
+// (V-CLC1 SLEEP4 = 1-4 .. 15-4). One batch keys the count instead of the units.
+const MAR_MAX_UNITS = 200;               // sanity cap; V-LDBR is the largest today at 78
+const OWN_CO_CODES = ['03', '15', '02']; // our own products — NOT MAR, they use createAptBlock
+
+const marBatchSchema = z.object({
+  resortCode:    z.string().trim().min(1).max(8),
+  apartmentType: z.string().trim().min(1).max(10),
+  unitCount:     z.number().int().min(1).max(MAR_MAX_UNITS),
+  occupancy:     z.number().int().min(1).max(20), // matches resortUnitSchema.occupancy
+  startDate:     dateStr,
+  endDate:       dateStr,
+});
+
 const resortSelect = { select: { shortName: true, resortName: true, coCode: true } };
 
 // Parse a YYYY-MM-DD string to a UTC-midnight Date (business-date convention)
@@ -41,10 +58,15 @@ function eachUtcDay(start: Date, end: Date): Date[] {
   return days;
 }
 
-// Apply +1/-1 to the per-day ResAvailMast grid for a block's date range.
-// sign=+1: upsert, act/bal += 1 (create 1/1 if absent).
-// sign=-1: act/bal -= 1, delete the row when act reaches 0, clamp bal at >= 0.
+// Apply +qty/-qty to the per-day ResAvailMast grid for a block's date range.
+// sign=+1: upsert, act/bal += qty (create qty/qty if absent).
+// sign=-1: act/bal -= qty, delete the row when act reaches 0, clamp bal at >= 0.
 // Returns whether any balNight had to be clamped (a booked day was un-blocked).
+//
+// qty defaults to 1 — one unit's block. The MAR batch passes the unit count instead of
+// calling this once per unit: every unit in a batch shares the same resort, apartment type
+// and date range, so the grid effect is simply +N per day. N separate passes would be
+// N x days round-trips (78 units x 366 days is ~28,500 queries, well past the 120s timeout).
 async function applyDelta(
   tx: Prisma.TransactionClient,
   resortId: string,
@@ -52,6 +74,7 @@ async function applyDelta(
   apartmentType: string,
   days: Date[],
   sign: 1 | -1,
+  qty = 1,
 ): Promise<boolean> {
   let clamped = false;
   for (const date of days) {
@@ -61,15 +84,15 @@ async function applyDelta(
         where,
         create: {
           id: randomUUID(), resortId, resortCode, apartmentType, date,
-          actNight: 1, balNight: 1, updatedAt: new Date(),
+          actNight: qty, balNight: qty, updatedAt: new Date(),
         },
-        update: { actNight: { increment: 1 }, balNight: { increment: 1 }, updatedAt: new Date() },
+        update: { actNight: { increment: qty }, balNight: { increment: qty }, updatedAt: new Date() },
       });
     } else {
       const row = await tx.resAvailMast.findUnique({ where });
       if (!row) continue;
-      const newAct = row.actNight - 1;
-      const newBal = row.balNight - 1;
+      const newAct = row.actNight - qty;
+      const newBal = row.balNight - qty;
       if (newBal < 0) clamped = true;
       if (newAct <= 0) {
         await tx.resAvailMast.delete({ where });
@@ -181,9 +204,12 @@ const ymd = (d: Date) => d.toISOString().slice(0, 10);
 // Resort Availability chart: ResAvailMast pivoted to rows (resort x apartment type)
 // by a rolling date window, cell = balNight (units available). Read-only view.
 export async function getAvailabilityChart(req: Request, res: Response): Promise<void> {
-  const product = req.query.product === 'CP' ? 'CP' : 'LHC';
-  // LHC shows coCode 03 only (LHC-15 availability is not displayed); CP = 02
-  const coCodes = product === 'CP' ? ['02'] : ['03'];
+  // Any product may be charted (2026-08-17). This used to be a fixed `product=LHC|CP`
+  // mapped to coCode 03 / 02; the picker now reads the Product master, so the coCode
+  // comes straight from the client. Product status is not checked here -- the picker
+  // offers active products, but charting a retired one by URL must still work.
+  const coCode = typeof req.query.coCode === 'string' ? req.query.coCode.trim() : '';
+  if (!coCode) { res.status(400).json({ error: 'coCode is required' }); return; }
   const days = Math.min(31, Math.max(1, parseInt(String(req.query.days), 10) || 15));
 
   const dateStr = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(req.query.date)
@@ -198,7 +224,7 @@ export async function getAvailabilityChart(req: Request, res: Response): Promise
   // Server-side like the Apartment Types list (this is the screen's own endpoint, not
   // a shared resort cache) -- see listApartmentTypes in apartment-types.controller.ts.
   const resorts = await prisma.resort.findMany({
-    where: { coCode: { in: coCodes }, status: 'A' },
+    where: { coCode, status: 'A' },
     select: { resortCode: true, shortName: true, coCode: true },
   });
   const resortCodes = resorts.map(r => r.resortCode);
@@ -240,7 +266,7 @@ export async function getAvailabilityChart(req: Request, res: Response): Promise
     (a.shortName ?? a.resortCode).localeCompare(b.shortName ?? b.resortCode) ||
     a.apartmentType.localeCompare(b.apartmentType));
 
-  res.json({ product, startDate: dateStr, days, dates, rows });
+  res.json({ coCode, startDate: dateStr, days, dates, rows });
 }
 
 // Per-day availability grid (ResAvailMast) for a block's resort + apartment type,
@@ -322,6 +348,124 @@ export async function createAptBlock(req: Request, res: Response): Promise<void>
   } catch (e: unknown) {
     if ((e as { code?: string }).code === 'P2002') { res.status(409).json({ error: 'An identical block already exists for this unit' }); }
     else { throw e; }
+  }
+}
+
+// MAR batch: create/reuse N units at one resort and give each an availability record over one
+// shared date range, all-or-nothing in a single transaction (same shape as createMaintenance).
+//
+// Unit numbering restarts at 1 on every run. A generated unit that already exists with the SAME
+// apartment type is REUSED (its ResortUnit row is left untouched, only the block is added) —
+// that is the normal path for the second and later runs, which set up next year's dates for the
+// units already registered. A clash with a DIFFERENT apartment type is a hard 409: ResortUnit is
+// unique on [resortCode, unitNo], so one unit number cannot belong to two types.
+export async function createAptBlockBatch(req: Request, res: Response): Promise<void> {
+  const parsed = marBatchSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() }); return; }
+  const { resortCode, apartmentType, unitCount, occupancy } = parsed.data;
+  const startDate = toUtcMidnight(parsed.data.startDate);
+  const endDate = toUtcMidnight(parsed.data.endDate);
+
+  if (endDate < startDate) { res.status(400).json({ error: 'End date must be on or after start date' }); return; }
+
+  const resort = await prisma.resort.findUnique({ where: { resortCode } });
+  if (!resort) { res.status(404).json({ error: 'Resort not found' }); return; }
+
+  // Enforce the scope split server-side, not just in the dropdown
+  if (OWN_CO_CODES.includes(resort.coCode)) {
+    res.status(400).json({
+      error: `${resortCode} belongs to one of our own products (03/15/02). Use Add availability to set up its units individually.`,
+    });
+    return;
+  }
+
+  if (!(await apartmentTypeExists(resortCode, apartmentType))) {
+    res.status(400).json({ error: 'Apartment type not set up for this resort' });
+    return;
+  }
+
+  const days = eachUtcDay(startDate, endDate);
+  if (days.length > MAX_RANGE_DAYS) { res.status(400).json({ error: `Date range too large (max ${MAX_RANGE_DAYS} days)` }); return; }
+
+  const unitNos = Array.from({ length: unitCount }, (_, i) => `${i + 1}-${occupancy}`);
+
+  // Existing units, in one query: same type -> reuse, different type -> refuse
+  const existing = await prisma.resortUnit.findMany({
+    where: { resortCode, unitNo: { in: unitNos } },
+    select: { unitNo: true, apartmentType: true },
+  });
+  const conflict = existing.filter(u => u.apartmentType !== apartmentType);
+  if (conflict.length) {
+    const named = conflict.slice(0, 3).map(u => `${u.unitNo} (${u.apartmentType})`).join(', ');
+    res.status(409).json({
+      error: `${conflict.length} unit number(s) already exist at this resort with a different apartment type: ${named}${conflict.length > 3 ? ', ...' : ''}`,
+    });
+    return;
+  }
+  const reused = new Set(existing.map(u => u.unitNo));
+  const toCreate = unitNos.filter(u => !reused.has(u));
+
+  // One overlap query for the whole batch. hasOverlap() takes no TransactionClient and is
+  // per-unit, so it is neither usable inside the transaction nor efficient here.
+  const clash = await prisma.aptBlock.findMany({
+    where: { resortCode, unitNo: { in: unitNos }, startDate: { lte: endDate }, endDate: { gte: startDate } },
+    select: { unitNo: true },
+    orderBy: { unitNo: 'asc' },
+  });
+  if (clash.length) {
+    const named = clash.slice(0, 5).map(b => b.unitNo).join(', ');
+    res.status(409).json({
+      error: `${clash.length} unit(s) already have an availability record overlapping these dates: ${named}${clash.length > 5 ? ', ...' : ''}`,
+    });
+    return;
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (toCreate.length) {
+        await tx.resortUnit.createMany({
+          data: toCreate.map(unitNo => ({
+            id: randomUUID(), resortId: resort.id, resortCode, unitNo, apartmentType,
+            occupancy, rciReserved: 'N', updatedAt: new Date(),
+          })) as never,
+        });
+      }
+      await tx.aptBlock.createMany({
+        data: unitNos.map(unitNo => ({
+          id: randomUUID(), resortId: resort.id, resortCode, unitNo, apartmentType,
+          startDate, endDate, updatedAt: new Date(),
+        })) as never,
+      });
+      // One pass over the days, +unitNos.length each — see the note on applyDelta
+      await applyDelta(tx, resort.id, resortCode, apartmentType, days, 1, unitNos.length);
+    }, { maxWait: 15_000, timeout: 120_000 });
+
+    await writeAudit({
+      userId: req.user.id,
+      action: `Created MAR availability batch: ${resortCode} ${apartmentType}, ${unitNos.length} unit(s) (${parsed.data.startDate} to ${parsed.data.endDate})`,
+      actionType: 'CREATE',
+      targetType: 'AptBlock',
+      metadata: {
+        unitCount: unitNos.length, occupancy,
+        unitsCreated: toCreate.length, unitsReused: reused.size, days: days.length,
+      },
+    });
+
+    res.status(201).json({
+      data: {
+        resortCode, apartmentType, occupancy, unitNos,
+        unitsCreated: toCreate.length,
+        unitsReused: reused.size,
+        blocksCreated: unitNos.length,
+        startDate: parsed.data.startDate,
+        endDate: parsed.data.endDate,
+        days: days.length,
+      },
+    });
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code === 'P2002') {
+      res.status(409).json({ error: 'One of these units already has an identical availability record' });
+    } else { throw e; }
   }
 }
 

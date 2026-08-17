@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { aptBlocksApi } from '../api/resorts';
+import { useActiveProducts } from '../hooks/useActiveProducts';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
@@ -20,12 +21,21 @@ export const shiftYmd = (ymd: string, delta: number) => {
 };
 
 export function ResortAvailabilityChart() {
-  const [product, setProduct] = useState<'LHC' | 'CP'>('LHC');
+  // Product Type used to be a fixed LHC/CP pair mapped to coCode 03/02. It now reads the
+  // ACTIVE products from the Product master (2026-08-17), so any product can be charted.
+  const { products } = useActiveProducts();
+  const [picked, setPicked] = useState('');
+  // Fall back to LHC-A (03) so the default view is unchanged, then to whatever is first --
+  // a product can be deactivated, and the picked one must stay a real option.
+  const coCode = products.some(p => p.coCode === picked)
+    ? picked
+    : (products.find(p => p.coCode === '03') ?? products[0])?.coCode ?? '';
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const { data, isFetching, refetch, dataUpdatedAt } = useQuery({
-    queryKey: ['availability-chart', product, date],
-    queryFn: () => aptBlocksApi.chart({ product, date, days: CHART_DAYS }).then(r => r.data),
+    queryKey: ['availability-chart', coCode, date],
+    queryFn: () => aptBlocksApi.chart({ coCode, date, days: CHART_DAYS }).then(r => r.data),
+    enabled: !!coCode,
   });
 
   const lastUpdated = dataUpdatedAt
@@ -36,9 +46,10 @@ export function ResortAvailabilityChart() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-center gap-3">
         <label className="text-sm text-gray-600">Product Type:</label>
-        <Select value={product} onChange={e => setProduct(e.target.value as 'LHC' | 'CP')} className="w-52">
-          <option value="LHC">Leisure Holiday Club (LHC)</option>
-          <option value="CP">ConnectionPoints (CP)</option>
+        <Select value={coCode} onChange={e => setPicked(e.target.value)} className="w-64">
+          {products.map(p => (
+            <option key={p.coCode} value={p.coCode}>{p.coCode} — {p.coName}</option>
+          ))}
         </Select>
         <label className="text-sm text-gray-600">Date:</label>
         <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40" />

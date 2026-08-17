@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus, Pencil, Trash2, Search } from 'lucide-react';
+import { ChevronLeft, Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight } from 'lucide-react';
 import { productsApi } from '../../api/resorts';
 import { apiError } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,8 +21,13 @@ const ENT_TYPE_LABELS: Record<string, string> = {
   P: 'P — Points',
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  A: 'A — Active',
+  U: 'U — Inactive',
+};
+
 const EMPTY_FORM = {
-  coCode: '', coName: '', entType: 'W',
+  coCode: '', coName: '', entType: 'W', status: 'A',
   add1: '', add2: '', add3: '', telNo: '', faxNo: '', contactPerson: '',
 };
 
@@ -45,6 +50,7 @@ function ProductFormModal({ open, product, onClose, onSaved }: ModalProps) {
       coCode:        product.coCode,
       coName:        product.coName,
       entType:       product.entType,
+      status:        product.status,
       add1:          product.add1 ?? '',
       add2:          product.add2 ?? '',
       add3:          product.add3 ?? '',
@@ -59,6 +65,7 @@ function ProductFormModal({ open, product, onClose, onSaved }: ModalProps) {
       const payload = {
         coName:        form.coName,
         entType:       form.entType,
+        status:        form.status,
         add1:          form.add1 === '' ? null : form.add1,
         add2:          form.add2 === '' ? null : form.add2,
         add3:          form.add3 === '' ? null : form.add3,
@@ -105,6 +112,15 @@ function ProductFormModal({ open, product, onClose, onSaved }: ModalProps) {
             <option key={v} value={v}>{label}</option>
           ))}
         </Select>
+        <Select
+          label="Status"
+          value={form.status}
+          onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+        >
+          {Object.entries(STATUS_LABELS).map(([v, label]) => (
+            <option key={v} value={v}>{label}</option>
+          ))}
+        </Select>
         <Input label="Address 1" value={form.add1} onChange={setU('add1')} maxLength={40} />
         <Input label="Address 2" value={form.add2} onChange={setU('add2')} maxLength={40} />
         <Input label="Address 3" value={form.add3} onChange={setU('add3')} maxLength={40} />
@@ -140,6 +156,7 @@ export function Products() {
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [delErr, setDelErr] = useState('');
   const [result, setResult] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
   const { data: products, isLoading } = useQuery({
     queryKey: ['products', q],
@@ -155,6 +172,15 @@ export function Products() {
       if (gone) setResult(`Product deleted — ${gone.coCode} (${gone.coName}).`);
     },
     onError: (err) => setDelErr(apiError(err)),
+  });
+
+  // Status toggle gets no success dialog on purpose — the badge flips in place, which
+  // is feedback enough, and a dialog per click would be tedious. It DOES need an error
+  // surface though: without one a failed toggle looked like the click never registered.
+  const toggleMut = useMutation({
+    mutationFn: (id: string) => productsApi.toggle(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
+    onError: (err) => setFailure(`Could not change the product status. ${apiError(err)}`),
   });
 
   const doSearch = (e: React.FormEvent) => {
@@ -211,12 +237,13 @@ export function Products() {
                   <th className="px-4 py-3 text-left">Product Name</th>
                   <th className="px-4 py-3 text-left">Ent Type</th>
                   <th className="px-4 py-3 text-left">Contact Person</th>
+                  <th className="px-4 py-3 text-left">Status</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {products?.map(p => (
-                  <tr key={p.id} className="hover:bg-gray-50">
+                  <tr key={p.id} className={`hover:bg-gray-50 ${p.status !== 'A' ? 'opacity-50' : ''}`}>
                     <td className="px-4 py-2.5 font-mono font-medium">{p.coCode}</td>
                     <td className="px-4 py-2.5">{p.coName}</td>
                     <td className="px-4 py-2.5">
@@ -227,7 +254,19 @@ export function Products() {
                     </td>
                     <td className="px-4 py-2.5">{p.contactPerson ?? '—'}</td>
                     <td className="px-4 py-2.5">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                        p.status === 'A' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {p.status === 'A' ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5">
                       <div className="flex items-center gap-1 justify-end">
+                        {canEdit('RESORTS_SETUP') && (
+                          <button onClick={() => toggleMut.mutate(p.id)} title={p.status === 'A' ? 'Deactivate' : 'Activate'}
+                            className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-800">
+                            {p.status === 'A' ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4" />}
+                          </button>
+                        )}
                         {canEdit('RESORTS_SETUP') && (
                           <button onClick={() => setModal({ open: true, product: p })} title="Edit"
                             className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-blue-600">
@@ -246,7 +285,7 @@ export function Products() {
                   </tr>
                 ))}
                 {products?.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No products found</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No products found</td></tr>
                 )}
               </tbody>
             </table>
@@ -260,21 +299,24 @@ export function Products() {
         onClose={() => setModal({ open: false, product: null })}
         onSaved={(p, mode) => setResult(
           `Product ${mode === 'add' ? 'added' : 'updated'} — ${p.coCode} (${p.coName}), ` +
-          `${p.entType === 'P' ? 'Points' : 'Week'} entitlement.`
+          `${p.entType === 'P' ? 'Points' : 'Week'} entitlement, ` +
+          `${p.status === 'A' ? 'Active' : 'Inactive'}.`
         )}
       />
 
       <ResultDialog message={result} onClose={() => setResult(null)} />
+      <ResultDialog message={failure} onClose={() => setFailure(null)} variant="error" />
 
       <ConfirmDeleteModal
         open={!!deleteTarget}
         title="Delete product?"
-        description="This permanently removes the product. It is refused if any agreement, AMC schedule or resort still carries this product code. This cannot be undone."
+        description="This permanently removes the product. It is refused if any agreement, AMC schedule or resort still carries this product code. Deactivating it instead keeps it on record. This cannot be undone."
         rows={deleteTarget ? [
           { label: 'Code',    value: <span className="font-mono font-medium">{deleteTarget.coCode}</span> },
           { label: 'Name',    value: <span className="font-medium">{deleteTarget.coName}</span> },
           { label: 'Type',    value: ENT_TYPE_LABELS[deleteTarget.entType] ?? deleteTarget.entType },
           { label: 'Contact', value: deleteTarget.contactPerson ?? '—' },
+          { label: 'Status',  value: deleteTarget.status === 'A' ? 'Active' : 'Inactive' },
         ] : []}
         error={delErr}
         loading={deleteMut.isPending}

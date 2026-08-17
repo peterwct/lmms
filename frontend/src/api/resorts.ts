@@ -1,10 +1,11 @@
 import { api } from './client';
-import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, LvcCode, PointsType, SeasonPointDeleteResult, SeasonPointSaveResult, SeasonPointVersion, SeasonPointVersionSummary, Product, Holiday, HolidayCloneResult, HolidayType, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, UnitAvailability } from '../types';
+import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, LvcCode, MarBatchResult, PointsType, SeasonPointDeleteResult, SeasonPointSaveResult, SeasonPointVersion, SeasonPointVersionSummary, Product, Holiday, HolidayCloneResult, HolidayType, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, UnitAvailability } from '../types';
 
 export const productsApi = {
   list:   (q?: string) => api.get<{ data: Product[] }>('/products', { params: q ? { q } : undefined }),
   create: (data: Record<string, unknown>) => api.post<{ data: Product }>('/products', data),
   update: (id: string, data: Record<string, unknown>) => api.put<{ data: Product }>(`/products/${id}`, data),
+  toggle: (id: string) => api.patch<{ data: Product }>(`/products/${id}/toggle`, {}),
   remove: (id: string) => api.delete(`/products/${id}`),
 };
 
@@ -39,11 +40,13 @@ export const aptBlocksApi = {
   list: (params: { q?: string; resortCode?: string; page?: number; pageSize?: number }) =>
     api.get<AptBlockList>('/apt-blocks', { params }),
   create: (data: Record<string, unknown>) => api.post<{ data: AptBlock }>('/apt-blocks', data),
+  // MAR batch — creates/reuses N units at a partner resort and gives each one availability record
+  batch: (data: Record<string, unknown>) => api.post<{ data: MarBatchResult }>('/apt-blocks/batch', data),
   remove: (id: string) => api.delete(`/apt-blocks/${id}`),
   availability: (id: string) => api.get<AptBlockAvailability>(`/apt-blocks/${id}/availability`),
   // Availability records per unit at this resort — feeds the Resorts Maintenance form
   units: (resortCode: string) => api.get<{ data: UnitAvailability[] }>('/apt-blocks/units', { params: { resortCode } }),
-  chart: (params: { product: 'LHC' | 'CP'; date: string; days?: number }) =>
+  chart: (params: { coCode: string; date: string; days?: number }) =>
     api.get<AvailabilityChart>('/apt-blocks/availability-chart', { params }),
 };
 

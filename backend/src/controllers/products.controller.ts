@@ -9,10 +9,15 @@ import { writeAudit } from '../utils/audit';
 // value later must not require a migration (same reasoning as CpSeasonDate.season).
 const ENT_TYPES = ['W', 'P'] as const;
 
+// status: A=Active, U=Inactive. Same A/U convention as LvcCode and Resort, and the
+// same reasoning for a plain String over a Prisma enum.
+const STATUSES = ['A', 'U'] as const;
+
 const productSchema = z.object({
   coCode:        z.string().trim().min(1).max(2),
   coName:        z.string().trim().min(1).max(40),
   entType:       z.enum(ENT_TYPES),
+  status:        z.enum(STATUSES).default('A'),
   add1:          z.string().trim().max(40).nullish(),
   add2:          z.string().trim().max(40).nullish(),
   add3:          z.string().trim().max(40).nullish(),
@@ -37,7 +42,9 @@ export async function listProducts(req: Request, res: Response): Promise<void> {
           ],
         }
       : undefined,
-    orderBy: { coCode: 'asc' },
+    // Active first, then Inactive (A < U), each by code -- mirrors listLvcCodes.
+    // The list itself must keep returning inactive rows: fn 1 is where they are managed.
+    orderBy: [{ status: 'asc' }, { coCode: 'asc' }],
   });
   res.json({ data: products });
 }
@@ -75,6 +82,24 @@ export async function updateProduct(req: Request, res: Response): Promise<void> 
     if ((e as { code?: string }).code === 'P2025') { res.status(404).json({ error: 'Product not found' }); }
     else { throw e; }
   }
+}
+
+export async function toggleProductStatus(req: Request, res: Response): Promise<void> {
+  const id = req.params.id;
+  const existing = await prisma.product.findUnique({ where: { id } });
+  if (!existing) { res.status(404).json({ error: 'Product not found' }); return; }
+
+  const p = await prisma.product.update({
+    where: { id },
+    data: { status: existing.status === 'A' ? 'U' : 'A', updatedAt: new Date() },
+  });
+  await writeAudit({
+    userId: req.user.id,
+    action: `${p.status === 'A' ? 'Activated' : 'Deactivated'} product: ${p.coCode} ${p.coName}`,
+    actionType: 'UPDATE',
+    targetType: 'Product',
+  });
+  res.json({ data: p });
 }
 
 export async function deleteProduct(req: Request, res: Response): Promise<void> {

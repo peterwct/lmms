@@ -18,7 +18,7 @@ const INFO_CATEGORIES: Record<ResortInfoCategory, { label: string }> = {
 // Field sizes follow the Informix resort_mast char() widths
 const resortSchema = z.object({
   resortCode:    z.string().trim().min(1).max(8),
-  coCode:        z.enum(['03', '15', '02']),
+  coCode:        z.string().trim().min(1).max(2),
   shortName:     z.string().trim().max(5).nullish(),
   resortName:    z.string().trim().min(1).max(40),
   rciCode:       z.string().trim().max(8).nullish(),
@@ -42,6 +42,19 @@ const resortSchema = z.object({
 // empty string -> null so cleared form fields null out the column
 const clean = (data: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v === '' ? null : v]));
+
+// coCode must name a real product. Was a z.enum(['03','15','02']) until 2026-08-17, which
+// could not express the data it guards: resorts span 24 coCodes -- 13 INTERCHANGE VACATION
+// CLUB alone holds 111 of them, 07 DIAL AN EXCHANGE 68 -- because the partner/LVC `V-*`
+// exchange resorts belong to the exchange partners, not to our own three products. Kept as
+// a lookup rather than a DB FK, matching `productMissing()` in lvc-codes.controller.ts and
+// season-points.controller.ts. Status is deliberately NOT checked: the picker offers active
+// products only, but an existing resort on a since-retired product must stay saveable.
+async function productMissing(coCode: unknown): Promise<boolean> {
+  if (typeof coCode !== 'string' || coCode.trim() === '') return false;
+  const p = await prisma.product.findUnique({ where: { coCode: coCode.trim() } });
+  return !p;
+}
 
 export async function listResorts(req: Request, res: Response): Promise<void> {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
@@ -81,6 +94,7 @@ export async function getResort(req: Request, res: Response): Promise<void> {
 export async function createResort(req: Request, res: Response): Promise<void> {
   const parsed = resortSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() }); return; }
+  if (await productMissing(parsed.data.coCode)) { res.status(400).json({ error: `Unknown product code ${parsed.data.coCode}` }); return; }
 
   try {
     const resort = await prisma.resort.create({
@@ -99,6 +113,7 @@ export async function updateResort(req: Request, res: Response): Promise<void> {
   // resortCode is the natural key — not editable after creation
   const parsed = resortSchema.omit({ resortCode: true }).partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() }); return; }
+  if (await productMissing(parsed.data.coCode)) { res.status(400).json({ error: `Unknown product code ${parsed.data.coCode}` }); return; }
 
   try {
     const resort = await prisma.resort.update({

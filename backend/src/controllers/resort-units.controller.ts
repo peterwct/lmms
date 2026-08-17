@@ -16,7 +16,7 @@ const resortSelect = { select: { shortName: true, resortName: true, coCode: true
 
 // The unit's apartment type must be set up for that resort (natural-key check —
 // no hard FK: apartment types are renamable/deletable via their own CRUD)
-async function apartmentTypeExists(resortCode: string, apartmentType: string): Promise<boolean> {
+export async function apartmentTypeExists(resortCode: string, apartmentType: string): Promise<boolean> {
   const at = await prisma.apartmentType.findUnique({
     where: { resortCode_apartmentType: { resortCode, apartmentType } },
   });

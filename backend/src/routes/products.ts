@@ -9,6 +9,7 @@ router.use(authenticate, requirePasswordChanged);
 router.get('/',       requirePermission('RESORTS_SETUP', 'view'),   ctrl.listProducts);
 router.post('/',      requirePermission('RESORTS_SETUP', 'create'), ctrl.createProduct);
 router.put('/:id',    requirePermission('RESORTS_SETUP', 'edit'),   ctrl.updateProduct);
+router.patch('/:id/toggle', requirePermission('RESORTS_SETUP', 'edit'), ctrl.toggleProductStatus);
 router.delete('/:id', requirePermission('RESORTS_SETUP', 'delete'), ctrl.deleteProduct);
 
 export default router;

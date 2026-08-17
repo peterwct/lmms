@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { resortsApi } from '../../api/resorts';
+import { useActiveProducts, productOptions } from '../../hooks/useActiveProducts';
 import { apiError } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -26,6 +27,11 @@ interface Props {
 
 export function ResortFormModal({ open, resort, onClose, onSaved }: Props) {
   const qc = useQueryClient();
+  // The Product list used to be hardcoded to 03/15/02, which could not even represent
+  // existing data -- the partner/LVC `V-*` resorts sit on coCodes 01/20/24/26 and so on.
+  // Offer the ACTIVE products; `productOptions` keeps a resort's own product in the list
+  // when it has since been deactivated, so editing one can't silently rewrite its coCode.
+  const { products, allProducts } = useActiveProducts();
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [error, setError] = useState('');
 
@@ -92,9 +98,9 @@ export function ResortFormModal({ open, resort, onClose, onSaved }: Props) {
           <Input label="Resort code" value={form.resortCode} onChange={setU('resortCode')} maxLength={8} required />
         )}
         <Select label="Product" value={form.coCode} onChange={setV('coCode')}>
-          <option value="03">03 — LHC-A</option>
-          <option value="15">15 — LHC-B</option>
-          <option value="02">02 — CP</option>
+          {productOptions(products, allProducts, form.coCode).map(p => (
+            <option key={p.coCode} value={p.coCode}>{p.coCode} — {p.coName}</option>
+          ))}
         </Select>
         <Input label="Short name" value={form.shortName} onChange={setU('shortName')} maxLength={5} />
         <div className="col-span-3">

@@ -124,6 +124,7 @@ export interface Product {
   coCode: string;
   coName: string;
   entType: EntType;
+  status: string;              // 'A' | 'U'
   add1: string | null;
   add2: string | null;
   add3: string | null;
@@ -247,6 +248,22 @@ export interface AptBlock {
     resortName: string;
     coCode: string;
   };
+}
+
+// Result of one MAR batch save (fn 5): N units of a sleep type set up at a partner/exchange
+// resort over one shared date range. Units already registered are reused rather than recreated,
+// so the created/reused split is what the result dialog reports.
+export interface MarBatchResult {
+  resortCode: string;
+  apartmentType: string;
+  occupancy: number;
+  unitNos: string[];
+  unitsCreated: number;
+  unitsReused: number;
+  blocksCreated: number;
+  startDate: string;
+  endDate: string;
+  days: number;
 }
 
 export interface AptBlockList {
@@ -453,7 +470,7 @@ export interface AvailabilityChartRow {
 }
 
 export interface AvailabilityChart {
-  product: 'LHC' | 'CP';
+  coCode: string;
   startDate: string;
   days: number;
   dates: AvailabilityChartCol[];

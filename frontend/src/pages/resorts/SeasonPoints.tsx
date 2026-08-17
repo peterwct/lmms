@@ -3,7 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, Trash2, Save, Plus, Pencil } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { seasonPointsApi, productsApi } from '../../api/resorts';
+import { seasonPointsApi } from '../../api/resorts';
+import { useActiveProducts, productOptions } from '../../hooks/useActiveProducts';
 import { useActiveResorts } from '../../hooks/useActiveResorts';
 import type { SeasonPointRowInput } from '../../api/resorts';
 import { apiError } from '../../api/client';
@@ -157,12 +158,12 @@ export function SeasonPoints() {
 
   // Products name both the resort's own company and the charged-to company; there is
   // no Prisma relation, so the name is resolved client-side (same as the LVC Code list).
-  const { data: products } = useQuery({
-    queryKey: ['products', ''],
-    queryFn: () => productsApi.list().then(r => r.data.data),
-  });
+  // The Charged To dropdown offers ACTIVE products only; the name lookup uses the full
+  // list so a resort's own coCode -- or a charged-to code set before the product was
+  // retired -- still resolves to a name.
+  const { products, allProducts } = useActiveProducts();
   const productName = (coCode: string | undefined) =>
-    products?.find(p => p.coCode === coCode)?.coName ?? '—';
+    allProducts.find(p => p.coCode === coCode)?.coName ?? '—';
 
   const resort = tabResorts.find(r => r.resortCode === resortCode);
   const resortCoCode = resort?.coCode ?? versionData?.resort.coCode;
@@ -448,7 +449,7 @@ export function SeasonPoints() {
                         onChange={e => setChargedTo(e.target.value)}
                         title="Product whose members are charged these points"
                       >
-                        {(products ?? []).map(p => (
+                        {productOptions(products, allProducts, chargedTo).map(p => (
                           <option key={p.coCode} value={p.coCode}>{p.coCode} — {p.coName}</option>
                         ))}
                       </Select>

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight } from 'lucide-react';
-import { lvcCodesApi, productsApi } from '../../api/resorts';
+import { lvcCodesApi } from '../../api/resorts';
+import { useActiveProducts, productOptions } from '../../hooks/useActiveProducts';
 import { apiError } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -23,12 +24,13 @@ const EMPTY_FORM = { lvcCode: '', coCode: '', lvcName: '', status: 'A' };
 interface ModalProps {
   open: boolean;
   lvc: LvcCode | null;   // null = add mode
-  products: Product[];
+  products: Product[];      // active only -- what may be picked
+  allProducts: Product[];   // incl. retired -- keeps an existing selection in the list
   onClose: () => void;
   onSaved: (saved: LvcCode, mode: 'add' | 'edit') => void;
 }
 
-function LvcCodeFormModal({ open, lvc, products, onClose, onSaved }: ModalProps) {
+function LvcCodeFormModal({ open, lvc, products, allProducts, onClose, onSaved }: ModalProps) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [error, setError] = useState('');
@@ -88,7 +90,7 @@ function LvcCodeFormModal({ open, lvc, products, onClose, onSaved }: ModalProps)
           onChange={e => setForm(f => ({ ...f, coCode: e.target.value }))}
         >
           <option value="">None</option>
-          {products.map(p => (
+          {productOptions(products, allProducts, form.coCode).map(p => (
             <option key={p.id} value={p.coCode}>{p.coCode} — {p.coName}</option>
           ))}
         </Select>
@@ -137,12 +139,11 @@ export function LvcCodes() {
 
   // coCode references Product.coCode. There is no Prisma relation, so the product
   // name is resolved client-side — the same list also feeds the form dropdown.
-  const { data: products } = useQuery({
-    queryKey: ['products', ''],
-    queryFn: () => productsApi.list().then(r => r.data.data),
-  });
+  // Dropdown offers ACTIVE products only; the name lookup uses the full list so a code
+  // pointing at a since-retired product still resolves.
+  const { products, allProducts } = useActiveProducts();
   const productName = (coCode: string | null) =>
-    coCode ? products?.find(p => p.coCode === coCode)?.coName ?? null : null;
+    coCode ? allProducts.find(p => p.coCode === coCode)?.coName ?? null : null;
 
   // Status toggle gets no success dialog on purpose — the badge flips in place, which
   // is feedback enough. It DOES need an error surface (see ResortMaster).
@@ -272,7 +273,8 @@ export function LvcCodes() {
       <LvcCodeFormModal
         open={modal.open}
         lvc={modal.lvc}
-        products={products ?? []}
+        products={products}
+        allProducts={allProducts}
         onClose={() => setModal({ open: false, lvc: null })}
         onSaved={(c, mode) => setResult(
           `LVC code ${mode === 'add' ? 'added' : 'updated'} — ${c.lvcCode} (${c.lvcName})` +

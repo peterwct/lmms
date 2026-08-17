@@ -413,6 +413,7 @@ model Product {
   coCode        String   @unique
   coName        String
   entType       String // W=Week, P=Points
+  status        String   @default("A") // A=Active, U=Inactive
   add1          String?
   add2          String?
   add3          String?
