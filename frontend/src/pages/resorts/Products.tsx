@@ -150,6 +150,7 @@ export function Products() {
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const q = searchParams.get('q') ?? '';
+  const status = searchParams.get('status') ?? '';       // '' = All
   const [searchInput, setSearchInput] = useState(q);
 
   const [modal, setModal] = useState<{ open: boolean; product: Product | null }>({ open: false, product: null });
@@ -159,8 +160,8 @@ export function Products() {
   const [failure, setFailure] = useState<string | null>(null);
 
   const { data: products, isLoading } = useQuery({
-    queryKey: ['products', q],
-    queryFn: () => productsApi.list(q || undefined).then(r => r.data.data),
+    queryKey: ['products', q, status],
+    queryFn: () => productsApi.list(q || undefined, status || undefined).then(r => r.data.data),
   });
 
   const deleteMut = useMutation({
@@ -183,10 +184,18 @@ export function Products() {
     onError: (err) => setFailure(`Could not change the product status. ${apiError(err)}`),
   });
 
+  // Both filters live in the URL so Back restores the whole view (project convention).
+  const setParams = (next: { q?: string; status?: string }) => {
+    const merged = { q, status, ...next };
+    const params: Record<string, string> = {};
+    if (merged.q) params.q = merged.q;
+    if (merged.status) params.status = merged.status;
+    setSearchParams(params, { replace: true });
+  };
+
   const doSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const next = searchInput.trim();
-    setSearchParams(next ? { q: next } : {}, { replace: true });
+    setParams({ q: searchInput.trim() });
   };
 
   const clearSearch = () => { setSearchInput(''); setSearchParams({}, { replace: true }); };
@@ -206,7 +215,7 @@ export function Products() {
 
       <Card>
         <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-          <form onSubmit={doSearch} className="flex items-center gap-2">
+          <form onSubmit={doSearch} className="flex flex-wrap items-center gap-2">
             <div className="w-72">
               <Input
                 placeholder="Search code / product name / contact"
@@ -214,8 +223,15 @@ export function Products() {
                 onChange={e => setSearchInput(e.target.value.toUpperCase())}
               />
             </div>
+            <div className="w-40">
+              <Select value={status} onChange={e => setParams({ status: e.target.value })}>
+                <option value="">All statuses</option>
+                <option value="A">Active</option>
+                <option value="U">Non-Active</option>
+              </Select>
+            </div>
             <Button type="submit" size="sm" variant="secondary"><Search className="h-4 w-4" /> Search</Button>
-            {q && <Button type="button" size="sm" variant="secondary" onClick={clearSearch}>Clear</Button>}
+            {(q || status) && <Button type="button" size="sm" variant="secondary" onClick={clearSearch}>Clear</Button>}
           </form>
           {canCreate('RESORTS_SETUP') && (
             <Button size="sm" onClick={() => setModal({ open: true, product: null })}><Plus className="h-4 w-4" /> Add product</Button>

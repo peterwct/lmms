@@ -2,7 +2,11 @@ import { api } from './client';
 import type { ApartmentType, AptBlock, AptBlockAvailability, AptBlockList, AvailabilityChart, CpSeasonCloneResult, CpSeasonMonth, CpSeasonMonthDeleteResult, CpSeasonMonthSaveResult, LvcCode, MarBatchResult, PointsType, SeasonPointDeleteResult, SeasonPointSaveResult, SeasonPointVersion, SeasonPointVersionSummary, Product, Holiday, HolidayCloneResult, HolidayType, Resort, ResortDetail, ResortInfoCategory, ResortMaintenance, ResortMaintenanceAvailability, ResortMaintenanceList, ResortUnit, ResortUnitList, UnitAvailability } from '../types';
 
 export const productsApi = {
-  list:   (q?: string) => api.get<{ data: Product[] }>('/products', { params: q ? { q } : undefined }),
+  // status: 'A' | 'U'; omitted = all. Callers passing neither keep the exact same
+  // request useActiveProducts relies on (unfiltered, shared ['products', ''] cache).
+  list:   (q?: string, status?: string) => api.get<{ data: Product[] }>('/products', {
+    params: (q || status) ? { ...(q ? { q } : {}), ...(status ? { status } : {}) } : undefined,
+  }),
   create: (data: Record<string, unknown>) => api.post<{ data: Product }>('/products', data),
   update: (id: string, data: Record<string, unknown>) => api.put<{ data: Product }>(`/products/${id}`, data),
   toggle: (id: string) => api.patch<{ data: Product }>(`/products/${id}/toggle`, {}),
@@ -18,7 +22,11 @@ export const lvcCodesApi = {
 };
 
 export const resortsApi = {
-  list:   (q?: string) => api.get<{ data: Resort[] }>('/resorts', { params: q ? { q } : undefined }),
+  // status: 'A' | 'U'; omitted = all. Callers passing neither keep the exact same
+  // request useActiveResorts relies on (unfiltered, shared ['resorts', ''] cache).
+  list:   (q?: string, status?: string) => api.get<{ data: Resort[] }>('/resorts', {
+    params: (q || status) ? { ...(q ? { q } : {}), ...(status ? { status } : {}) } : undefined,
+  }),
   get:    (id: string) => api.get<{ data: ResortDetail }>(`/resorts/${id}`),
   create: (data: Record<string, unknown>) => api.post<{ data: Resort }>('/resorts', data),
   update: (id: string, data: Record<string, unknown>) => api.put<{ data: Resort }>(`/resorts/${id}`, data),
@@ -115,7 +123,9 @@ export const seasonPointsApi = {
 };
 
 export const apartmentTypesApi = {
-  list:   (q?: string) => api.get<{ data: ApartmentType[] }>('/apartment-types', { params: q ? { q } : undefined }),
+  list:   (q?: string, resortCode?: string) => api.get<{ data: ApartmentType[] }>('/apartment-types', {
+    params: (q || resortCode) ? { ...(q ? { q } : {}), ...(resortCode ? { resortCode } : {}) } : undefined,
+  }),
   create: (data: Record<string, unknown>) => api.post<{ data: ApartmentType }>('/apartment-types', data),
   update: (id: string, data: Record<string, unknown>) => api.put<{ data: ApartmentType }>(`/apartment-types/${id}`, data),
   remove: (id: string) => api.delete(`/apartment-types/${id}`),

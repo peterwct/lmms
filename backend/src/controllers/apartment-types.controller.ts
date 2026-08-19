@@ -23,6 +23,9 @@ const resortSelect = { select: { shortName: true, resortName: true, lockOnOff: t
 
 export async function listApartmentTypes(req: Request, res: Response): Promise<void> {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  // resortCode: exact match, '' = all resorts. ANDed with the search below, so searching
+  // inside one resort works; the active-resort scope still applies either way.
+  const resortCode = typeof req.query.resortCode === 'string' ? req.query.resortCode.trim() : '';
   // Active resorts only (business rule, 2026-08-10). apt_category.txt carries 487 types
   // across 320 resorts, but only 13 resorts are Active -- the rest are retired legacy and
   // partner codes that would bury the working set. This mirrors, for the list itself, the
@@ -32,6 +35,7 @@ export async function listApartmentTypes(req: Request, res: Response): Promise<v
   const types = await prisma.apartmentType.findMany({
     where: {
       resort: { status: 'A' },
+      ...(resortCode ? { resortCode } : {}),
       ...(q
         ? {
             OR: [

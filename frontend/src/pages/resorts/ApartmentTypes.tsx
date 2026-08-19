@@ -140,6 +140,7 @@ export function ApartmentTypes() {
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const q = searchParams.get('q') ?? '';
+  const resortCode = searchParams.get('resort') ?? '';   // '' = all resorts
   const [searchInput, setSearchInput] = useState(q);
 
   const [modal, setModal] = useState<{ open: boolean; apt: ApartmentType | null }>({ open: false, apt: null });
@@ -148,8 +149,8 @@ export function ApartmentTypes() {
   const [result, setResult] = useState<string | null>(null);
 
   const { data: types, isLoading } = useQuery({
-    queryKey: ['apartment-types', q],
-    queryFn: () => apartmentTypesApi.list(q || undefined).then(r => r.data.data),
+    queryKey: ['apartment-types', q, resortCode],
+    queryFn: () => apartmentTypesApi.list(q || undefined, resortCode || undefined).then(r => r.data.data),
   });
 
   // Active resorts only (see useActiveResorts)
@@ -166,10 +167,18 @@ export function ApartmentTypes() {
     onError: (err) => setDelErr(apiError(err)),
   });
 
+  // Both filters live in the URL so Back restores the whole view (project convention).
+  const setParams = (next: { q?: string; resort?: string }) => {
+    const merged = { q, resort: resortCode, ...next };
+    const params: Record<string, string> = {};
+    if (merged.resort) params.resort = merged.resort;
+    if (merged.q) params.q = merged.q;
+    setSearchParams(params, { replace: true });
+  };
+
   const doSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const next = searchInput.trim();
-    setSearchParams(next ? { q: next } : {}, { replace: true });
+    setParams({ q: searchInput.trim() });
   };
 
   const clearSearch = () => { setSearchInput(''); setSearchParams({}, { replace: true }); };
@@ -186,7 +195,15 @@ export function ApartmentTypes() {
 
       <Card>
         <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-          <form onSubmit={doSearch} className="flex items-center gap-2">
+          <form onSubmit={doSearch} className="flex flex-wrap items-center gap-2">
+            <div className="w-56">
+              <Select value={resortCode} onChange={e => setParams({ resort: e.target.value })}>
+                <option value="">All resorts</option>
+                {resorts.map(r => (
+                  <option key={r.id} value={r.resortCode}>{r.resortCode} — {r.shortName ?? r.resortName}</option>
+                ))}
+              </Select>
+            </div>
             <div className="w-72">
               <Input
                 placeholder="Search resort code / name / type / description"
@@ -195,7 +212,7 @@ export function ApartmentTypes() {
               />
             </div>
             <Button type="submit" size="sm" variant="secondary"><Search className="h-4 w-4" /> Search</Button>
-            {q && <Button type="button" size="sm" variant="secondary" onClick={clearSearch}>Clear</Button>}
+            {(q || resortCode) && <Button type="button" size="sm" variant="secondary" onClick={clearSearch}>Clear</Button>}
           </form>
           {canCreate('RESORTS_SETUP') && (
             <Button size="sm" onClick={() => setModal({ open: true, apt: null })}><Plus className="h-4 w-4" /> Add apartment type</Button>

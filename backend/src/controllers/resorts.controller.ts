@@ -15,6 +15,11 @@ const INFO_CATEGORIES: Record<ResortInfoCategory, { label: string }> = {
   UNIT_AMENITY:      { label: 'Unit Amenities' },
 };
 
+// status: A=Active, U=Inactive (Informix 'I' is mapped to 'U' on import). Set by the
+// toggle endpoint, never by the form, so it is not part of resortSchema -- this const
+// exists for the list filter below.
+const STATUSES = ['A', 'U'] as const;
+
 // Field sizes follow the Informix resort_mast char() widths
 const resortSchema = z.object({
   resortCode:    z.string().trim().min(1).max(8),
@@ -58,16 +63,26 @@ async function productMissing(coCode: unknown): Promise<boolean> {
 
 export async function listResorts(req: Request, res: Response): Promise<void> {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  // status filter: 'A' | 'U'; anything else (incl. the default '') means All. All must stay
+  // the default -- fn 2 is where inactive resorts are managed, and useActiveResorts calls
+  // this endpoint with no params at all and does its own filtering after the shared cache.
+  const statusRaw = typeof req.query.status === 'string' ? req.query.status.trim().toUpperCase() : '';
+  const status = (STATUSES as readonly string[]).includes(statusRaw) ? statusRaw : undefined;
+
+  const filters: Record<string, unknown>[] = [];
+  if (q) {
+    filters.push({
+      OR: [
+        { resortCode: { contains: q, mode: 'insensitive' } },
+        { resortName: { contains: q, mode: 'insensitive' } },
+        { shortName:  { contains: q, mode: 'insensitive' } },
+      ],
+    });
+  }
+  if (status) filters.push({ status });
+
   const resorts = await prisma.resort.findMany({
-    where: q
-      ? {
-          OR: [
-            { resortCode: { contains: q, mode: 'insensitive' } },
-            { resortName: { contains: q, mode: 'insensitive' } },
-            { shortName:  { contains: q, mode: 'insensitive' } },
-          ],
-        }
-      : undefined,
+    where: filters.length ? { AND: filters } : undefined,
     // Active first, then resort code. 'A' sorts before 'U' ascending, so a plain asc on
     // status gives Active-then-Inactive (same trick as the AMC schedules acctClassify sort).
     orderBy: [{ status: 'asc' }, { resortCode: 'asc' }],

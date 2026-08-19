@@ -32,16 +32,25 @@ const clean = (data: Record<string, unknown>) =>
 
 export async function listProducts(req: Request, res: Response): Promise<void> {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  // status filter: 'A' | 'U'; anything else (incl. the default '') means All.
+  // fn 1 is where inactive products are managed, so All must stay the default.
+  const statusRaw = typeof req.query.status === 'string' ? req.query.status.trim().toUpperCase() : '';
+  const status = (STATUSES as readonly string[]).includes(statusRaw) ? statusRaw : undefined;
+
+  const filters: Record<string, unknown>[] = [];
+  if (q) {
+    filters.push({
+      OR: [
+        { coCode:        { contains: q, mode: 'insensitive' } },
+        { coName:        { contains: q, mode: 'insensitive' } },
+        { contactPerson: { contains: q, mode: 'insensitive' } },
+      ],
+    });
+  }
+  if (status) filters.push({ status });
+
   const products = await prisma.product.findMany({
-    where: q
-      ? {
-          OR: [
-            { coCode:        { contains: q, mode: 'insensitive' } },
-            { coName:        { contains: q, mode: 'insensitive' } },
-            { contactPerson: { contains: q, mode: 'insensitive' } },
-          ],
-        }
-      : undefined,
+    where: filters.length ? { AND: filters } : undefined,
     // Active first, then Inactive (A < U), each by code -- mirrors listLvcCodes.
     // The list itself must keep returning inactive rows: fn 1 is where they are managed.
     orderBy: [{ status: 'asc' }, { coCode: 'asc' }],
