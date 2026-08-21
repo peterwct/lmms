@@ -21,7 +21,9 @@ lmms/
 │   ├── migrate-amc-schedules.ts  # AMC schedules from amc_mem.txt + ps_amc_mem.txt
 │   ├── migrate-amc-price.ts      # LHC AMC price master from amc_price.txt
 │   ├── migrate-amc-price-points.ts  # CP points tiers from ps_ctrltab.txt
-│   ├── migrate-rci-enrol.ts # RCI enrollment data from rci_enrol.txt (updates Agreement.rciRefNo/rciNominee/rciEnrolDate/rciExpiryDate)
+│   ├── migrate-rci-enrol.ts # RCI backfill of Agreement.rciRefNo/rciNominee/rciEnrolDate/rciExpiryDate from rci_enrol.txt (detects the 43-col full-table vs the old 29-col joined layout)
+│   ├── migrate-rci-enrolment.ts # RCI Enrolment register from rci_enrol.txt (RCI fn 1; 25 of 43 cols) — NOT the same script as the line above
+│   ├── migrate-rci-week.ts  # RCI week-number calendar from rci_week.txt (RCI fn 2; 6 of 8 cols, years >= 2026 only)
 │   ├── migrate-salesperson.ts  # Salesperson master from csp_mast.txt
 │   ├── migrate-su-pt-reasons.ts  # SU/PT reason backfill from su_trans.txt + pt_trans.txt
 │   ├── migrate-booking-entitlement.ts  # Booking entitlement nights used from booking_ent1.txt (LHC 03/15)
@@ -57,6 +59,7 @@ lmms/
 │   ├── amc_price.txt
 │   ├── ps_ctrltab.txt
 │   ├── rci_enrol.txt
+│   ├── rci_week.txt
 │   ├── csp_mast.txt
 │   ├── agmt_can_cate.txt
 │   ├── su_mast.txt
@@ -278,7 +281,7 @@ $env:DATABASE_URL = "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 .\refresh-test-db.ps1 -DryRun
 ```
 
-The script: truncates BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + SeasonPoint + ResortMaintenance + AptBlock + ResAvailMast + Resort + Product + LvcCode + CpSeasonDate + Member CASCADE (the Member CASCADE also clears AmcInvoice) → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrollment → salespersons + products (`ps_company.txt`) + LVC codes (`lvc_master.txt`) + resorts (master + info + `apt_category.txt` apartment types + units from `apt_mast.txt` **and the optional `apt_mast_active.txt`** + `res_avail_mast.txt` availability grid + `apt_block.txt` blocks + `resmt.txt` maintenance + `ps_seasonapt.txt` HOME season points + `ps_lvcapt.txt` AWAY season points) → public/school holiday seeds + `ps_seasondate.txt` CP season calendar → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → AMC invoice counter (`ctrl_billtab.txt`, resets `AmcInvoiceCounter` to the Informix baseline) → re-grants lhb_app permissions → prints final row counts.
+The script: truncates RciWeek + RciEnrolment + BookingEntitlement + CpBookingEntitlement + PbsClaim + PbsScheme + Salesperson + SeasonPoint + ResortMaintenance + AptBlock + ResAvailMast + Resort + Product + LvcCode + CpSeasonDate + Member CASCADE (the Member CASCADE also clears AmcInvoice) → migrates members/agreements/nominees → migrates AMC schedules + PBS schemes + PBS claims + RCI enrolment (the Agreement backfill **and** the `RciEnrolment` register) + the `RciWeek` calendar (years >= 2026) → salespersons + products (`ps_company.txt`) + LVC codes (`lvc_master.txt`) + resorts (master + info + `apt_category.txt` apartment types + units from `apt_mast.txt` **and the optional `apt_mast_active.txt`** + `res_avail_mast.txt` availability grid + `apt_block.txt` blocks + `resmt.txt` maintenance + `ps_seasonapt.txt` HOME season points + `ps_lvcapt.txt` AWAY season points) → public/school holiday seeds + `ps_seasondate.txt` CP season calendar → booking entitlements (LHC `booking_ent1.txt` + CP `ps_bookent1.txt`) → AMC invoice counter (`ctrl_billtab.txt`, resets `AmcInvoiceCounter` to the Informix baseline) → re-grants lhb_app permissions → prints final row counts.
 
 > **Produce `apt_mast.txt`, `apt_block.txt` and `resmt.txt` with the committed `migrate/*_unload.sql` scripts, not the SELECTs in this file's history** — they carry the active-resort filter and the four-resort live-unit whitelist, and the three whitelists must stay identical. See `### ResortUnit`.
 
@@ -294,7 +297,9 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table AmcSchedule                 # AMC schedules
 .\migrate-table.ps1 -Table PbsScheme                   # PBS schemes (also truncates PbsClaim)
 .\migrate-table.ps1 -Table PbsClaim                    # Just PBS claims
-.\migrate-table.ps1 -Table RciEnrol                    # RCI enrollment (updates rciRefNo/rciNominee/dates on Agreement)
+.\migrate-table.ps1 -Table RciEnrol                    # RCI backfill of the 4 Agreement RCI columns (NOT the register)
+.\migrate-table.ps1 -Table RciEnrolment                # RCI Enrolment register (rci_enrol.txt, 25 of 43 cols; truncates + reimports — post-go-live clobbers CRUD edits)
+.\migrate-table.ps1 -Table RciWeek                     # RCI week calendar (rci_week.txt, 6 of 8 cols, years >= 2026; truncates + reimports — post-go-live wipes app-generated years)
 .\migrate-table.ps1 -Table SuPtReason                  # SU/PT reason backfill (suCode + canCode overwrite)
 .\migrate-table.ps1 -Table Salesperson                 # Salesperson master
 .\migrate-table.ps1 -Table BookingEntitlement          # Booking entitlement nights used (LHC 03/15; truncates + reimports)
@@ -314,7 +319,7 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 .\migrate-table.ps1 -Table PbsClaim -DryRun            # Preview without writing
 ```
 
-**Note:** After `-Table Agreement`, you must re-import dependent tables: `AmcSchedule`, `PbsScheme`, `PbsClaim`, `RciEnrol`, `BookingEntitlement`.
+**Note:** After `-Table Agreement`, you must re-import dependent tables: `AmcSchedule`, `PbsScheme`, `PbsClaim`, `RciEnrol`, `BookingEntitlement`. `RciEnrolment` has no FK to Agreement so it survives, but its rows will only resolve a member name once the agreements are back.
 
 ## Authentication
 
@@ -1399,6 +1404,120 @@ its own `pointsType`** (a `DELETE ... WHERE`, not a `TRUNCATE`, since the halves
 changing for the redesign — both are column-agnostic. Real Informix source, so both **reimport** —
 post-go-live re-import **clobbers CRUD edits**.
 
+### RciEnrolment
+RCI (**Resort Condominiums International**) enrolment register for the **RCI Enrolment**
+function (`/rci/enrolment`, RCI fn 1). **17,915 records** from `rci_enrol.txt` (Informix
+`rci_enrol`, a full-table 43-column unload since 2026-08-20).
+
+**One row per ENROLMENT, not per agreement.** An agreement can hold several rows — typically
+a lapsed `1704-*` enrolment plus a newer `PENDING` one — so `coCode + membershipNo +
+agreementNo` is **deliberately not unique** (91 such groups; 27 remain duplicated even with
+`rciNo`). **`serialNo` (Informix `re_serial_no`, a `serial`) is the only unique key**, which is
+what makes a re-import idempotent; app-created rows allocate `max(serialNo)+1` inside the create
+transaction (unique index as the backstop), so numbering continues the Informix sequence —
+the first new record was 24517.
+
+Fields: `serialNo` (**unique**), `coCode`, `membershipNo`, `agreementNo`, `rciNo` (RCI member
+no., or the literal `PENDING`), `renewalDate` (`re_act_date`), `expiryDate`, `rciFees`
+(Decimal 8,2), `resortCode`, `firstName1`/`lastName1`/`name1`, `firstName2`/`lastName2`,
+`mailAdd1-3`, `mailCityState`, `mailPostcode`, `malaysia` (Y/N), `telNo1`, `telNo2`,
+`coOwner`, `rciStatus`, `totInterval`.
+
+> **`renewalDate` and `expiryDate` are INFORMATION ONLY** (business rule) — members renew
+> directly with RCI, so nothing in this system acts on, validates or alerts off them. Don't
+> build expiry logic on these columns.
+
+**Only 25 of the 43 source columns are migrated** (business decision) — `re_batch_no`,
+`re_name1_no`, `re_agmt_no`, **`re_name2`** (first/last name 2 are kept, the concatenated form
+is not), `re_name2_no`, the print/reprint block, the audit/lock trailer and `re_old_rci_no` are
+all dropped, as everywhere else in this codebase.
+
+**No FK to Agreement** — same choice as `CpBookingEntitlement`. The natural key is stored and
+resolved on read (`findAgreement()` matches all three of `coCode + membershipNo + agreementNo`,
+the safe direction for transferred agreements). **Create validates that the agreement exists**
+(400 otherwise) and the detail endpoint returns `memberName` + `acctClassify` from that lookup.
+17,909 of the 17,915 migrated rows resolve to an agreement; the 6 that don't are legacy
+(one coCode `12`, one membership `00000-KL-M-0000/M/I`) and are readable/editable but could not
+be re-created through the CRUD.
+
+**The agreement key is immutable after create** — `coCode`/`membershipNo`/`agreementNo` are
+omitted from the update schema (move = delete + re-add, the same rule as `ResortUnit.resortCode`).
+Delete is a hard delete with **no usage guard** — nothing references `RciEnrolment` yet; add one
+when RCI Interval (fn 2) starts pointing at an enrolment.
+
+**`rciStatus` is a plain `String`** validated by a `z.enum(['A','C','M','T'])` in the controller,
+**not** a Prisma enum — adding a status later must not require a migration (same reasoning as
+`CpSeasonDate.season` and `Product.entType`). Distribution: C 11,685 / A 5,961 / T 155 / M 114.
+
+**Source anomalies are imported verbatim**, as with the `LvcCode` typos: 8 rows carry a
+`renewalDate` and 6 an `expiryDate` before 1970 (legacy keying errors, e.g. year 0190), and
+`resortCode` is free text in the source (`L-10013` 12,961 and `L-10026` 2,848 dominate, but
+`1704`, `L.COVE`, `LCS` also appear) — so it is **not** FK'd or dropdown-bound to `Resort`.
+Staff correct these through the CRUD; rewriting them at import would make a re-import disagree
+with Informix.
+
+Imported via `prisma/migrate-rci-enrolment.ts` (`migrate-table.ps1 -Table RciEnrolment`, also in
+`refresh-test-db.ps1`). Real Informix source, so it **truncates and reimports** — post-go-live
+re-import **clobbers CRUD edits**.
+
+> **Two scripts read `rci_enrol.txt` and they are not interchangeable.**
+> `migrate-rci-enrolment.ts` loads this table; **`migrate-rci-enrol.ts`** (no "ment", and
+> `-Table RciEnrol`) only backfills `Agreement.rciRefNo/rciNominee/rciEnrolDate/rciExpiryDate`
+> for the RCI card on Agreement Detail. The latter was written against the **old 30-column
+> joined export** and would have silently matched **nothing** against the new 44-field file
+> (its `membershipNo` index landed on `re_serial_no`); it now **detects the layout from the
+> field count**. On the full-table export it leaves `rciNominee` **unchanged**, because the
+> `e_rci_salutation`/`e_rci_name` columns came from the si_entitlement JOIN and don't exist —
+> `re_name1` would overwrite `MR WONG YIT MENG` with `WONG YIT MENG`. The full names live in
+> `RciEnrolment.name1`.
+
+### RciWeek
+RCI week-number calendar for the **RCI Weekly Interval** function (`/rci/weekly-interval`,
+RCI fn 2). **209 records** from `rci_week.txt` (Informix `rci_week`) — **2026:52, 2027:53,
+2028:52, 2029:52**.
+
+**A week runs Friday → the FOLLOWING Friday**, so consecutive weeks **share a boundary
+date** (`week[n].friEnd == week[n+1].friStart`) and the last week of a year **crosses into
+the next** (2026 wk52 = 25-12-2026 → 01-01-2027; 2027 wk53 = 31-12-2027 → 07-01-2028).
+Fields: `year`, `weekNo`, `friStart`, `friEnd`, `satStart`, `satEnd`. Unique:
+`[year, weekNo]` (= Informix `rw_idx1`) — `year` is its leftmost column, so it also serves
+the year-filtered read and the whole-year delete; **no separate `@@index([year])`**.
+All four date columns are plain `TIMESTAMP` at UTC midnight — do NOT convert them.
+
+> **Every row is derivable from the year alone**, verified programmatically against all 209
+> migrated rows byte-for-byte:
+> - `friStart` of week 1 = **first Friday on or after 1 Jan**
+> - `friEnd` = `friStart + 7`; `satStart` = `friStart + 1`; `satEnd` = `friEnd + 1`
+> - week count = `(firstFriday(Y+1) − firstFriday(Y)) / 7` → **52 or 53**
+>
+> That is why **Add keys a year and nothing else** — `generateWeeks(year)` in
+> `rci-week.controller.ts` produces the whole calendar. A hand-keyed start date could
+> silently shift a year; deriving cannot disagree with Informix. Note `getUTCDay()` puts
+> **Friday at 5** (Sunday = 0) — the one easy off-by-one here.
+
+**Whole years only, and no edit path at all.** A year is created as a whole
+(`POST /year`, **409** if it already exists) and deleted as a whole (`DELETE /year?year=`,
+**404** if empty). There is no per-week create, update or delete, and the routes never use
+the `'edit'` permission. Correcting a year = delete it and re-add.
+
+**`MIN_YEAR = 2026`** (business decision) — declared in both the controller and
+`migrate-rci-week.ts`, and mirrored in the page. Older Informix years were **not
+migrated**: 1,846 of the 2,055 source rows are pre-2026, and they are also where every
+anomaly lives — 24 rows with null dates, 213 whose Saturday pair drifted off `friStart+1`
+(1994/2000/2005/2011), 2 with a `friEnd` that is not `+7`, and a gap at 2021 wk52→53.
+**Nothing at or after 2026 deviates**, so the importer loads 209 clean rows. It still
+re-derives every row and reports a mismatch as a **WARN while importing verbatim** — that
+surfaces a bad future export without letting the app disagree with Informix.
+
+**`satStart`/`satEnd` are stored and returned by the API but NOT shown on screen**
+(business decision) — the table renders only the Friday pair. They are on the
+`RciWeek` TypeScript interface so a later screen needs no round trip.
+
+**`rw_user_create` / `rw_date_create` are NOT migrated**, as everywhere else in this
+codebase. Imported via `prisma/migrate-rci-week.ts` (`migrate-table.ps1 -Table RciWeek`,
+also in `refresh-test-db.ps1`). Truncates + reimports — **post-go-live re-import wipes any
+year generated through the app** (and reinstates only 2026-2029).
+
 ### State
 39 records from `state.txt`. Fields: `code` (PK, 2-digit), `name`. Served via `GET /api/states`.
 
@@ -1417,7 +1536,8 @@ Source tables and their column counts (verified from actual export files):
 | `ps_amc_mem.txt` | CP AMC schedules | 10 cols pipe-delimited | same pattern, no price_code |
 | `amc_price.txt` | LHC AMC price master | pipe-delimited | coCode[0], effectiveDate[1], priceCode[2], currencyCode[3], amcAmount[4], sinkFund[5], serviceTax[6], totalAmount[7], amountInWords[9], rate[10] |
 | `ps_ctrltab.txt` | CP points tiers | pipe-delimited | coCode[0], effectiveDate[1], minPoints[2], maxPoints[3], unitPrice[6], amcRatePerPoint[7], sinkingFundPct[8], gstPct[9], rciPoints[12] |
-| `rci_enrol.txt` | RCI enrollment | 30 cols pipe-delimited | re_cocode[0], re_membership_no[1], re_agreement_no[2], re_rci_no[3], re_act_date[4], re_expiry_date[5], e_rci_salutation[27], e_rci_name[28]. Joined with si_entitlement for salutation/name. Updates existing Agreement records (no separate table). |
+| `rci_enrol.txt` | RCI enrolment | **44 fields = 43 cols + trailing empty** (full table since 2026-08-20; was a 30-col export joined with si_entitlement) | re_cocode[0], re_serial_no[1], re_batch_no[2], re_membership_no[3], re_agreement_no[4], re_rci_no[5], re_act_date[6] (**renewal date**), re_expiry_date[7], re_rci_fees[8], re_resort_code[9], re_first_name1[10], re_last_name1[11], re_name1[12], re_first_name2[15], re_last_name2[16], re_mail_add1-3[19-21], re_mail_city_state[22], re_mail_postcode[23], re_malaysia[24], re_telno1[25], re_telno2[26], re_co_owner[27], re_rci_status[28], re_tot_interval[29]. **re_name1_no[13], re_agmt_no[14], re_name2[17], re_name2_no[18] and the print/audit/lock trailer + re_old_rci_no[30-42] NOT migrated** (business decision). `UNLOAD TO 'rci_enrol.txt' DELIMITER '\|' SELECT * FROM rci_enrol;` → `RciEnrolment` (**17,915 rows**, unique on `serialNo`) via `prisma/migrate-rci-enrolment.ts`. **The older `prisma/migrate-rci-enrol.ts` reads the SAME file** to backfill four Agreement columns; it detects the layout from the field count, and on the full-table export leaves `rciNominee` alone because the salutation/name columns only existed in the joined export. |
+| `rci_week.txt` | RCI week-number calendar | **9 fields = 8 cols + trailing empty** | rw_year[0], rw_week[1], rw_fri_start[2], rw_fri_end[3], rw_sat_start[4], rw_sat_end[5]. **rw_user_create[6] and rw_date_create[7] NOT migrated** (business decision). `UNLOAD TO 'rci_week.txt' DELIMITER '\|' SELECT * FROM rci_week;` → `RciWeek` (unique on `[year, weekNo]` = `rw_idx1`). **Only years >= 2026 are imported** (business decision): **209 of 2,055 rows** — 2026:52, 2027:53, 2028:52, 2029:52. The 1,846 pre-2026 rows are skipped and are also where every anomaly sits (24 null dates, 213 drifted Saturday pairs, 2 bad `friEnd`, a 2021 gap); nothing at or after 2026 deviates. A week runs **Friday → the following Friday**, so weeks share a boundary date and the last week crosses into the next year. See `prisma/migrate-rci-week.ts`. |
 | `csp_mast.txt` | Salesperson master | 4 cols pipe-delimited | csp_code[0], csp_name[1], csp_branch[2], csp_status[3] |
 | `su_mast.txt` | SuReason master | 3 cols pipe-delimited | code[0], description[1] |
 | `su_trans.txt` / `pt_trans.txt` | SU/PT reason backfill | 4 cols pipe-delimited | membershipNo[0], agreementNo[1], code[2]. `su_trans.txt` → `Agreement.suCode` (only if current `acctClassify=SU`); `pt_trans.txt` → `Agreement.canCode` (only if current `acctClassify=PT`, **overwrites** any existing value — pt_trans.txt is authoritative). Match key: `membershipNo + agreementNo` (NOT `agreementNo` alone — see "FK vs natural key" below, agreementNo is duplicated across TT/TF transfer pairs). Updates existing Agreement records (no separate trans table), same pattern as `rci_enrol.txt`. `pt_mast.txt` is **not used** — every code in `pt_trans.txt` (numeric, 08-45) already exists in `CancellationReason`, while `pt_mast.txt`'s own numbering (00-17) is a stale/superseded lookup the live data doesn't reference. |
@@ -1616,6 +1736,16 @@ GET  /api/season-points?type=&resortCode=&effectiveDate=  One VERSION's points r
 GET  /api/season-points/versions?resortCode=  Every version set up for that resort, newest first: { effectiveDate, rows, apartmentTypes, seasons, lvcCoCode, isCurrent } - feeds the version list (RESORTS_SETUP view)
 POST /api/season-points/version             Save a whole version (body: pointsType, resortCode, effectiveDate, replaces? [the version's stored date when editing], lvcCoCode? [AWAY only], rows[{apartmentType,season,ptsSun..ptsSat}]) - the add AND edit path, REPLACE-ALL within the version so rows dropped from the payload are deleted. pointsType and coCode are derived from the resort, never the payload. 400 on a kind mismatch, an unknown lvcCoCode product, an apartment type neither registered in fn 3 nor already stored, or a repeated (type,season); 409 if the resort already has a version on the target date; 400 if a CREATE (no `replaces`) is dated on or before the resort's latest existing version - a new rate must supersede, not backdate (RESORTS_SETUP create)
 DELETE /api/season-points/version?type=&resortCode=&effectiveDate=  Delete a whole version (RESORTS_SETUP delete; 400 on a kind mismatch, 404 if empty). There is no per-row delete - blank a row and re-save instead
+GET  /api/rci-enrolments?q=&coCode=&rciStatus=&page=&pageSize=  RCI enrolment list, paginated (q = membership/agreement/RCI no/name/co-owner/resort code; RESORTS_SETUP view)
+GET  /api/rci-enrolments/lookup?coCode=&membershipNo=&agreementNo=  Confirm an agreement exists and return its member name for the add form (400 if any param missing, 404 if unknown; RESORTS_SETUP view)
+GET  /api/rci-enrolments/:id                Enrolment + memberName/acctClassify resolved by natural key (RESORTS_SETUP view)
+POST /api/rci-enrolments                    Create enrolment; serialNo allocated as max+1 (RESORTS_SETUP create; 400 if the agreement key names no agreement)
+PUT  /api/rci-enrolments/:id                Update enrolment; coCode/membershipNo/agreementNo are immutable (RESORTS_SETUP edit)
+DELETE /api/rci-enrolments/:id              Delete enrolment (RESORTS_SETUP delete; no usage guard)
+GET  /api/rci-weeks?year=                    One year's RCI weeks, unpaginated, ordered weekNo asc; year REQUIRED (400 otherwise). Returns { data, year, weeks } (RESORTS_SETUP view)
+GET  /api/rci-weeks/years                   Distinct years set up, newest first — feeds the year dropdown (RESORTS_SETUP view)
+POST /api/rci-weeks/year                    Generate a whole year's 52/53 weeks from the year alone (body: year; RESORTS_SETUP create; 400 below MIN_YEAR 2026, 409 if the year already has weeks). Returns { year, weeks, firstFriday, lastWeekEnd }
+DELETE /api/rci-weeks/year?year=            Delete a whole year's weeks (RESORTS_SETUP delete; 404 if the year is empty). There is NO per-week delete and no update endpoint at all
 GET  /api/pbs?q=&coCode=&acctClassify=&schemeType=&claimIndc=  PBS scheme list (search+filters)
 GET  /api/pbs/:id                                  PBS scheme detail + claims
 PUT  /api/pbs/:id                                  Update PBS scheme (certNo, schemeType, remark)
@@ -1679,6 +1809,7 @@ renumbering means editing both. **Prose elsewhere may still cite pre-merge numbe
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
 | Resorts Setup | ✅ Done | New `RESORTS_SETUP` AppModule (seed defaults: IT+Resort Ops FULL, Member Services VIEW, Finance/Credit NONE). Landing page `/resorts` (PBS-style menu, sidebar group "Resorts"). Function 1 done: **Products Setup** (`/resorts/products`) — `Product` CRUD over the operating-company / product master (list+search on code/name/contact, add/edit modal with the product code read-only in edit mode, `ConfirmDeleteModal`). **Delete is refused 409** when any Agreement/AmcSchedule/Resort/LvcCode still carries the `coCode` — there is no DB-level FK, so this controller count is the only guard; the message names the counts and surfaces inside the confirm modal. Because that guard makes deletion impossible for nearly every row, an **A/U status toggle** was added 2026-08-17 (`ToggleRight`/`ToggleLeft` icon first in the row's action group, green Active / grey Inactive badge column, inactive rows dimmed, list ordered Active first then by code; status is also editable in the add/edit form). Same shape as the Resort and LvcCode toggles, including the deliberate **no-success-dialog** exception — the badge flips in place, but a failed toggle still surfaces through a `variant="error"` `ResultDialog`. Deactivating removes the product from the fn 10 LVC Code and fn 9 **Charged To** dropdowns (via the shared `useActiveProducts` hook) and changes nothing else — no server-side status check was added, so records already naming a retired product stay editable. 29 rows from `ps_company.txt` (first 9 of 17 cols; the initial 7-row export was filtered and was re-extracted in full), all backfilled to Active. Nothing else reads this table yet — `ProductBadge` still hardcodes the LHC/CP names. Function 2 done: **Resorts Setup** (`/resorts/setup`) — Resort master CRUD (list+search, add/edit modal shared via `ResortFormModal.tsx`, status toggle A/U, delete; buttons gated by canCreate/canEdit/canDelete; Eye icon on every row → detail). **Resort Detail** (`/resorts/setup/:id`) — details card + Edit + 4 info tabs (Getting There / Resort Facilities / Places of Interest / Unit Amenities) from `ResortInfoLine`; per-tab single-textarea editor, remark-style free text (400 chars total per category, validated client+server, no auto-uppercase — legacy print lines are mixed-case). Function 3 done: **Apartment Types Setup** (`/resorts/apartment-types`) — `ApartmentType` CRUD (list+search, add/edit modal, delete; resort picker from Resort master, lockType Select disabled/forced-LN unless resort `lockOnOff='Y'`; **delete refused 409** while any unit / availability / grid / season-points row still names the type, the message naming the counts inside the confirm modal). **The list is scoped to ACTIVE resorts server-side** (2026-08-10) — 17 of the 487 rows, across 12 resorts. 487 rows from `apt_category.txt` (4 of 11 cols), which on 2026-08-10 replaced the 9 hand-transcribed rows formerly hardcoded in `migrate-resorts.ts`. Function 4 done: **Apartments/Units Setup** (`/resorts/units`) — `ResortUnit` CRUD (paginated list with resort filter + search, add/edit modal with apartment-type dropdown restricted to the selected resort's types, RCI Reserved checkbox; **delete refused 409** while the unit still has availability or maintenance records, the message naming both counts inside the confirm modal; **358 rows** from `apt_mast.txt`, which since 2026-08-11 is exported ACTIVE-resorts-only with a live-unit whitelist for 4 resorts — see `### ResortUnit`). Function 5 done: **Resorts Unit Availability/Inventory Setup** (`/resorts/availability`) — **add / view / delete only, no edit** (2026-08-14): the list is add-only, so correcting a record means deleting and re-adding it. **Two Add buttons, split by `coCode` (2026-08-14)**: **+ Add availability** for our own products (`03`/`15`/`02`, whose resorts have real numbered apartments) is the cascade add form Resort→ApartmentType→Unit→start/end dates, and its resort dropdown now lists only those resorts; **Add MAR availability** for every other resort (the partner/exchange **MAR** resorts, which allocate N interchangeable units of a sleep type for a period) is a **batch** form keying Resort→ApartmentType→number of units→occupancy→start/end dates, which generates unit numbers `1-{occupancy}`..`{N}-{occupancy}` (the format the legacy data already uses — `V-CLC1` SLEEP4 = `1-4`..`15-4`), **creates the `ResortUnit` rows and their availability records together**, all-or-nothing, and **reuses** any unit already registered with that apartment type so a second run just adds next year's dates. It shows a live preview of the numbers it will generate, and the result dialog reports the created/reused split. The split is enforced server-side (400), not just in the dropdowns; the page's resort **filter** still lists every active resort so MAR records stay viewable, and Delete is one path for both. Per-row Eye + Delete, styled delete-confirm modal. **The page lands EMPTY** — nothing is fetched until a resort is picked from the filter (5,162 records over 12 resorts is not a useful first screen, and staff work one resort at a time); the placeholder reads "Select a resort to view its availability records." Each save auto-maintains the generated `ResAvailMast` per-day grid (`act/bal +1` per day on create, `-1` on delete; a MAR batch does **one** pass at `+N`; overlap-guarded 409). **Delete is refused 409** while the unit has maintenance inside the record's dates. Per-row Eye icon → modal of the block's day grid. Header **Resorts Availability** button opens a **draggable, non-modal** popup (`DraggableWindow.tsx`) = ResAvailMast pivoted resort×date, cell=balNight (red ≤2, weekends highlighted), **Product Type read from the Product master — every ACTIVE product, not the old fixed LHC/CP pair** (2026-08-17; defaults to `03` so the opening view is unchanged), date + `<<`/`>>` 15-day paging; the chart lives in the shared `components/ResortAvailabilityChart.tsx` so both Function 5 and Function 6 render it. **The chart lists ACTIVE resorts only** (2026-08-11) — it scaffolds a row per resort x apartment type and zero-fills, so retired resorts were drawing full rows of zeros (LHC 56 rows of which 5 were live, CP 10 of 3). **Most products chart empty, and that is the data, not a bug**: only 7 coCodes have any active resort at all (01, 02, 03, 20, 24, 26 + the test row AA), and of those only `03` (6 resorts) and `02` (1) have `ResAvailMast` rows — `res_avail_mast.txt` has not been re-exported since 2026-07-24 and still covers 7 resorts, so the active `V-*` partner resorts on 01/20/24/26 have units and blocks but no grid. Picking any other product shows "No resorts for this product". Function 6 done: **Resorts Unit Under Maintenance** (`/resorts/maintenance`) — `ResortMaintenance` CRUD. **The page lands EMPTY**, like fn 5 — nothing is fetched until a resort is picked (10,904 records is not a useful first screen); the placeholder reads "Select a resort to view its maintenance records." Paginated list sorted startDate desc with resort filter + **Month/Year period filter** + search incl. reason, 3-level add cascade Resort→Unit→**Availability** (the fn 5 record every range must sit inside; **units lacking availability listed but disabled**) with the apartment type shown in the unit option label and derived server-side, **mandatory** remarks/reason field, **up to 3 date ranges per add** (each saved as its own record, all sharing the one reason; all-or-nothing, with client-side row errors mirroring the server's overlap rules), styled delete-confirm modal, per-row Eye icon → day grid, same **Resorts Availability** popup button). Each save maintains `ResAvailMast.balNight` only (`-1` per day on create, `+1` on delete, reverse-then-apply on edit; `actNight` never touched, rows never created/deleted; overlap-guarded 409) — so the availability chart needed no change. **10,904 rows** from `resmt.txt`. Function 7 done: **Public & School Holidays Setup** (`/resorts/holidays`) — `Holiday` CRUD over **one** table holding both kinds, presented as a **tabbed page** (Public Holidays / School Holidays) whose tab lives in the URL (`?tab=school`) alongside the year filter and search, so Back restores the whole view. Each tab keeps its own columns (Public: Date/Day/Year/Holiday; School: Academic Year/Start/End/Days/Holiday), its own year-filter label and its own **Clone to next year** sub-function copying a year to year+1 on the same month/day (both ends for a school range) for staff to correct. One shared add/edit modal branches on the tab: a public holiday is a single date whose `year` is **derived server-side**, a school holiday is a range with an **editable** `academicYear` (pre-filled from the start date only while blank) since a session can cross the calendar boundary. School-only guards: overlapping ranges and a repeated name within one academic year are both rejected 409. Global calendar — no resort/state scope, so no availability-grid interaction. 12 public + 4 school business-supplied 2026 rows via `prisma/seed-holidays.ts`. **Merged 2026-07-31 from the former fns 7/8** (`PublicHoliday` + `SchoolHoliday`), which were ~90% duplicated code; `/resorts/school-holidays` now redirects to the School tab, and fns 9-12 renumbered down to 8-11. Function 8 done: **CP's Seasons Setup** (`/resorts/seasons`, renamed from "CP's Seasons & Points Setup" — the points chart is function 9, `CpSeasonPoint`) — `CpSeasonDate` CRUD over a **per-day** G/S/D calendar, presented **one month at a time** in the legacy Informix 3-across `[dd-mm-yyyy] [S]` grid (Year input + Month dropdown + **Prev/Next** month buttons; season cells are inline selects; **Save month** bulk-upserts every date shown; **Delete month** removes the whole month). An empty month doubles as the add form, pre-filled Silver. Plus **Clone to next year**. 424 rows from `ps_seasondate.txt`. **CP-only** — see the per-product calendar note above `### Holiday`. Function 9 done: **CP Points Deduction** (`/resorts/season-points`) — `SeasonPoint` CRUD over **one** table holding both points charts, presented as a **tabbed page** (Home Resorts / Non-Home Resorts) whose tab lives in the URL (`?type=away`) alongside the resort and version, so Back restores the whole view. **Charts are effective-dated VERSIONS, not per-year grids** (redesigned 2026-08-13): a chart stays in force until a later version supersedes it, so a new one is created only when a rate changes or a room type is introduced. **Home** = a `coCode '02'` resort (CP-PBR today) — the points fn 8's G/S/D grade resolves into. **Non-home** = every other resort (our own LHC resorts and the partner/exchange `V-*` codes) reached through an LVC exchange programme; this is the reason `pssa_lvcpts0..6` are zero in `ps_seasonapt`. Both tabs share the whole shape: a **version list** (resort picker + that resort's versions newest first — Effective From, Status Current/Scheduled/Superseded, Room Types, Seasons, Rows — plus **New version**), and a **version editor** reached at `?eff=YYYY-MM-DD` or `?eff=new`: a legacy-style read-only header block, **one Effective from date for the whole chart**, and a grid scaffolded from the resort's apartment types × `['S','G','D']` with seven day cells (`Sun(0)`…`Sat(6)`) and a live **Total/Wk** column (derived, never stored). Save is **replace-all within the version**, so a blanked row is deleted and there is no per-row delete; rows left blank are never submitted, so an untouched grid can't be saved as zeros. A version's date can be corrected in place (the client sends `replaces`), and landing on a date the resort already uses returns 409. The resort pickers are exact inverses (`coCode === '02'` vs `!== '02'`, 48 resorts) and the server rejects a kind mismatch with 400 via `requireResortOfType()`. The Non-Home tab adds an editable **Charged To** product dropdown (`lvcCoCode`, validated against `Product.coCode`); the Home tab stores null. **Apartment types are validated against fn 3 but pairs already stored are grandfathered**, which mattered most before the `apt_category.txt` load — only 5 of the 412 non-home source pairs were registered then, vs **408** now; the remaining 4 (all on Inactive resorts) show a `(legacy)` hint. **No clone action** (deliberate, unlike fns 7 and 8) — instead **New Rate opens pre-filled from the rate in force**, so staff amend a copy rather than key a whole chart, and a new rate must take effect **after** the resort's latest one (400 server-side, mirrored in the editor; editing an existing rate is exempt). **The UI says "rate" where the code says "version"** — same thing. The 2026-08-13 redesign collapsed 4,766 rows / 1,062 resort-years (only **303** distinct charts; five active resorts had re-keyed an identical chart 24 years running) down to **1,209 rows — one current version per resort across 265** — and deleted the previous-year prefill and the "years cannot skip ahead" rule built the day before, both of which only meant anything under per-year charts. **Merged 2026-07-31 from the former fns 9/10** (`CpSeasonPoint` + `LvcSeasonPoint`), which shared ~78% of controller and ~86% of page code; `/resorts/lvc-season-points` now redirects to the Non-Home tab, fn 11 renumbered to 10, and the merge closed a gap where the old CP delete-year skipped its resort scope check. Function 10 done: **Leisure Vacation Club (LVC) Code Maintenance and Setup** (`/resorts/lvc-codes`) — `LvcCode` CRUD over the exchange-programme master: the arrangement under which a member books outside their own product, either between our own products (`LVC-CP`, 03/15 ↔ 02) or into an external partner's **MAR (Make Available Resorts)** (`LVC-SGI`, `LVC-CLC`, …). List+search on code/name/product code, add/edit modal with `lvcCode` read-only in edit mode and a product dropdown, **A/U status toggle** (same shape as the Resort toggle, and the same deliberate no-success-dialog exception), `ConfirmDeleteModal` on a hard delete with **no usage guard** (nothing references `LvcCode` yet). **The `incoming`/`outgoing`/`faxBatch` counters are imported but appear nowhere on the screen and are absent from the zod schema, so CRUD can never write them.** `coCode` is a **product dropdown** validated server-side against `Product.coCode` (400 on an unknown code), with the product name resolved client-side in the list. The list is sorted **Active first, then Inactive**, each alphabetical by code. 23 rows from `lvc_master.txt` (**5 active / 18 inactive** as of 2026-08-12). **Functions 1-10 are complete — the Resorts Setup module is done.** See the **Resorts Setup — function list** table above for the authoritative menu labels and numbering. |
+| RCI | 🔨 In progress | New sidebar item **RCI** (Resort Condominiums International) in the existing **Resorts** group, gated by `canView('RESORTS_SETUP')` — **no new AppModule enum value** was added (a new variant needs a migration and is what broke login on 2026-07-23). Landing page `/rci` lists 2 functions, both now implemented. **1. RCI Enrolment** (`/rci/enrolment`) — **done**: full `RciEnrolment` CRUD over the 17,915-row register. Paginated list (50/page, ordered membershipNo → agreementNo → serialNo) with product + RCI-status filters and search over membership/agreement/RCI no/name/co-owner/resort code, all in the URL so Back restores the view. Per-row Eye (detail modal, resolves the member name by natural key) / Pencil / Trash. The add form keys product + membership + agreement and **live-checks the agreement**, naming the member before Save is enabled; on edit that key is shown read-only (immutable). Follows the CRUD feedback convention (`ResultDialog`, `ConfirmDeleteModal`, `onError` on every mutation). Renewal/expiry dates carry an on-form note that they are information only. **2. RCI Weekly Interval** (`/rci/weekly-interval`, renamed from "RCI Interval") — **done**: Create / Read / Delete over `RciWeek`, **whole years only**. Year-scoped screen (year in the URL, dropdown fed by `/years`) showing that year's 52/53 weeks unpaginated — **Week / Start (Friday) / End (Friday)**, with a `carries into YYYY` hint on the last week; the stored Saturday pair is fetched but deliberately not rendered. **Add year** keys a year and nothing else, with a live client-side preview of the week count and first/last Friday before generating; **Delete year** removes the whole year via `ConfirmDeleteModal`. There is no edit path anywhere — correcting a year means deleting and re-adding it. Empty state prompts to add a year when none exist. 209 rows from `rci_week.txt` (2026-2029). `RciPlaceholder.tsx` was deleted once both functions were implemented. |
 | Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done. PBS Pay By Month/Year (`/pbs/pay-by-month`) done: Excel with 2 worksheets (monthly + yearly summary), tabbed preview. PBS Claim Report (`/pbs/claim-report`) done: Excel with 2 worksheets (non-ND claims + ND claims), tabbed preview. Not In PBS Report (`/pbs/not-in-pbs`) done: text file output matching Informix format, preview table. PBS Variance Report (`/pbs/variance`) done: Excel comparing rightful vs Zurich scheme type, preview with variance highlighting. All PBS reports use per-user `requireReportAccess` (not department permission); menu items hidden when not granted. Remaining: Proforma, Certificate Tracking, Auto Transfer, 1 report (PBS Report). |
 
 ## Navigation / permissions

@@ -256,6 +256,7 @@ Write-Host "    Member, Agreement, Nominee"
 Write-Host "    AmcSchedule, AmcInvoice"
 Write-Host "    PbsScheme, PbsClaim (Zurich Payback)"
 Write-Host "    Salesperson, Product, LvcCode, Resort, ResortMaintenance, CpSeasonDate, SeasonPoint"
+Write-Host "    RciEnrolment (RCI fn 1), RciWeek (RCI fn 2)"
 Write-Host "    BookingEntitlement (LHC 03/15), CpBookingEntitlement (CP 02)"
 Write-Host ""
 Write-Host "  Will PRESERVE:"
@@ -320,7 +321,7 @@ Write-Host ""
 Write-Host ("[1/7] Clearing Informix data tables...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
-TRUNCATE "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "SeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "Product", "LvcCode", "CpSeasonDate", "Member" CASCADE;
+TRUNCATE "RciWeek", "RciEnrolment", "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "SeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "Product", "LvcCode", "CpSeasonDate", "Member" CASCADE;
 "@
 
 # ── Step 2: Core member + agreement import ────────────────────────────────────
@@ -335,6 +336,12 @@ Invoke-Migration "prisma/migrate-amc-schedules.ts" "migrate-amc-schedules.ts"
 Invoke-Migration "prisma/migrate-maa-mem.ts"       "migrate-maa-mem.ts"
 Invoke-Migration "prisma/migrate-maa-claim.ts"     "migrate-maa-claim.ts"
 Invoke-Migration "prisma/migrate-rci-enrol.ts"     "migrate-rci-enrol.ts"
+# RCI Enrolment register (RCI fn 1). Same source file as the line above, but this one
+# loads the full table into RciEnrolment rather than backfilling Agreement columns.
+Invoke-Migration "prisma/migrate-rci-enrolment.ts" "migrate-rci-enrolment.ts"
+# RCI week-number calendar (RCI fn 2). Standalone -- no FK, no dependency on the two
+# scripts above; only years >= 2026 are imported.
+Invoke-Migration "prisma/migrate-rci-week.ts"      "migrate-rci-week.ts"
 
 # ── Step 4: Salesperson + Resort master ──────────────────────────────────────
 # NOTE: post-go-live, resorts are maintained in MMS (Resorts Setup CRUD) --
@@ -414,6 +421,8 @@ SELECT
   (SELECT COUNT(*) FROM "PbsScheme")          AS pbs_schemes,
   (SELECT COUNT(*) FROM "PbsClaim")           AS pbs_claims,
   (SELECT COUNT(*) FROM "AmcInvoice")         AS amc_invoices,
+  (SELECT COUNT(*) FROM "RciEnrolment")       AS rci_enrolments,
+  (SELECT COUNT(*) FROM "RciWeek")            AS rci_weeks,
   (SELECT COUNT(*) FROM "Salesperson")        AS salespersons,
   (SELECT COUNT(*) FROM "Product")            AS products,
   (SELECT COUNT(*) FROM "LvcCode")            AS lvc_codes,

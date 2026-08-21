@@ -151,6 +151,90 @@ export interface LvcCode {
   updatedAt: string;
 }
 
+// RCI (Resort Condominiums International) enrolment - RCI fn 1.
+// One row per ENROLMENT, not per agreement: an agreement can hold several (a lapsed
+// enrolment plus a newer PENDING one), so serialNo is the unique identifier.
+// renewalDate and expiryDate are INFORMATION ONLY - members renew with RCI directly.
+export interface RciEnrolment {
+  id: string;
+  serialNo: number;        // Informix re_serial_no - the unique key
+  coCode: string;
+  membershipNo: string;
+  agreementNo: string;
+  rciNo: string | null;    // RCI member no., or the literal 'PENDING'
+  renewalDate: string | null;
+  expiryDate: string | null;
+  rciFees: string | null;  // Decimal(8,2) - serialized as a string by Prisma
+  resortCode: string | null;
+  firstName1: string | null;
+  lastName1: string | null;
+  name1: string | null;
+  firstName2: string | null;
+  lastName2: string | null;
+  mailAdd1: string | null;
+  mailAdd2: string | null;
+  mailAdd3: string | null;
+  mailCityState: string | null;
+  mailPostcode: string | null;
+  malaysia: string | null;  // 'Y' | 'N'
+  telNo1: string | null;
+  telNo2: string | null;
+  coOwner: string | null;
+  rciStatus: string | null; // 'A' | 'C' | 'M' | 'T'
+  totInterval: number;
+  createdAt: string;
+  updatedAt: string;
+  // Resolved on read by natural key, never stored (detail endpoint only)
+  memberName?: string | null;
+  acctClassify?: string | null;
+}
+
+export interface RciEnrolmentList {
+  data: RciEnrolment[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface RciAgreementLookup {
+  memberName: string | null;
+  acctClassify: string;
+}
+
+// RCI week-number calendar - RCI fn 2 (Weekly Interval).
+// A year holds 52 or 53 weeks, each running Friday -> the FOLLOWING Friday, so weeks
+// share a boundary date and the last week of a year crosses into the next.
+// satStart/satEnd are stored and returned but deliberately NOT shown on the screen.
+export interface RciWeek {
+  id: string;
+  year: number;
+  weekNo: number;
+  friStart: string;
+  friEnd: string;
+  satStart: string;
+  satEnd: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RciWeekList {
+  data: RciWeek[];
+  year: number;
+  weeks: number;
+}
+
+export interface RciWeekYearResult {
+  year: number;
+  weeks: number;
+  firstFriday: string;
+  lastWeekEnd: string;
+}
+
+export interface RciWeekDeleteResult {
+  year: number;
+  deleted: number;
+}
+
 export interface Resort {
   id: string;
   resortCode: string;

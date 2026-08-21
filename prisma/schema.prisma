@@ -8,7 +8,7 @@ datasource db {
 }
 
 model Agreement {
-  id                     String              @id
+  id                     String               @id
   agreementNo            String
   legacyAgreementNo      String?
   memberId               String
@@ -21,12 +21,12 @@ model Agreement {
   agreementType          String?
   memberType             String?
   totalPoints            Int?
-  acctClassify           AgreementStatus     @default(NA)
+  acctClassify           AgreementStatus      @default(NA)
   acctStatus             String?
-  purchasePrice          Decimal?            @db.Decimal(12, 2)
-  downPayment            Decimal?            @db.Decimal(12, 2)
-  subFees                Decimal?            @db.Decimal(12, 2)
-  loanAmount             Decimal?            @db.Decimal(12, 2)
+  purchasePrice          Decimal?             @db.Decimal(12, 2)
+  downPayment            Decimal?             @db.Decimal(12, 2)
+  subFees                Decimal?             @db.Decimal(12, 2)
+  loanAmount             Decimal?             @db.Decimal(12, 2)
   loanType               String?
   salesBranch            String?
   salesMonth             String?
@@ -45,21 +45,21 @@ model Agreement {
   rciNominee             String?
   rciEnrolDate           DateTime?
   rciExpiryDate          DateTime?
-  rciFeePaid             Decimal?            @db.Decimal(12, 2)
-  outstdDoc              Boolean             @default(false)
+  rciFeePaid             Decimal?             @db.Decimal(12, 2)
+  outstdDoc              Boolean              @default(false)
   docDescription         String?
   legacyCreatedAt        DateTime?
-  createdAt              DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt              DateTime @db.Timestamptz(3)
-  govtTax                Decimal?            @db.Decimal(12, 2)
+  createdAt              DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime             @db.Timestamptz(3)
+  govtTax                Decimal?             @db.Decimal(12, 2)
   legacyModifiedAt       DateTime?
-  statusChangeDate       DateTime? @db.Timestamptz(3)
+  statusChangeDate       DateTime?            @db.Timestamptz(3)
   statusChangeUser       String?
-  sinkFund               Decimal?            @db.Decimal(12, 2)
+  sinkFund               Decimal?             @db.Decimal(12, 2)
   salespersonCode        String?
-  cancellationReason     CancellationReason? @relation(fields: [canCode], references: [code])
-  suReason               SuReason?           @relation(fields: [suCode], references: [code])
-  member                 Member              @relation(fields: [memberId], references: [id])
+  cancellationReason     CancellationReason?  @relation(fields: [canCode], references: [code])
+  suReason               SuReason?            @relation(fields: [suCode], references: [code])
+  member                 Member               @relation(fields: [memberId], references: [id])
   amcInvoices            AmcInvoice[]
   amcSchedule            AmcSchedule?
   bookingEntitlements    BookingEntitlement[]
@@ -78,7 +78,7 @@ model BookingEntitlement {
   actualNights Int       @default(0)
   weekendUsed  Int       @default(0)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime @db.Timestamptz(3)
+  updatedAt    DateTime  @db.Timestamptz(3)
   agreement    Agreement @relation(fields: [agreementId], references: [id])
 
   @@unique([coCode, agreementNo, membershipNo, yearSeq])
@@ -99,42 +99,43 @@ model CpBookingEntitlement {
   balPts       Int      @default(0)
   createdAt    DateTime @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime @db.Timestamptz(3)
+
   @@unique([coCode, membershipNo, agreementNo, useYear])
   @@index([coCode, membershipNo, agreementNo])
 }
 
 model AmcInvoice {
-  id              String       @id
-  scheduleId      String
-  agreementId     String
-  membershipNo    String
-  agreementNo     String
-  docNo           String?
-  invNo           String
-  invComponent    InvComponent
-  invDate         DateTime
-  amcDate         DateTime?
-  dueDate         DateTime?
-  invoiceYearSeq  Int?
-  invAmount       Decimal      @db.Decimal(12, 2)
-  totalPoints     Int?
-  rate            Decimal?     @db.Decimal(8, 4)
-  amountInWords   String?
-  billType        BillType
-  coCode          String
-  isProcessed     Boolean      @default(false)
-  processedAt     DateTime? @db.Timestamptz(3)
+  id                  String       @id
+  scheduleId          String
+  agreementId         String
+  membershipNo        String
+  agreementNo         String
+  docNo               String?
+  invNo               String
+  invComponent        InvComponent
+  invDate             DateTime
+  amcDate             DateTime?
+  dueDate             DateTime?
+  invoiceYearSeq      Int?
+  invAmount           Decimal      @db.Decimal(12, 2)
+  totalPoints         Int?
+  rate                Decimal?     @db.Decimal(8, 4)
+  amountInWords       String?
+  billType            BillType
+  coCode              String
+  isProcessed         Boolean      @default(false)
+  processedAt         DateTime?    @db.Timestamptz(3)
   prevNextDueDate     DateTime? // schedule.nextDueDate before this invoice advanced it (for exact cancel rollback)
   prevLastInvoiceDate DateTime? // schedule.lastInvoiceDate before this invoice advanced it
-  printDate       DateTime? @db.Timestamptz(3)
-  printUser       String?
-  printCount      Int          @default(0)
-  newFlag         String?
-  legacyCreatedAt DateTime?
-  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime @db.Timestamptz(3)
-  agreement       Agreement    @relation(fields: [agreementId], references: [id])
-  schedule        AmcSchedule  @relation(fields: [scheduleId], references: [id])
+  printDate           DateTime?    @db.Timestamptz(3)
+  printUser           String?
+  printCount          Int          @default(0)
+  newFlag             String?
+  legacyCreatedAt     DateTime?
+  createdAt           DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime     @db.Timestamptz(3)
+  agreement           Agreement    @relation(fields: [agreementId], references: [id])
+  schedule            AmcSchedule  @relation(fields: [scheduleId], references: [id])
 }
 
 // Persistent per-coCode AMC invoice running number. Seeded from Informix
@@ -142,8 +143,8 @@ model AmcInvoice {
 // where Informix left off. Advanced on generation, reversed on cancellation
 // (only when the cancelled invoice holds the current last number).
 model AmcInvoiceCounter {
-  coCode    String   @id          // "02", "03", "15"
-  lastInvNo Int                    // last used AMC invoice running number
+  coCode    String   @id // "02", "03", "15"
+  lastInvNo Int // last used AMC invoice running number
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @db.Timestamptz(3)
 }
@@ -200,7 +201,7 @@ model AmcSchedule {
   billingStatus   BillingStatus @default(N)
   legacyCreatedAt DateTime?
   createdAt       DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime @db.Timestamptz(3)
+  updatedAt       DateTime      @db.Timestamptz(3)
   invoices        AmcInvoice[]
   agreement       Agreement     @relation(fields: [agreementId], references: [id])
 }
@@ -321,7 +322,7 @@ model Member {
   legacyCreatedAt   DateTime?
   legacyModifiedAt  DateTime?
   createdAt         DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime @db.Timestamptz(3)
+  updatedAt         DateTime     @db.Timestamptz(3)
   faxNo             String?
   faxOffice         String?
   telOffice2        String?
@@ -352,20 +353,20 @@ model Nominee {
 }
 
 model PbsScheme {
-  id          String    @id
-  agreementId String    @unique
+  id          String     @id
+  agreementId String     @unique
   coCode      String
   agreementNo String
   certNo      String?
   schemeType  String?
   paybackDate DateTime?
-  topUp       Boolean   @default(false)
-  pbsIndc     Boolean   @default(false)
-  claimIndc   Boolean   @default(false)
+  topUp       Boolean    @default(false)
+  pbsIndc     Boolean    @default(false)
+  claimIndc   Boolean    @default(false)
   remark      String?
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime @db.Timestamptz(3)
-  agreement   Agreement @relation(fields: [agreementId], references: [id])
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime   @db.Timestamptz(3)
+  agreement   Agreement  @relation(fields: [agreementId], references: [id])
   claims      PbsClaim[]
 }
 
@@ -390,7 +391,7 @@ model PbsClaim {
   claimRemark   String?
   trustPaidDate DateTime?
   createdAt     DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime @db.Timestamptz(3)
+  updatedAt     DateTime  @db.Timestamptz(3)
   pbsScheme     PbsScheme @relation(fields: [pbsSchemeId], references: [id])
 }
 
@@ -440,9 +441,82 @@ model LvcCode {
   updatedAt DateTime @db.Timestamptz(3)
 }
 
+// RCI (Resort Condominiums International) enrolment register — Informix rci_enrol.
+// One row per enrolment, NOT one per agreement: an agreement can hold several rows
+// (e.g. a lapsed 1704-* enrolment plus a newer PENDING one), so the natural key
+// coCode+membershipNo+agreementNo is deliberately NOT unique — 91 such groups exist
+// in the source. serialNo (Informix re_serial_no, a `serial`) is the only unique
+// identifier and is what makes a re-import idempotent; app-created rows allocate
+// max(serialNo)+1.
+//
+// renewalDate (re_act_date) and expiryDate are INFORMATION ONLY — members deal with
+// RCI directly, so nothing in this system acts on them.
+//
+// No FK to Agreement (same choice as CpBookingEntitlement): the natural key is stored
+// and resolved on read, which is the safe direction for transferred agreements.
+model RciEnrolment {
+  id            String    @id
+  serialNo      Int       @unique // re_serial_no — Informix PK, continues the sequence
+  coCode        String // re_cocode
+  membershipNo  String // re_membership_no
+  agreementNo   String // re_agreement_no
+  rciNo         String? // re_rci_no — RCI member no., or the literal 'PENDING'
+  renewalDate   DateTime? // re_act_date — information only
+  expiryDate    DateTime? // re_expiry_date — information only
+  rciFees       Decimal?  @db.Decimal(8, 2) // re_rci_fees
+  resortCode    String? // re_resort_code — free text in the source, no FK to Resort
+  firstName1    String? // re_first_name1
+  lastName1     String? // re_last_name1
+  name1         String? // re_name1 — full name of person 1
+  firstName2    String? // re_first_name2
+  lastName2     String? // re_last_name2 (re_name2 deliberately not migrated)
+  mailAdd1      String? // re_mail_add1
+  mailAdd2      String? // re_mail_add2
+  mailAdd3      String? // re_mail_add3
+  mailCityState String? // re_mail_city_state
+  mailPostcode  String? // re_mail_postcode
+  malaysia      String? // re_malaysia — Y/N
+  telNo1        String? // re_telno1
+  telNo2        String? // re_telno2
+  coOwner       String? // re_co_owner
+  rciStatus     String? // re_rci_status — A=Active, C=Cancelled, M=Matured, T=Terminated
+  totInterval   Int       @default(1) // re_tot_interval
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @db.Timestamptz(3)
+
+  @@index([coCode, membershipNo, agreementNo])
+  @@index([rciNo])
+  @@index([membershipNo])
+}
+
+// RCI week-number calendar (Informix rci_week). One row per (year, week); a year holds
+// 52 or 53 weeks. A week runs Friday -> the FOLLOWING Friday, so consecutive weeks share
+// a boundary date (week n friEnd == week n+1 friStart) and the last week of a year
+// crosses into the next (2026 wk52 = 25-12-2026 -> 01-01-2027).
+//
+// Every row is derivable from the year alone -- verified against all 209 migrated rows of
+// 2026-2029; see generateWeeks() in rci-week.controller.ts. Rows are therefore created a
+// whole year at a time and deleted a whole year at a time, and there is deliberately NO
+// edit path. Years before 2026 were not migrated.
+model RciWeek {
+  id        String   @id
+  year      Int // rw_year
+  weekNo    Int // rw_week
+  friStart  DateTime // rw_fri_start -- always a Friday
+  friEnd    DateTime // rw_fri_end   = friStart + 7
+  satStart  DateTime // rw_sat_start = friStart + 1 -- stored, not shown on screen
+  satEnd    DateTime // rw_sat_end   = friEnd + 1   -- stored, not shown on screen
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @db.Timestamptz(3)
+
+  // = Informix rw_idx1. year is the leftmost column, so this also serves the
+  // year-filtered read and the whole-year delete -- no separate @@index([year]) needed.
+  @@unique([year, weekNo])
+}
+
 model Resort {
-  id               String    @id
-  resortCode       String    @unique
+  id               String              @id
+  resortCode       String              @unique
   coCode           String
   shortName        String?
   resortName       String
@@ -461,15 +535,15 @@ model Resort {
   faxNo            String?
   checkInTime      String?
   checkOutTime     String?
-  status           String    @default("A")
+  status           String              @default("A")
   paymt            String?
   lockStatus       String?
   legacyCreateUser String?
   legacyCreateDate DateTime?
   legacyModUser    String?
   legacyModDate    DateTime?
-  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime @db.Timestamptz(3)
+  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime            @db.Timestamptz(3)
   infoLines        ResortInfoLine[]
   apartmentTypes   ApartmentType[]
   units            ResortUnit[]
@@ -487,7 +561,8 @@ model ResortInfoLine {
   seq       Int
   text      String
   createdAt DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @db.Timestamptz(3)
+  updatedAt DateTime           @db.Timestamptz(3)
+
   @@unique([resortId, category, seq])
 }
 
@@ -495,12 +570,13 @@ model ApartmentType {
   id            String   @id
   resortId      String
   resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
-  resortCode    String   // denormalized natural key (Resort.resortCode is unique + immutable)
+  resortCode    String // denormalized natural key (Resort.resortCode is unique + immutable)
   apartmentType String
   description   String?
   lockType      String   @default("LN") // LM=Master Unit, LS=Split Unit, LN=Normal Unit
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @db.Timestamptz(3)
+
   @@unique([resortCode, apartmentType])
 }
 
@@ -508,13 +584,14 @@ model ResortUnit {
   id            String   @id
   resortId      String
   resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
-  resortCode    String   // denormalized natural key
-  unitNo        String   // apt_code — e.g. "3227/3228", "1.12A"
-  apartmentType String   // apt_unit_type — validated against ApartmentType (no hard FK; type is renamable)
-  occupancy     Int?     // apt_occupancy
+  resortCode    String // denormalized natural key
+  unitNo        String // apt_code — e.g. "3227/3228", "1.12A"
+  apartmentType String // apt_unit_type — validated against ApartmentType (no hard FK; type is renamable)
+  occupancy     Int? // apt_occupancy
   rciReserved   String   @default("N") // apt_rci_reserved Y/N
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @db.Timestamptz(3)
+
   @@unique([resortCode, unitNo])
 }
 
@@ -525,14 +602,15 @@ model AptBlock {
   id            String   @id
   resortId      String
   resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
-  resortCode    String   // denormalized natural key
-  unitNo        String   // apt_code — incl. compound lock-off codes like "3005/3006"
-  apartmentType String?  // derived from ResortUnit at CRUD time; null for migrated rows whose unit isn't in apt_mast
+  resortCode    String // denormalized natural key
+  unitNo        String // apt_code — incl. compound lock-off codes like "3005/3006"
+  apartmentType String? // derived from ResortUnit at CRUD time; null for migrated rows whose unit isn't in apt_mast
   startDate     DateTime // UTC midnight (business date)
   endDate       DateTime // UTC midnight (business date)
-  blockNo       Int?     // col[4] per-unit running block number (migrated only)
+  blockNo       Int? // col[4] per-unit running block number (migrated only)
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @db.Timestamptz(3)
+
   @@unique([resortCode, unitNo, startDate, endDate])
 }
 
@@ -551,6 +629,7 @@ model ResAvailMast {
   balNight      Int
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @db.Timestamptz(3)
+
   @@unique([resortCode, apartmentType, date])
 }
 
@@ -564,15 +643,16 @@ model ResortMaintenance {
   id            String   @id
   resortId      String
   resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
-  resortCode    String   // denormalized natural key
-  unitNo        String   // rm_apt_code — incl. compound lock-off codes like "3231/3232"
-  apartmentType String?  // derived from ResortUnit at CRUD time; null for rows whose unit isn't in the apt_mast export
+  resortCode    String // denormalized natural key
+  unitNo        String // rm_apt_code — incl. compound lock-off codes like "3231/3232"
+  apartmentType String? // derived from ResortUnit at CRUD time; null for rows whose unit isn't in the apt_mast export
   startDate     DateTime // rm_checkin  — UTC midnight (business date)
   endDate       DateTime // rm_checkout — UTC midnight (business date)
-  remarks       String?  // rm_remarks — reason (BUFFER / HOUSEKEEPING / UPGRADING / ...)
-  serialNo      Int?     // rm_serial_no (migrated only)
+  remarks       String? // rm_remarks — reason (BUFFER / HOUSEKEEPING / UPGRADING / ...)
+  serialNo      Int? // rm_serial_no (migrated only)
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @db.Timestamptz(3)
+
   @@unique([resortCode, unitNo, startDate])
 }
 
@@ -586,13 +666,14 @@ model ResortMaintenance {
 // — adding a kind later must not require a migration (same reasoning as CpSeasonDate.season).
 model Holiday {
   id          String    @id
-  holidayType String    // 'PUBLIC' | 'SCHOOL'
-  startDate   DateTime  // UTC midnight (business date). PUBLIC: the holiday date itself.
+  holidayType String // 'PUBLIC' | 'SCHOOL'
+  startDate   DateTime // UTC midnight (business date). PUBLIC: the holiday date itself.
   endDate     DateTime? // null for PUBLIC (single day); required for SCHOOL
-  year        Int       // PUBLIC: derived server-side from startDate. SCHOOL: the academic year, editable.
+  year        Int // PUBLIC: derived server-side from startDate. SCHOOL: the academic year, editable.
   description String
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime  @db.Timestamptz(3)
+
   // Looser than the old SchoolHoliday key [academicYear, description] — "one TERM 1 per
   // academic year" is re-enforced in the controller (descriptionTaken), because a year-scoped
   // unique would wrongly block multi-day public holidays that repeat a name on other dates.
@@ -608,10 +689,11 @@ model Holiday {
 model CpSeasonDate {
   id        String   @id
   date      DateTime @unique // UTC midnight (business date) — one season per day
-  season    String   // G=Gold, S=Silver, D=Diamond
-  year      Int      // derived server-side from date; drives the filter + clone
+  season    String // G=Gold, S=Silver, D=Diamond
+  year      Int // derived server-side from date; drives the filter + clone
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @db.Timestamptz(3)
+
   @@index([year])
 }
 
@@ -632,24 +714,25 @@ model CpSeasonDate {
 // server-side from the resort's coCode on every save — never taken from the payload.
 model SeasonPoint {
   id            String   @id
-  pointsType    String   // 'HOME' | 'AWAY'
+  pointsType    String // 'HOME' | 'AWAY'
   resortId      String
   resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
-  resortCode    String   // denormalized natural key — the resort being booked
-  coCode        String   // the resort's OWN product, denormalized from Resort
-  lvcCoCode     String?  // AWAY only — the product whose members are charged; null for HOME
-  apartmentType String   // validated against ApartmentType on save; stored pairs grandfathered
+  resortCode    String // denormalized natural key — the resort being booked
+  coCode        String // the resort's OWN product, denormalized from Resort
+  lvcCoCode     String? // AWAY only — the product whose members are charged; null for HOME
+  apartmentType String // validated against ApartmentType on save; stored pairs grandfathered
   effectiveDate DateTime // UTC midnight (business date) — the VERSION this row belongs to
-  season        String   // G=Gold, S=Silver, D=Diamond
-  ptsSun        Int      // source col 0 — Sunday
+  season        String // G=Gold, S=Silver, D=Diamond
+  ptsSun        Int // source col 0 — Sunday
   ptsMon        Int
   ptsTue        Int
   ptsWed        Int
   ptsThu        Int
   ptsFri        Int
-  ptsSat        Int      // source col 6 — Saturday
+  ptsSat        Int // source col 6 — Saturday
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @db.Timestamptz(3)
+
   // A points chart is an effective-dated VERSION: all rows sharing (resortCode,
   // effectiveDate) are one chart, which stays in force until a later version supersedes
   // it. A new version is created only when a rate changes or a room type is introduced —
@@ -689,12 +772,12 @@ model User {
   mustChangePwd  Boolean            @default(true)
   status         UserStatus         @default(ACTIVE)
   departmentId   Int
-  lastLoginAt    DateTime? @db.Timestamptz(3)
+  lastLoginAt    DateTime?          @db.Timestamptz(3)
   failedAttempts Int                @default(0)
-  lockedAt       DateTime? @db.Timestamptz(3)
+  lockedAt       DateTime?          @db.Timestamptz(3)
   sessionToken   String?
   createdAt      DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime @db.Timestamptz(3)
+  updatedAt      DateTime           @db.Timestamptz(3)
   auditLogs      AuditLog[]
   department     Department         @relation(fields: [departmentId], references: [id])
   reportAccess   UserReportAccess[] @relation("userReports")
@@ -707,7 +790,7 @@ model UserReportAccess {
   reportKey   ReportKey
   grantedById Int
   grantedAt   DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime @db.Timestamptz(3)
+  updatedAt   DateTime  @db.Timestamptz(3)
   user        User      @relation("userReports", fields: [userId], references: [id])
   grantedBy   User      @relation("grantedReports", fields: [grantedById], references: [id])
 

@@ -3,7 +3,7 @@ import { clsx } from 'clsx';
 import {
   Users, Building2, ClipboardList, UserSearch,
   FileText, CalendarClock, Receipt, BarChart3,
-  Hotel, Award, LogOut, FileBarChart2, Ban, Palmtree,
+  Hotel, Award, LogOut, FileBarChart2, Ban, Palmtree, Globe,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -87,6 +87,10 @@ export function Sidebar() {
 
   const resortItems: NavItem[] = [];
   if (canView('RESORTS_SETUP')) resortItems.push({ to: '/resorts', label: 'Resorts Setup', icon: <Palmtree className="h-4 w-4" /> });
+  // RCI (Resort Condominiums International) sits alongside Resorts Setup and is gated by
+  // the same RESORTS_SETUP permission -- no new AppModule enum value (see the enum-variant
+  // deploy footgun in CLAUDE.md).
+  if (canView('RESORTS_SETUP')) resortItems.push({ to: '/rci', label: 'RCI', icon: <Globe className="h-4 w-4" /> });
 
   const comingSoon: NavItem[] = [];
   if (canView('RESORT_BOOKING')) comingSoon.push({ to: '/resort-booking', label: 'Resort Booking', icon: <Hotel className="h-4 w-4" />, soon: true });

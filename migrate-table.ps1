@@ -11,7 +11,17 @@
       PbsScheme         - Zurich Payback Scheme (migrate-maa-mem.ts)
       PbsClaim          - PBS Claims (migrate-maa-claim.ts)
       AmcSchedule       - AMC Schedules (migrate-amc-schedules.ts)
-      RciEnrol          - RCI enrollment / nominee (migrate-rci-enrol.ts)
+      RciEnrol          - RCI backfill of the four Agreement RCI columns from
+                          rci_enrol.txt (migrate-rci-enrol.ts). NOT the RCI Enrolment
+                          register -- that is -Table RciEnrolment.
+      RciEnrolment      - RCI Enrolment register (migrate-rci-enrolment.ts from
+                          rci_enrol.txt; 25 of 43 cols). Truncates + reimports.
+                          Post-go-live enrolments are maintained in MMS -- re-running
+                          clobbers any edits made in the app.
+      RciWeek           - RCI week-number calendar (migrate-rci-week.ts from
+                          rci_week.txt; 6 of 8 cols, years >= 2026 only). Truncates +
+                          reimports. Post-go-live years are generated in MMS --
+                          re-running clobbers any years added there.
       Salesperson       - Salesperson master (migrate-salesperson.ts)
       SuPtReason        - SU/PT reason codes: SuReason seed + Agreement.suCode/canCode backfill
                           (seed-su-reasons.ts + migrate-su-pt-reasons.ts)
@@ -70,12 +80,14 @@
     .\migrate-table.ps1 -Table CpSeasonDate                # CP season calendar (ps_seasondate.txt; one row per day, G/S/D; truncates + reimports)
     .\migrate-table.ps1 -Table CpSeasonPoint               # Season points, HOME half (ps_seasonapt.txt; first 12 cols; clears pointsType HOME + reimports)
     .\migrate-table.ps1 -Table LvcSeasonPoint              # Season points, AWAY half (ps_lvcapt.txt; first 14 of 20 cols; clears pointsType AWAY + reimports)
+    .\migrate-table.ps1 -Table RciEnrolment                 # RCI Enrolment register (rci_enrol.txt; 25 of 43 cols; truncates + reimports)
+    .\migrate-table.ps1 -Table RciWeek                      # RCI week calendar (rci_week.txt; years >= 2026; truncates + reimports)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Product', 'LvcCode', 'Resort', 'ApartmentType', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance', 'CpSeasonDate', 'CpSeasonPoint', 'LvcSeasonPoint')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'RciEnrolment', 'RciWeek', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Product', 'LvcCode', 'Resort', 'ApartmentType', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance', 'CpSeasonDate', 'CpSeasonPoint', 'LvcSeasonPoint')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -175,6 +187,22 @@ $TableConfig = @{
         TruncateSql = @()
         RequiredFiles = @('rci_enrol.txt')
         Scripts = @('prisma/migrate-rci-enrol.ts')
+    }
+    RciWeek = @{
+        # RCI week-number calendar (rci_week.txt, 6 of 8 cols). Only years >= 2026 are
+        # imported. Standalone -- nothing references it yet. Post-go-live years are
+        # generated through the app, and re-running clobbers them.
+        TruncateSql = @('TRUNCATE "RciWeek";')
+        RequiredFiles = @('rci_week.txt')
+        Scripts = @('prisma/migrate-rci-week.ts')
+    }
+    RciEnrolment = @{
+        # RCI Enrolment register (rci_enrol.txt, 25 of 43 cols). Standalone -- no FK
+        # to Agreement, matched on the natural key at read time. Post-go-live
+        # enrolments are maintained in MMS -- re-running clobbers CRUD edits.
+        TruncateSql = @('TRUNCATE "RciEnrolment";')
+        RequiredFiles = @('rci_enrol.txt')
+        Scripts = @('prisma/migrate-rci-enrolment.ts')
     }
     Salesperson = @{
         TruncateSql = @('TRUNCATE "Salesperson";')

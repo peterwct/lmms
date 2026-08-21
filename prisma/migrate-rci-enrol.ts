@@ -1,41 +1,28 @@
 /**
- * LHB MMS — RCI Enrollment Migration
- * Source: migrate/rci_enrol.txt  (pipe-delimited, ~17,909 rows, no header)
+ * LHB MMS — RCI Enrollment Backfill (Agreement columns)
+ * Source: migrate/rci_enrol.txt  (pipe-delimited, no header)
  *
- * Updates existing Agreement records with rciNominee (salutation + name).
- * Match key: coCode + membershipNo + agreementNo (natural key).
+ * Updates existing Agreement records with rciRefNo / rciNominee / rciEnrolDate /
+ * rciExpiryDate. Match key: coCode + membershipNo + agreementNo (natural key).
  *
- * Column mapping (0-indexed, 29 tokens per row incl. trailing):
- *  [0]  re_cocode
- *  [1]  re_membership_no
- *  [2]  re_agreement_no
- *  [3]  re_rci_no            (RCI ID)
- *  [4]  re_act_date          (dd-mm-yyyy — joint/activation date)
- *  [5]  re_expiry_date       (dd-mm-yyyy)
- *  [6]  re_rci_fees
- *  [7]  re_resort_code
- *  [8]  re_first_name1
- *  [9]  re_last_name1
- *  [10] re_name1             (full name of person 1)
- *  [11] re_name1_no
- *  [12] re_agmt_no
- *  [13] re_first_name2
- *  [14] re_last_name2
- *  [15] re_name2             (full name of person 2)
- *  [16] re_name2_no
- *  [17] re_mail_add1
- *  [18] re_mail_add2
- *  [19] re_mail_add3
- *  [20] re_mail_city_state
- *  [21] re_mail_postcode
- *  [22] re_malaysia          (Y/N)
- *  [23] re_telno1
- *  [24] re_telno2
- *  [25] re_co_owner
- *  [26] re_old_rci_no
- *  [27] e_rci_salutation     (from si_entitlement JOIN)
- *  [28] e_rci_name           (from si_entitlement JOIN)
- *  [29] (trailing)
+ * NOT the same thing as prisma/migrate-rci-enrolment.ts, which loads the full
+ * rci_enrol table into the RciEnrolment model for the RCI Enrolment CRUD (RCI fn 1).
+ * This script only backfills the four RCI fields shown on the Agreement Detail card.
+ *
+ * TWO SOURCE LAYOUTS — detected from the field count of the first row:
+ *
+ *  A) FULL TABLE (44 fields = 43 columns + trailing empty), the current export:
+ *       UNLOAD TO 'rci_enrol.txt' DELIMITER '|' SELECT * FROM rci_enrol;
+ *     coCode[0], serial[1], batch[2], membershipNo[3], agreementNo[4], rciNo[5],
+ *     actDate[6], expiryDate[7], ...
+ *     It has NO salutation/name columns from si_entitlement, so rciNominee is left
+ *     ALONE rather than being overwritten with a differently-shaped value (the stored
+ *     value is 'MR WONG YIT MENG'; re_name1 would be 'WONG YIT MENG'). The full names
+ *     live in RciEnrolment.name1 instead.
+ *
+ *  B) LEGACY JOINED (30 fields), the export this script was originally written for:
+ *     coCode[0], membershipNo[1], agreementNo[2], rciNo[3], actDate[4], expiryDate[5],
+ *     ... e_rci_salutation[27], e_rci_name[28] (joined with si_entitlement).
  *
  * Run: npx ts-node --transpile-only prisma/migrate-rci-enrol.ts
  *      npx ts-node --transpile-only prisma/migrate-rci-enrol.ts --dry-run
@@ -51,6 +38,26 @@ const FILE    = path.join(__dirname, '..', 'migrate', 'rci_enrol.txt');
 const BATCH   = 500;
 const DRY_RUN = process.argv.includes('--dry-run');
 
+// Column positions per layout. `salutation`/`name` are absent from the full-table
+// export, which is what leaves rciNominee untouched there.
+type Layout = {
+  name: string;
+  coCode: number; membershipNo: number; agreementNo: number;
+  rciNo: number; actDate: number; expiryDate: number;
+  salutation?: number; rciName?: number;
+};
+
+const FULL_TABLE: Layout = {
+  name: 'full-table (43 cols)',
+  coCode: 0, membershipNo: 3, agreementNo: 4, rciNo: 5, actDate: 6, expiryDate: 7,
+};
+
+const LEGACY_JOINED: Layout = {
+  name: 'legacy joined (29 cols)',
+  coCode: 0, membershipNo: 1, agreementNo: 2, rciNo: 3, actDate: 4, expiryDate: 5,
+  salutation: 27, rciName: 28,
+};
+
 const t = (s: string | undefined): string | null =>
   s !== undefined && s.trim() !== '' ? s.trim() : null;
 
@@ -63,11 +70,31 @@ const d = (s: string | undefined): Date | null => {
   return isNaN(dt.getTime()) ? null : dt;
 };
 
+function detectLayout(): Layout {
+  const first = fs.readFileSync(FILE, { encoding: 'latin1' }).split('\n')[0];
+  const fields = first.split('|').length;
+  // 44 = 43 columns + the trailing empty field an UNLOAD leaves behind
+  const layout = fields >= 40 ? FULL_TABLE : LEGACY_JOINED;
+  console.log(`  Layout: ${layout.name} — ${fields} fields per row`);
+  if (!layout.salutation) {
+    console.log('  NOTE: this export has no salutation/name columns; rciNominee left unchanged.');
+  }
+  return layout;
+}
+
 async function main() {
   console.log(`\n${'='.repeat(60)}`);
-  console.log('LHB MMS — RCI Enrollment Migration');
+  console.log('LHB MMS — RCI Enrollment Backfill (Agreement columns)');
   console.log(DRY_RUN ? '  MODE: DRY RUN' : '  MODE: LIVE');
   console.log('='.repeat(60));
+
+  if (!fs.existsSync(FILE)) {
+    console.error(`\n  ERROR: ${FILE} not found.`);
+    process.exit(1);
+  }
+
+  console.log('');
+  const L = detectLayout();
 
   // Build agreement lookup: "coCode:membershipNo:agreementNo" → agreementId
   console.log('\n[1/3] Building agreement lookup map...');
@@ -116,14 +143,14 @@ async function main() {
     const c = line.split('|');
     total++;
 
-    const coCode       = t(c[0]);
-    const membershipNo = t(c[1]);
-    const agreementNo  = t(c[2]);
-    const rciNo        = t(c[3]);
-    const actDate      = d(c[4]);
-    const expiryDate   = d(c[5]);
-    const salutation   = t(c[27]);
-    const rciName      = t(c[28]);
+    const coCode       = t(c[L.coCode]);
+    const membershipNo = t(c[L.membershipNo]);
+    const agreementNo  = t(c[L.agreementNo]);
+    const rciNo        = t(c[L.rciNo]);
+    const actDate      = d(c[L.actDate]);
+    const expiryDate   = d(c[L.expiryDate]);
+    const salutation   = L.salutation !== undefined ? t(c[L.salutation]) : null;
+    const rciName      = L.rciName !== undefined ? t(c[L.rciName]) : null;
 
     if (!coCode || !membershipNo || !agreementNo) { skipped++; continue; }
 

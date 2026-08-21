@@ -44,6 +44,9 @@ import { ResortsMaintenance } from './pages/resorts/ResortsMaintenance';
 import { Holidays } from './pages/resorts/Holidays';
 import { CpSeasons } from './pages/resorts/CpSeasons';
 import { SeasonPoints } from './pages/resorts/SeasonPoints';
+import { Rci } from './pages/rci/Rci';
+import { RciEnrolment } from './pages/rci/RciEnrolment';
+import { RciWeeklyInterval } from './pages/rci/RciWeeklyInterval';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -107,6 +110,9 @@ export default function App() {
               <Route path="resorts/lvc-codes"   element={<LvcCodes />} />
               {/* Non-home points merged into the tabbed Season Points page — keep old bookmarks working */}
               <Route path="resorts/lvc-season-points" element={<Navigate to="/resorts/season-points?type=away" replace />} />
+              <Route path="rci"                 element={<Rci />} />
+              <Route path="rci/enrolment"       element={<RciEnrolment />} />
+              <Route path="rci/weekly-interval" element={<RciWeeklyInterval />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />
