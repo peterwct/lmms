@@ -47,6 +47,7 @@ import { SeasonPoints } from './pages/resorts/SeasonPoints';
 import { Rci } from './pages/rci/Rci';
 import { RciEnrolment } from './pages/rci/RciEnrolment';
 import { RciWeeklyInterval } from './pages/rci/RciWeeklyInterval';
+import { RciBulkBank } from './pages/rci/RciBulkBank';
 import { Schedules } from './pages/amc/Schedules';
 import { Invoices } from './pages/amc/Invoices';
 import { InvoiceDetail } from './pages/amc/InvoiceDetail';
@@ -113,6 +114,7 @@ export default function App() {
               <Route path="rci"                 element={<Rci />} />
               <Route path="rci/enrolment"       element={<RciEnrolment />} />
               <Route path="rci/weekly-interval" element={<RciWeeklyInterval />} />
+              <Route path="rci/bulk-bank"       element={<RciBulkBank />} />
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />

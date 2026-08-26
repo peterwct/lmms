@@ -514,6 +514,50 @@ model RciWeek {
   @@unique([year, weekNo])
 }
 
+// RCI Bulk Bank (Informix bulk_bank) -- RCI fn 3. One row = ONE RCI WEEK of ONE
+// qualifying unit (ResortUnit.rciReserved='Y') deposited into the RCI exchange
+// network, graded a season colour by RCI (R=Red / B=Blue / W=White).
+//
+// The date range IS an RCI week: checkIn is a Friday (= RciWeek.friStart) and
+// checkOut = checkIn + 6. Note RciWeek.friEnd is friStart + 7 (the true RCI
+// check-out day) -- bulk_bank stores the LAST NIGHT, so the stored range is 7
+// inclusive days, the same convention resmt uses for rm_checkin/rm_checkout.
+// Staff never key a date: they pick a week from fn 2, and the server derives both
+// ends, so the "check-in is a Friday" rule cannot be broken.
+//
+// Each save deducts one unit-night per day from the generated ResAvailMast grid's
+// balNight (actNight untouched -- the unit still exists, it just isn't ours to book).
+// The migration deliberately applies NO grid deltas: res_avail_mast.txt was exported
+// from Informix with the bulk-bank weeks ALREADY deducted from ram_bal_night, exactly
+// like maintenance. Deltas happen only on app CRUD.
+model RciBulkBank {
+  id            String   @id
+  serialNo      Int      @unique // bb_serial_no -- Informix serial (ix510_1); continues the sequence
+  resortId      String
+  resort        Resort   @relation(fields: [resortId], references: [id], onDelete: Cascade)
+  resortCode    String // bb_resort_code -- denormalized natural key
+  unitNo        String // bb_apt_code -- incl. compound lock-off codes like "3201/3202"
+  apartmentType String? // derived from ResortUnit at CRUD time; drives the grid key
+  checkIn       DateTime // bb_checkin  -- UTC midnight business date; ALWAYS a Friday
+  checkOut      DateTime // bb_checkout -- UTC midnight; = checkIn + 6 days (the LAST NIGHT)
+  weekYear      Int? // denormalized from the RciWeek match -- what the user actually keys
+  weekNo        Int? // denormalized from the RciWeek match (1..53)
+  season        String // bb_time_colour mapped: 1->'B' Blue, 2->'W' White, 3->'R' Red.
+  //                     Plain String + a controller z.enum, never a Prisma enum. NOT the
+  //                     G/S/D value space of CpSeasonDate/SeasonPoint -- different calendars.
+  bankStatus    String   @default("B") // bb_status -- legacy provenance ONLY. Never rendered,
+  //                                      never in the zod schema, so CRUD can never write it
+  //                                      (LvcCode incoming/outgoing/faxBatch precedent).
+  //                                      Source: B 712 / S 59. Meaning unknown; wire it up if
+  //                                      the booking/exchange module ever gives it one.
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @db.Timestamptz(3)
+
+  @@unique([resortCode, unitNo, checkIn, checkOut]) // = Informix bb_idx1
+  @@index([weekYear, weekNo])
+  @@index([resortCode, unitNo])
+}
+
 model Resort {
   id               String              @id
   resortCode       String              @unique
@@ -551,6 +595,7 @@ model Resort {
   resAvail         ResAvailMast[]
   maintenance      ResortMaintenance[]
   seasonPoints     SeasonPoint[]
+  bulkBank         RciBulkBank[]
 }
 
 model ResortInfoLine {

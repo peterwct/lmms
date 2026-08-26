@@ -235,6 +235,51 @@ export interface RciWeekDeleteResult {
   deleted: number;
 }
 
+// RCI Bulk Bank - RCI fn 3. One row = one RCI WEEK of one RCI-qualified unit
+// (ResortUnit.rciReserved='Y') deposited into the RCI exchange network, graded a season
+// colour by RCI. checkIn is always a Friday (= RciWeek.friStart) and checkOut = checkIn + 6
+// (the last night), so the range is 7 inclusive days. Each save deducts one unit-night per
+// day from the ResAvailMast grid's balNight.
+//
+// bankStatus (bb_status) is stored for provenance only - it is deliberately absent from
+// this interface because it is never rendered and the API never accepts it (the LvcCode
+// incoming/outgoing/faxBatch precedent).
+export type RciSeason = 'R' | 'B' | 'W';
+
+export interface RciBulkBank {
+  id: string;
+  serialNo: number;              // bb_serial_no - continues the Informix sequence
+  resortId: string;
+  resortCode: string;
+  unitNo: string;
+  apartmentType: string | null;
+  checkIn: string;
+  checkOut: string;
+  weekYear: number | null;       // denormalized from the RciWeek match
+  weekNo: number | null;
+  season: string;                // 'R' Red | 'B' Blue | 'W' White
+  createdAt: string;
+  updatedAt: string;
+  resort: { shortName: string | null; resortName: string; coCode: string };
+}
+
+export interface RciBulkBankList {
+  data: RciBulkBank[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// RCI-qualified units (rciReserved='Y') at one resort, with their fn 5 availability.
+// A unit with an empty blocks[] has no availability and cannot be banked - the picker
+// lists it disabled, the same treatment fn 6 gives.
+export interface RciBulkBankUnit {
+  unitNo: string;
+  apartmentType: string;
+  occupancy: number | null;
+  blocks: { id: string; startDate: string; endDate: string }[];
+}
+
 export interface Resort {
   id: string;
   resortCode: string;
@@ -408,6 +453,9 @@ export interface AptBlockAvailability {
 
 // Same shape as AptBlockAvailability — the per-day grid for a maintenance record's range
 export type ResortMaintenanceAvailability = AptBlockAvailability;
+
+// Same shape again — the per-day grid over an RCI bulk bank week's 7 days (RCI fn 3)
+export type RciBulkBankAvailability = AptBlockAvailability;
 
 // Holidays (Resorts Setup fn 7) — one global calendar, no resort/state scope, covering
 // both public holidays (single dates) and school breaks (date ranges).

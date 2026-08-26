@@ -116,18 +116,20 @@ export async function deleteResortUnit(req: Request, res: Response): Promise<voi
   const unit = await prisma.resortUnit.findUnique({ where: { id } });
   if (!unit) { res.status(404).json({ error: 'Unit not found' }); return; }
 
-  // AptBlock and ResortMaintenance carry the unit as a denormalized resortCode + unitNo
-  // pair and cascade off Resort, not ResortUnit, so this count is the only thing stopping
-  // a delete from orphaning fn 5 availability and fn 6 maintenance records. Rows of ANY
-  // date count: staff clear those first, and no orphan is ever left behind.
+  // AptBlock, ResortMaintenance and RciBulkBank carry the unit as a denormalized
+  // resortCode + unitNo pair and cascade off Resort, not ResortUnit, so this count is the
+  // only thing stopping a delete from orphaning fn 5 availability, fn 6 maintenance and
+  // RCI fn 3 bulk bank records. Rows of ANY date count: staff clear those first, and no
+  // orphan is ever left behind.
   const where = { resortCode: unit.resortCode, unitNo: unit.unitNo };
-  const [blocks, maintenance] = await Promise.all([
+  const [blocks, maintenance, bulkBank] = await Promise.all([
     prisma.aptBlock.count({ where }),
     prisma.resortMaintenance.count({ where }),
+    prisma.rciBulkBank.count({ where }),
   ]);
-  if (blocks + maintenance > 0) {
+  if (blocks + maintenance + bulkBank > 0) {
     res.status(409).json({
-      error: `Cannot delete — unit ${unit.unitNo} of ${unit.resortCode} is used by ${blocks} availability record(s), ${maintenance} maintenance record(s).`,
+      error: `Cannot delete — unit ${unit.unitNo} of ${unit.resortCode} is used by ${blocks} availability record(s), ${maintenance} maintenance record(s), ${bulkBank} RCI bulk bank record(s).`,
     });
     return;
   }

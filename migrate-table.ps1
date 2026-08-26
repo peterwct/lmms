@@ -22,6 +22,12 @@
                           rci_week.txt; 6 of 8 cols, years >= 2026 only). Truncates +
                           reimports. Post-go-live years are generated in MMS --
                           re-running clobbers any years added there.
+      RciBulkBank       - RCI Bulk Bank register (migrate-rci-bulk-bank.ts from
+                          bulk_bank.txt; 7 of 10 cols, check-in years >= 2026 only).
+                          Needs Resort (FK), ResortUnit (apartmentType) and RciWeek
+                          (year/week resolution) already loaded. Applies NO ResAvailMast
+                          deltas -- the grid export already has bulk bank deducted.
+                          Truncates + reimports -- clobbers CRUD edits post-go-live.
       Salesperson       - Salesperson master (migrate-salesperson.ts)
       SuPtReason        - SU/PT reason codes: SuReason seed + Agreement.suCode/canCode backfill
                           (seed-su-reasons.ts + migrate-su-pt-reasons.ts)
@@ -82,12 +88,13 @@
     .\migrate-table.ps1 -Table LvcSeasonPoint              # Season points, AWAY half (ps_lvcapt.txt; first 14 of 20 cols; clears pointsType AWAY + reimports)
     .\migrate-table.ps1 -Table RciEnrolment                 # RCI Enrolment register (rci_enrol.txt; 25 of 43 cols; truncates + reimports)
     .\migrate-table.ps1 -Table RciWeek                      # RCI week calendar (rci_week.txt; years >= 2026; truncates + reimports)
+    .\migrate-table.ps1 -Table RciBulkBank                  # RCI Bulk Bank (bulk_bank.txt; 7 of 10 cols, check-in years >= 2026; truncates + reimports)
     .\migrate-table.ps1 -Table PbsClaim -DatabaseUrl "postgresql://postgres:PASSWORD@199.1.1.32:5432/lhb_mms"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'RciEnrolment', 'RciWeek', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Product', 'LvcCode', 'Resort', 'ApartmentType', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance', 'CpSeasonDate', 'CpSeasonPoint', 'LvcSeasonPoint')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'RciEnrolment', 'RciWeek', 'RciBulkBank', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Product', 'LvcCode', 'Resort', 'ApartmentType', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance', 'CpSeasonDate', 'CpSeasonPoint', 'LvcSeasonPoint')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -204,6 +211,21 @@ $TableConfig = @{
         RequiredFiles = @('rci_enrol.txt')
         Scripts = @('prisma/migrate-rci-enrolment.ts')
     }
+    RciBulkBank = @{
+        # RCI Bulk Bank (bulk_bank.txt, 7 of 10 cols). LHB inventory deposited into the
+        # RCI exchange network -- one row per RCI week per qualifying unit. Only check-in
+        # years >= 2026 are imported (771 of 35,928 rows). Needs Resort for the FK,
+        # ResortUnit for the apartmentType + rciReserved lookup and RciWeek for the
+        # (year, weekNo) resolution, so on an empty DB run -Table Resort and
+        # -Table RciWeek first.
+        # Applies NO ResAvailMast deltas -- res_avail_mast.txt was exported with the
+        # bulk-bank weeks already deducted from bal_night, so re-applying them here would
+        # double-count (the same trap as ResortMaintenance).
+        # Post-go-live re-import clobbers CRUD edits.
+        TruncateSql = @('TRUNCATE "RciBulkBank";')
+        RequiredFiles = @('bulk_bank.txt')
+        Scripts = @('prisma/migrate-rci-bulk-bank.ts')
+    }
     Salesperson = @{
         TruncateSql = @('TRUNCATE "Salesperson";')
         RequiredFiles = @('csp_mast.txt')
@@ -256,10 +278,15 @@ $TableConfig = @{
         # Master data. Post-go-live resorts are maintained in MMS -- re-running
         # truncates and clobbers any edits made through the Resorts Setup CRUD.
         # Leaf tables truncated explicitly (TRUNCATE CASCADE unreliable).
-        TruncateSql = @('TRUNCATE "SeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
-        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_category.txt', 'apt_mast.txt', 'res_avail_mast.txt', 'apt_block.txt', 'resmt.txt', 'ps_seasonapt.txt', 'ps_lvcapt.txt')
+        # RciBulkBank must be in the TRUNCATE: it has a Cascade FK to Resort, and a
+        # plain TRUNCATE of a referenced table fails outright ("cannot truncate a table
+        # referenced in a foreign key constraint") unless every referencing table is
+        # named in the same statement. It is reloaded last -- migrate-rci-bulk-bank.ts
+        # needs ResortUnit (apartmentType) and RciWeek, and RciWeek is untouched here.
+        TruncateSql = @('TRUNCATE "RciBulkBank", "SeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort";')
+        RequiredFiles = @('resort_mast.txt', 'ps_resort_info.txt', 'apt_category.txt', 'apt_mast.txt', 'res_avail_mast.txt', 'apt_block.txt', 'resmt.txt', 'ps_seasonapt.txt', 'ps_lvcapt.txt', 'bulk_bank.txt')
         OptionalFiles = @('apt_mast_active.txt')
-        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-apt-category.ts', 'prisma/migrate-resort-units.ts', 'prisma/migrate-res-avail.ts', 'prisma/migrate-apt-block.ts', 'prisma/migrate-maintenance.ts', 'prisma/migrate-cp-season-points.ts', 'prisma/migrate-lvc-season-points.ts')
+        Scripts = @('prisma/migrate-resorts.ts', 'prisma/migrate-resort-info.ts', 'prisma/migrate-apt-category.ts', 'prisma/migrate-resort-units.ts', 'prisma/migrate-res-avail.ts', 'prisma/migrate-apt-block.ts', 'prisma/migrate-maintenance.ts', 'prisma/migrate-cp-season-points.ts', 'prisma/migrate-lvc-season-points.ts', 'prisma/migrate-rci-bulk-bank.ts')
     }
     ApartmentType = @{
         # Apartment sleep types (apt_category.txt partial export: 4 of 11 cols).

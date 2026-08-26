@@ -1,0 +1,87 @@
+-- =====================================================================
+-- res_avail_mast UNLOAD  ->  migrate/res_avail_mast.txt
+--                            (Prisma model: ResAvailMast)
+-- =====================================================================
+-- Run with:  dbaccess <database> res_avail_mast_unload.sql
+--
+-- Full-row export (SELECT *, 7 columns); prisma/migrate-res-avail.ts
+-- reads only [0..4] positionally:
+--   [0] ram_resort_code -> ResAvailMast.resortCode
+--   [1] ram_apt_type    -> ResAvailMast.apartmentType
+--   [2] ram_date        -> ResAvailMast.date      (dd-mm-yyyy -> UTC midnight)
+--   [3] ram_act_night   -> ResAvailMast.actNight  (units of that type registered)
+--   [4] ram_bal_night   -> ResAvailMast.balNight  (act - maintenance - bookings)
+--   [5..6] ram_rel_night / ram_lock_status  NOT migrated
+--
+-- Unique key: (resortCode, apartmentType, date)  = Informix ram_idx1.
+--
+-- =====================================================================
+-- WHY THIS SCRIPT EXISTS - added 2026-08-26
+-- =====================================================================
+-- The file in migrate/ was exported on 2026-07-24 and covers only SEVEN
+-- resorts (CP-PBR, L-10016, L-10024, L-10025, L-10026, L-101, L-103A) -
+-- the active estate as it stood that day. Since then more resorts have
+-- been activated, and they have units (apt_mast) and availability
+-- records (apt_block) but NO grid rows at all:
+--
+--   coCode 01  V-SGH        47 blocks, 0 grid rows
+--   coCode 20  V-LDBR    2,139 blocks, 0 grid rows
+--   coCode 24  V-CLC2      235 blocks, 0 grid rows
+--   coCode 26  V-SGI1      186 blocks, 0 grid rows
+--   coCode 26  V-SGI5      125 blocks, 0 grid rows
+--
+-- The Resorts Availability chart pivots ResAvailMast and zero-fills any
+-- missing day, so each of those resorts draws a full row of zeros -
+-- reported for LOTUS DESARU BEACH RESORT (V-LDBR) on 2026-08-26. The
+-- apt_block migration deliberately applies NO grid deltas (the export
+-- already has maintenance and bulk bank deducted; re-deriving would
+-- double-count), so ONLY this file can give those resorts a grid.
+--
+-- =====================================================================
+-- ONE FILTER: ACTIVE RESORTS ONLY
+-- =====================================================================
+-- Same join as apt_mast_unload.sql / apt_block_unload.sql, and for the
+-- same reason: LMMS maintains the live estate only, and driving it off
+-- resort_mast means a resort retired or reactivated in Informix moves in
+-- and out of the next export by itself, with no edit to this script.
+--
+-- *** THERE IS DELIBERATELY NO UNIT WHITELIST HERE. ***
+-- The other three exports carry the four-resort live-unit whitelist
+-- because they name a unit. res_avail_mast has no unit column - it is
+-- aggregated per apartment type - so there is nothing to filter, and
+-- ram_act_night already reflects the live register only. Verified
+-- 2026-08-26 against 2026-06-15: the grid's act matches the number of
+-- whitelisted units covering that day EXACTLY on every whitelisted
+-- resort (CP-PBR SLEEP2/4/6 = 16/16/16, L-10024 3BR = 25, L-10025 3BR
+-- = 17, L-10026 2BR = 14, plus L-10016 2BR = 20 and L-101 1BR = 5).
+-- =====================================================================
+
+UNLOAD TO 'res_avail_mast.txt' DELIMITER '|'
+SELECT v.*
+  FROM res_avail_mast v, resort_mast r
+ WHERE v.ram_resort_code = r.re_resort_code
+   AND TRIM(r.re_resort_status) = "A";
+
+-- ---------------------------------------------------------------------
+-- IMPORTING - read this before running anything
+-- ---------------------------------------------------------------------
+-- Load it ADDITIVELY, by calling the script directly:
+--
+--     npx ts-node --transpile-only prisma/migrate-res-avail.ts
+--
+-- migrate-res-avail.ts does not truncate and uses skipDuplicates, so it
+-- inserts the missing resorts and leaves every existing row alone.
+--
+-- Do NOT use  migrate-table.ps1 -Table ResAvailMast  for this: it runs
+-- TRUNCATE "ResAvailMast" first, which destroys the grid rows generated
+-- by the app's own Units Availability CRUD - rows that are in no export
+-- and can only be rebuilt by re-keying the records through fn 5. As of
+-- 2026-08-26 that is 680 rows (V-CLC1 365 from a MAR batch, plus the
+-- L-00000 / V-ABC1 test resorts). Same additive-vs-truncating
+-- distinction as migrate-resorts.ts; see CLAUDE.md.
+--
+-- Verification, after copying to E:\Websites\lmms\migrate\
+--   wc -l < res_avail_mast.txt                    -> expect > 94876
+--   cut -d'|' -f1 res_avail_mast.txt | sort -u    -> expect V-LDBR,
+--       V-SGH, V-CLC2, V-SGI1, V-SGI5 alongside the original seven
+-- ---------------------------------------------------------------------

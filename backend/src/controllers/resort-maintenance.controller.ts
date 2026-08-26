@@ -123,6 +123,17 @@ async function hasOverlap(client: Prisma.TransactionClient, resortCode: string, 
   return !!clash;
 }
 
+// RCI bulk bank (RCI fn 3) weeks this unit has inside [start,end]. Mirror of the guard in
+// apt-blocks.controller.ts, and a correctness fix rather than symmetry: bulk bank and
+// maintenance BOTH deduct balNight -= 1 for the same physical unit-night, so an
+// overlapping pair either double-deducts (the grid ends two lower than reality) or clamps
+// at 0 and loses one deduction permanently.
+async function bulkBankOverlap(client: Prisma.TransactionClient, resortCode: string, unitNo: string, start: Date, end: Date): Promise<number> {
+  return client.rciBulkBank.count({
+    where: { resortCode, unitNo, checkIn: { lte: end }, checkOut: { gte: start } },
+  });
+}
+
 // The chosen availability record must belong to this unit, and every range must fall
 // inside it. Maintenance withdraws availability, and applyMaintDelta skips days with no
 // grid row, so a range outside the unit's availability would record a maintenance row
@@ -315,6 +326,10 @@ export async function createMaintenance(req: Request, res: Response): Promise<vo
         if (await hasOverlap(tx, resortCode, unitNo, range.startDate, range.endDate)) {
           throw new HttpError(409, `${range.label} overlaps an existing maintenance record for this unit`);
         }
+        const banked = await bulkBankOverlap(tx, resortCode, unitNo, range.startDate, range.endDate);
+        if (banked > 0) {
+          throw new HttpError(409, `${range.label}: unit ${unitNo} has ${banked} RCI bulk bank week(s) inside this range. Remove them in RCI Bulk Bank (fn 3) first.`);
+        }
         const created = await tx.resortMaintenance.create({
           data: {
             id: randomUUID(), resortId: resort.id, resortCode, unitNo, apartmentType,
@@ -369,6 +384,14 @@ export async function updateMaintenance(req: Request, res: Response): Promise<vo
 
   if (await hasOverlap(prisma, existing.resortCode, existing.unitNo, startDate, endDate, id)) {
     res.status(409).json({ error: 'This unit already has a maintenance record overlapping these dates' });
+    return;
+  }
+
+  const banked = await bulkBankOverlap(prisma, existing.resortCode, existing.unitNo, startDate, endDate);
+  if (banked > 0) {
+    res.status(409).json({
+      error: `Unit ${existing.unitNo} has ${banked} RCI bulk bank week(s) inside this range. Remove them in RCI Bulk Bank (fn 3) first.`,
+    });
     return;
   }
 

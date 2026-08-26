@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { UserPlus, CalendarRange, ChevronRight } from 'lucide-react';
+import { UserPlus, CalendarRange, Landmark, ChevronRight } from 'lucide-react';
 
 interface RciMenuItem {
   num: number;
@@ -15,6 +15,7 @@ interface RciMenuItem {
 const RCI_ITEMS: RciMenuItem[] = [
   { num: 1, label: 'RCI Enrolment', to: '/rci/enrolment', icon: <UserPlus className="h-4 w-4" />, enabled: true },
   { num: 2, label: 'RCI Weekly Interval', to: '/rci/weekly-interval', icon: <CalendarRange className="h-4 w-4" />, enabled: true },
+  { num: 3, label: 'RCI Bulk Bank', to: '/rci/bulk-bank', icon: <Landmark className="h-4 w-4" />, enabled: true },
 ];
 
 function MenuSection({ title, items }: { title: string; items: RciMenuItem[] }) {

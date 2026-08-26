@@ -68,10 +68,17 @@ async function main() {
   console.log(DRY_RUN ? '  MODE: DRY RUN' : '  MODE: LIVE');
   console.log('='.repeat(60));
 
-  const resorts = await prisma.resort.findMany({ select: { id: true, resortCode: true } });
-  const idByCode = new Map(resorts.map(r => [r.resortCode, r.id]));
+  // ACTIVE resorts only -- the same backstop as migrate-resort-units.ts and
+  // migrate-apt-block.ts, and it must stay in step with them: the grid is meaningless for
+  // a resort that has no units and no blocks, and nothing can ever reach it (the fn 5
+  // availability chart lists active resorts only). A full-table export is 616,538 rows of
+  // which 482,550 sit on retired resorts.
+  const resorts = await prisma.resort.findMany({ select: { id: true, resortCode: true, status: true } });
+  const idByCode = new Map(resorts.filter(r => r.status === 'A').map(r => [r.resortCode, r.id]));
+  const knownCode = new Set(resorts.map(r => r.resortCode));
+  console.log(`\n  ${idByCode.size} active resorts of ${resorts.length} -- grid rows on retired resorts are skipped`);
 
-  let total = 0, skipped = 0;
+  let total = 0, skipped = 0, retired = 0;
   const batch: any[] = [];
 
   for await (const c of readLines('res_avail_mast.txt')) {
@@ -88,6 +95,7 @@ async function main() {
 
     const resortId = idByCode.get(resortCode);
     if (!resortId) {
+      if (knownCode.has(resortCode)) { retired++; continue; }
       skipped++;
       continue;
     }
@@ -109,6 +117,9 @@ async function main() {
   await flush(batch);
 
   console.log(`\n  OK Availability rows: ${total} inserted, ${skipped} skipped`);
+  if (retired) {
+    console.log(`  ${retired} row(s) skipped on RETIRED resorts (grid kept to the live estate).`);
+  }
 
   if (!DRY_RUN) {
     const count = await prisma.resAvailMast.count();

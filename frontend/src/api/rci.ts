@@ -1,5 +1,8 @@
 import { api } from './client';
-import type { RciAgreementLookup, RciEnrolment, RciEnrolmentList, RciWeekDeleteResult, RciWeekList, RciWeekYearResult } from '../types';
+import type {
+  RciAgreementLookup, RciBulkBank, RciBulkBankAvailability, RciBulkBankList, RciBulkBankUnit,
+  RciEnrolment, RciEnrolmentList, RciWeekDeleteResult, RciWeekList, RciWeekYearResult,
+} from '../types';
 
 // RCI (Resort Condominiums International) - fn 1 Enrolment.
 // Records are keyed by serialNo, which continues the Informix re_serial_no sequence;
@@ -23,4 +26,20 @@ export const rciWeeksApi = {
   years:      () => api.get<{ data: number[] }>('/rci-weeks/years'),
   createYear: (data: { year: number }) => api.post<{ data: RciWeekYearResult }>('/rci-weeks/year', data),
   deleteYear: (params: { year: number }) => api.delete<{ data: RciWeekDeleteResult }>('/rci-weeks/year', { params }),
+};
+
+// RCI fn 3 - Bulk Bank. A record is one RCI WEEK: the client sends weekYear + weekNo
+// (picked from fn 2's calendar) and the server derives checkIn/checkOut, so a non-Friday
+// range cannot be keyed. Each save maintains the ResAvailMast grid.
+export const rciBulkBankApi = {
+  list: (params: { q?: string; resortCode?: string; unitNo?: string; weekYear?: number; season?: string; page?: number; pageSize?: number }) =>
+    api.get<RciBulkBankList>('/rci-bulk-bank', { params }),
+  years: () => api.get<{ data: number[] }>('/rci-bulk-bank/years'),
+  // RCI-qualified units at this resort WITH their fn 5 availability, in one call
+  units: (resortCode: string) =>
+    api.get<{ data: RciBulkBankUnit[] }>('/rci-bulk-bank/units', { params: { resortCode } }),
+  create: (data: Record<string, unknown>) => api.post<{ data: RciBulkBank }>('/rci-bulk-bank', data),
+  update: (id: string, data: Record<string, unknown>) => api.put<{ data: RciBulkBank }>(`/rci-bulk-bank/${id}`, data),
+  remove: (id: string) => api.delete(`/rci-bulk-bank/${id}`),
+  availability: (id: string) => api.get<RciBulkBankAvailability>(`/rci-bulk-bank/${id}/availability`),
 };

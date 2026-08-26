@@ -135,6 +135,16 @@ async function maintenanceWithin(resortCode: string, unitNo: string, start: Date
   });
 }
 
+// RCI bulk bank (RCI fn 3) weeks this unit has inside [start,end]. Exactly the same
+// reasoning as maintenanceWithin: applyBankDelta has already deducted those days from
+// balNight, so applyDelta's -1 would clamp at 0 and the deduction would never be given
+// back. Staff remove the banked weeks first.
+async function bulkBankWithin(resortCode: string, unitNo: string, start: Date, end: Date): Promise<number> {
+  return prisma.rciBulkBank.count({
+    where: { resortCode, unitNo, checkIn: { lte: end }, checkOut: { gte: start } },
+  });
+}
+
 export async function listAptBlocks(req: Request, res: Response): Promise<void> {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const resortCode = typeof req.query.resortCode === 'string' ? req.query.resortCode.trim() : '';
@@ -478,6 +488,14 @@ export async function deleteAptBlock(req: Request, res: Response): Promise<void>
   if (maintenance > 0) {
     res.status(409).json({
       error: `Cannot delete — unit ${existing.unitNo} has ${maintenance} maintenance record(s) within these dates. Clear them in Resorts Unit Under Maintenance first.`,
+    });
+    return;
+  }
+
+  const bulkBank = await bulkBankWithin(existing.resortCode, existing.unitNo, existing.startDate, existing.endDate);
+  if (bulkBank > 0) {
+    res.status(409).json({
+      error: `Cannot delete — unit ${existing.unitNo} has ${bulkBank} RCI bulk bank week(s) within these dates. Remove them in RCI Bulk Bank (fn 3) first.`,
     });
     return;
   }

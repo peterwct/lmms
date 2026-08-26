@@ -71,10 +71,19 @@ async function main() {
   console.log(DRY_RUN ? '  MODE: DRY RUN' : '  MODE: LIVE');
   console.log('='.repeat(60));
 
-  const resorts = await prisma.resort.findMany({ select: { id: true, resortCode: true } });
-  const idByCode = new Map(resorts.map(r => [r.resortCode, r.id]));
+  // ACTIVE resorts only. The active-resort join belongs in apt_mast_unload.sql, but it
+  // is easy to lose when the UNLOAD is hand-run: an export carrying the four-resort unit
+  // whitelist but NOT the resort_mast join loads 12,047 rows over 316 resorts, 11,659 of
+  // them on retired resorts, which buries the fn 4 Units screen (it does not filter by
+  // resort status). This is the backstop for that -- it costs nothing when the export is
+  // already filtered, and the skip count in the summary makes a bad export obvious.
+  // Resort.status is 'A'/'U' here; migrate-resorts.ts maps Informix 'I' -> 'U'.
+  const resorts = await prisma.resort.findMany({ select: { id: true, resortCode: true, status: true } });
+  const idByCode = new Map(resorts.filter(r => r.status === 'A').map(r => [r.resortCode, r.id]));
+  const knownCode = new Set(resorts.map(r => r.resortCode));
+  console.log(`\n  ${idByCode.size} active resorts of ${resorts.length} -- units on retired resorts are skipped`);
 
-  let total = 0, skipped = 0, dupes = 0;
+  let total = 0, skipped = 0, dupes = 0, retired = 0;
   const batch: any[] = [];
   const seen = new Set<string>();
 
@@ -94,6 +103,9 @@ async function main() {
 
       const resortId = idByCode.get(resortCode);
       if (!resortId) {
+        // Known but retired is the expected case for an under-filtered export -- count it
+        // quietly. Genuinely unknown codes still warn, one line each.
+        if (knownCode.has(resortCode)) { retired++; continue; }
         console.log(`  WARN unknown resort ${resortCode} — skipped unit ${unitNo}`);
         skipped++;
         continue;
@@ -126,6 +138,10 @@ async function main() {
   }
 
   console.log(`\n  OK Resort units: ${total} inserted, ${skipped} skipped, ${dupes} duplicate`);
+  if (retired) {
+    console.log(`  ${retired} row(s) skipped on RETIRED resorts -- the export is missing the`);
+    console.log('  resort_mast active join; re-run migrate/apt_mast_unload.sql to shrink the file.');
+  }
 
   if (!DRY_RUN) {
     const count = await prisma.resortUnit.count();

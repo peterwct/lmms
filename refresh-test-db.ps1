@@ -86,17 +86,19 @@
     SELECT * FROM maa_claim;
 
     UNLOAD TO 'rci_enrol.txt' DELIMITER '|'
-    SELECT re_cocode, re_membership_no, re_agreement_no, re_rci_no, re_act_date, re_expiry_date,
-           re_rci_fees, re_resort_code, re_first_name1, re_last_name1,
-           re_name1, re_name1_no, re_agmt_no, re_first_name2, re_last_name2, re_name2,
-           re_name2_no, re_mail_add1, re_mail_add2, re_mail_add3, re_mail_city_state,
-           re_mail_postcode, re_malaysia, re_telno1, re_telno2, re_co_owner, re_old_rci_no,
-           si_entitlement.e_rci_salutation, si_entitlement.e_rci_name
-    FROM rci_enrol, si_entitlement
-    WHERE re_cocode IN ('03', '15', '02')
-    AND re_cocode = e_cocode
-    AND re_membership_no = e_membership_no
-    AND re_agreement_no = e_agreement_no;
+    SELECT * FROM rci_enrol;
+    -- Full table (43 cols) since 2026-08-20. This supersedes the old 29-col SELECT
+    -- joined against si_entitlement; both migrate-rci-enrol.ts and
+    -- migrate-rci-enrolment.ts detect the layout from the field count.
+
+    UNLOAD TO 'rci_week.txt' DELIMITER '|'
+    SELECT * FROM rci_week;
+    -- Full table. The importer keeps only years >= 2026 (209 of 2,055).
+
+    UNLOAD TO 'bulk_bank.txt' DELIMITER '|'
+    SELECT * FROM bulk_bank;
+    -- Full table. The importer keeps only check-in years >= 2026 (771 of 35,928),
+    -- matching migrate-rci-week.ts's MIN_YEAR.
 
     UNLOAD TO 'booking_ent1.txt' DELIMITER '|'
     SELECT * FROM booking_ent1;
@@ -213,6 +215,8 @@ $requiredFiles = @(
     'maa_mem.txt',
     'maa_claim.txt',
     'rci_enrol.txt',
+    'rci_week.txt',
+    'bulk_bank.txt',
     'csp_mast.txt',
     'booking_ent1.txt',
     'ps_bookent1.txt',
@@ -256,7 +260,7 @@ Write-Host "    Member, Agreement, Nominee"
 Write-Host "    AmcSchedule, AmcInvoice"
 Write-Host "    PbsScheme, PbsClaim (Zurich Payback)"
 Write-Host "    Salesperson, Product, LvcCode, Resort, ResortMaintenance, CpSeasonDate, SeasonPoint"
-Write-Host "    RciEnrolment (RCI fn 1), RciWeek (RCI fn 2)"
+Write-Host "    RciEnrolment (RCI fn 1), RciWeek (RCI fn 2), RciBulkBank (RCI fn 3)"
 Write-Host "    BookingEntitlement (LHC 03/15), CpBookingEntitlement (CP 02)"
 Write-Host ""
 Write-Host "  Will PRESERVE:"
@@ -321,7 +325,7 @@ Write-Host ""
 Write-Host ("[1/7] Clearing Informix data tables...") -ForegroundColor Yellow
 
 Invoke-Sql -Label "TRUNCATE Informix tables" -Sql @"
-TRUNCATE "RciWeek", "RciEnrolment", "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "SeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "Product", "LvcCode", "CpSeasonDate", "Member" CASCADE;
+TRUNCATE "RciBulkBank", "RciWeek", "RciEnrolment", "BookingEntitlement", "CpBookingEntitlement", "PbsClaim", "PbsScheme", "Salesperson", "SeasonPoint", "ResortMaintenance", "AptBlock", "ResAvailMast", "ResortUnit", "ApartmentType", "ResortInfoLine", "Resort", "Product", "LvcCode", "CpSeasonDate", "Member" CASCADE;
 "@
 
 # ── Step 2: Core member + agreement import ────────────────────────────────────
@@ -370,6 +374,13 @@ Invoke-Migration "prisma/migrate-apt-block.ts"     "migrate-apt-block.ts"
 # only -- res_avail_mast.txt already has maintenance deducted from bal_night, so this
 # script deliberately applies NO per-day grid deltas (that happens on app CRUD only).
 Invoke-Migration "prisma/migrate-maintenance.ts"   "migrate-maintenance.ts"
+# RCI Bulk Bank (RCI fn 3). LHB inventory deposited into the RCI exchange network.
+# Needs Resort + ResortUnit (loaded just above) AND RciWeek (step 3) for the
+# (year, weekNo) denormalization, which is why it sits here and not with the other two
+# RCI scripts. Like maintenance it loads rows ONLY -- the res_avail_mast.txt grid already
+# has the bulk-bank weeks deducted from bal_night, so this script applies NO per-day
+# deltas (that happens on app CRUD only).
+Invoke-Migration "prisma/migrate-rci-bulk-bank.ts" "migrate-rci-bulk-bank.ts"
 # Season points chart (points deducted per night by apartment type x season x day of
 # week) -- ONE table, discriminated by pointsType. Both scripts need Resort for the FK.
 # HOME: the member's own product's resort (coCode 02).
@@ -423,6 +434,7 @@ SELECT
   (SELECT COUNT(*) FROM "AmcInvoice")         AS amc_invoices,
   (SELECT COUNT(*) FROM "RciEnrolment")       AS rci_enrolments,
   (SELECT COUNT(*) FROM "RciWeek")            AS rci_weeks,
+  (SELECT COUNT(*) FROM "RciBulkBank")        AS rci_bulk_bank,
   (SELECT COUNT(*) FROM "Salesperson")        AS salespersons,
   (SELECT COUNT(*) FROM "Product")            AS products,
   (SELECT COUNT(*) FROM "LvcCode")            AS lvc_codes,

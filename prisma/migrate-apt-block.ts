@@ -62,13 +62,18 @@ async function main() {
   console.log(DRY_RUN ? '  MODE: DRY RUN' : '  MODE: LIVE');
   console.log('='.repeat(60));
 
-  const resorts = await prisma.resort.findMany({ select: { id: true, resortCode: true } });
-  const idByCode = new Map(resorts.map(r => [r.resortCode, r.id]));
+  // ACTIVE resorts only -- the same backstop as migrate-resort-units.ts, and it must stay
+  // in step with it: blocks must never outlive the unit register. An export missing the
+  // resort_mast join carries 25,266 rows, 20,104 of them on retired resorts.
+  const resorts = await prisma.resort.findMany({ select: { id: true, resortCode: true, status: true } });
+  const idByCode = new Map(resorts.filter(r => r.status === 'A').map(r => [r.resortCode, r.id]));
+  const knownCode = new Set(resorts.map(r => r.resortCode));
+  console.log(`\n  ${idByCode.size} active resorts of ${resorts.length} -- blocks on retired resorts are skipped`);
 
   const units = await prisma.resortUnit.findMany({ select: { resortCode: true, unitNo: true, apartmentType: true } });
   const typeByKey = new Map(units.map(u => [`${u.resortCode}|${u.unitNo}`, u.apartmentType]));
 
-  let total = 0, skipped = 0, noType = 0;
+  let total = 0, skipped = 0, noType = 0, retired = 0;
   const batch: any[] = [];
 
   for await (const c of readLines('apt_block.txt')) {
@@ -82,6 +87,7 @@ async function main() {
 
     const resortId = idByCode.get(resortCode);
     if (!resortId) {
+      if (knownCode.has(resortCode)) { retired++; continue; }
       console.log(`  WARN unknown resort ${resortCode} — skipped unit ${unitNo}`);
       skipped++;
       continue;
@@ -109,6 +115,10 @@ async function main() {
   }
 
   console.log(`\n  OK Availability blocks: ${total} inserted, ${skipped} skipped`);
+  if (retired) {
+    console.log(`  ${retired} row(s) skipped on RETIRED resorts -- the export is missing the`);
+    console.log('  resort_mast active join; re-run migrate/apt_block_unload.sql to shrink the file.');
+  }
   console.log(`  (${noType} rows had no matching ResortUnit -> apartmentType left null)`);
 
   if (!DRY_RUN) {
