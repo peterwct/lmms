@@ -2,9 +2,21 @@
  * LHB MMS — CP Season Calendar Migration
  * Source: migrate/ps_seasondate.txt — pipe-delimited Informix UNLOAD
  *
- *  [0] ps_date    -> date   (dd-mm-yyyy -> UTC midnight business date)
- *  [1] ps_season  -> season (G=Gold, S=Silver, D=Diamond)
- *  (trailing empty field, so NF=3)
+ * TWO LAYOUTS EXIST — the column offset is DETECTED from the first data row.
+ *
+ *   Full table (since the 2026-08-27 export), NF=9:
+ *     [0] ps_cocode  (always '02' — not stored, the ps_ prefix already marks it CP)
+ *     [1] ps_date    -> date   (dd-mm-yyyy -> UTC midnight business date)
+ *     [2] ps_season  -> season (G=Gold, S=Silver, D=Diamond)
+ *     [3..7] user/date audit + lock_status trailer — NOT migrated
+ *
+ *   Old 2-column export, NF=3:
+ *     [0] ps_date, [1] ps_season
+ *
+ * Detection is by value, not field count: whichever of [0]/[1] parses as a
+ * dd-mm-yyyy date is the date column. Without this the full-table export
+ * silently skips EVERY row (cocode '02' fails the date parse) — which is
+ * exactly what happened on the 2026-08-27 refresh, leaving CpSeasonDate empty.
  *
  * One row per calendar day — the source is a full daily calendar, not ranges.
  * The 2026-01-01..2027-02-28 export is 424 rows, fully contiguous (no gaps).
@@ -65,17 +77,34 @@ async function main() {
   const counts: Record<string, number> = { G: 0, S: 0, D: 0 };
   const batch: any[] = [];
 
+  // Column offset: 0 for the old 2-col export, 1 for the full table (leading cocode).
+  let off: number | null = null;
+
   for await (const c of readLines('ps_seasondate.txt')) {
-    const date = d(t(c[0]));
-    const season = (t(c[1]) ?? '').toUpperCase();
+    if (off === null) {
+      off = d(t(c[0])) ? 0 : d(t(c[1])) ? 1 : -1;
+      if (off === -1) {
+        throw new Error(
+          `Cannot locate the date column in ps_seasondate.txt — neither ` +
+          `"${c[0]}" nor "${c[1]}" parses as dd-mm-yyyy. First row: ${c.join('|')}`
+        );
+      }
+      console.log(
+        `  Layout: ${off === 1 ? 'full table (NF=9, leading cocode)' : 'old 2-column export'} ` +
+        `— date at [${off}], season at [${off + 1}]`
+      );
+    }
+
+    const date = d(t(c[off]));
+    const season = (t(c[off + 1]) ?? '').toUpperCase();
 
     if (!date) {
-      console.log(`  WARN unparseable date "${c[0]}" — skipped`);
+      console.log(`  WARN unparseable date "${c[off]}" — skipped`);
       skipped++;
       continue;
     }
     if (!SEASONS.has(season)) {
-      console.log(`  WARN unknown season "${c[1]}" on ${c[0]} — skipped`);
+      console.log(`  WARN unknown season "${c[off + 1]}" on ${c[off]} — skipped`);
       skipped++;
       continue;
     }

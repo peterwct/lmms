@@ -289,6 +289,35 @@ The script: truncates RciBulkBank + RciWeek + RciEnrolment + BookingEntitlement 
 
 > **Produce `apt_mast.txt`, `apt_block.txt` and `resmt.txt` with the committed `migrate/*_unload.sql` scripts, not the SELECTs in this file's history** — they carry the active-resort filter and the four-resort live-unit whitelist, and the three whitelists must stay identical. See `### ResortUnit`.
 
+> ### After ANY refresh: verify row counts, don't assume the load succeeded
+>
+> A new Informix UNLOAD can change a file's **column layout** or introduce a **value the importer
+> doesn't know**, and both failure modes are **silent** — the scripts `WARN` per row and carry on,
+> so the run still ends with "migration complete" and a zero/short table. The 2026-08-27 refresh hit
+> both at once:
+>
+> | Table | Loaded | Expected | Cause |
+> |---|---|---|---|
+> | `CpSeasonDate` | **0** | 424 | `ps_seasondate.txt` gained a leading `ps_cocode` column; the date parse failed on every row |
+> | `LvcCode` | **11** | 22 | `lvc_master.txt` now uses status `C` (Cancelled), which was not in the A/U set |
+>
+> Both importers are fixed (offset detection / `C` → `U`), but the lesson generalises. **Run a count
+> check after every refresh** and compare against the `### <Model>` sections, treating any table that
+> comes back 0 or sharply short as a layout change until proven otherwise:
+>
+> ```bash
+> PGPASSWORD=... psql -h <host> -U postgres -d lhb_mms -t -A -c "
+>   SELECT 'CpSeasonDate', count(*) FROM \"CpSeasonDate\"
+>   UNION ALL SELECT 'LvcCode', count(*) FROM \"LvcCode\"
+>   UNION ALL SELECT 'Resort', count(*) FROM \"Resort\"
+>   -- ... one line per migrated table
+>   ;"
+> ```
+>
+> Counts quoted in the `### <Model>` sections are **as-of a stated refresh** and drift with every
+> re-export — re-check them rather than quoting a figure from prose (the same rule the
+> `Resort.status` note already states).
+
 ### Migrating a single table
 
 Use `migrate-table.ps1` to re-import a single table without a full refresh:
@@ -590,9 +619,32 @@ and `Resort.status`, not the boolean `isActive` used by the AMC rate tables.
 **`status` was added 2026-08-17** (migration `20260817090000_add_product_status`), because a product
 can almost never be *deleted* — `deleteProduct` refuses 409 while any Agreement / AmcSchedule /
 Resort / LvcCode carries the `coCode`, which is true of nearly every row — so retiring a company that
-is no longer an active exchange partner needs a status instead. Every existing row backfilled to `A`
-via the column `DEFAULT`; **staff deactivate manually**, there is no source column behind it
-(`psc_lockstatus[16]` stays unmigrated, as before).
+is no longer an active exchange partner needs a status instead.
+
+> ### The active set is a WHITELIST IN THE IMPORTER, not staff toggles (2026-08-27)
+> `ps_company` has no usable status column (`psc_lockstatus[16]` stays unmigrated), so every row
+> would land at the DB `DEFAULT 'A'`. **`ACTIVE_CODES` in `prisma/migrate-products.ts` is the
+> authoritative active set** — `02`, `03`, `15` (our own products) plus `24` CLC, `25` ABSOLUTE
+> WORLD TRAVEL and `26` SGI (the exchange partners currently traded with). **6 active / 23
+> inactive.**
+>
+> The script is deliberately **reconciling, not insert-only**: it stamps `status` on fresh inserts
+> *and* sweeps the whole table afterwards (`updateMany` in both directions), so the whitelist holds
+> whether the caller truncated first (`migrate-table.ps1 -Table Product`, `refresh-test-db.ps1`) or
+> the script is re-run additively. Both call sites route through it, so **no PowerShell change was
+> needed** and every future refresh reapplies the same set.
+>
+> **A status toggled through Products Setup (fn 1) does NOT survive a refresh** — that is the
+> intent, not the old "re-import clobbers edits" caveat being tolerated. **To change the active set,
+> edit `ACTIVE_CODES` and re-run.** Same pattern as `ACTIVE_CODES` in
+> `prisma/seed-cancellation-reasons.ts` (a business-defined active set overriding the source column)
+> and `CHECK_TIMES` in `migrate-resorts.ts` (business-supplied values baked into the importer).
+>
+> **`01` and `20` are deactivated even though they still own an ACTIVE resort** — `V-SGH` (01) and
+> `V-LDBR` (20, the largest partner resort at 78 units / 2,139 availability records). Confirmed by
+> the business: both products are no longer active. The consequence is that neither resort can be
+> charted in the **Resorts Availability** popup, which lists active products only; everything else
+> about them keeps working, since product status is checked in dropdowns only and never server-side.
 
 **Deactivating hides a product from every product dropdown, and nothing else** — the LVC Code form's
 product picker (fn 10) and the CP Points Deduction **Charged To** picker (fn 9), both via the shared
@@ -625,15 +677,18 @@ Retiring a product is normally the **A/U status toggle** (`PATCH /:id/toggle`, s
 Resort and LvcCode toggles); hard delete still exists behind the 409 usage guard above.
 Imported via `prisma/migrate-products.ts` (`migrate-table.ps1 -Table Product`, also in
 `refresh-test-db.ps1`). It has a real Informix source, so it **truncates and reimports** —
-post-go-live re-import **clobbers CRUD edits**. **That includes `status`**: the importer never sets
-the column, so every row comes back at the `DEFAULT 'A'` and all deactivations are undone — the same
-caveat `LvcCode.status` carries.
+post-go-live re-import **clobbers CRUD edits**. **That includes `status`, but by design since
+2026-08-27**: the importer applies the `ACTIVE_CODES` whitelist above rather than leaving every row
+at the `DEFAULT 'A'`, so a refresh restores the intended 6 active / 23 inactive split instead of
+undoing it. `LvcCode.status` still carries the older, unmanaged version of this caveat.
 
 ### LvcCode
 Leisure Vacation Club exchange-programme master for the **Leisure Vacation Club (LVC) Code
-Maintenance and Setup** function (`/resorts/lvc-codes`, Resorts Setup fn 10). 23 records from `lvc_master.txt` (Informix `lvc_master`) —
-**5 active / 18 inactive** as of 2026-08-12 (all 23 imported as `A`; staff retired 18 through the
-CRUD screen afterwards).
+Maintenance and Setup** function (`/resorts/lvc-codes`, Resorts Setup fn 10). **22 records** from `lvc_master.txt` (Informix
+`lvc_master`) — **11 active / 11 inactive** as of the 2026-08-27 refresh, straight from the source
+(`lvc_status` is 11 `A` / 11 `C`, and `C` maps to `U`). The earlier export was 23 rows all `A`, which
+the app then showed as 5 active / 18 inactive after staff retired 18 through the CRUD screen; those
+retirements were clobbered by the refresh, as a re-import always does.
 
 **What an LVC code is:** the exchange arrangement under which a member books *outside their own
 product*.
@@ -853,6 +908,41 @@ codes like `3227/3228` and dotted codes like `1.12A`, stored as plain strings), 
 `(resortCode, apartmentType)` pair exists, 400 otherwise, since apartment types are renamable via
 their own CRUD), `occupancy` (Int?), `rciReserved` (Y/N, default N). Unique: `[resortCode, unitNo]`
 (`apt_code` is NOT globally unique — codes 1-21 repeat across L-10024/L-10025/L-101).
+
+> ### `rciReserved` is a WHITELIST IN THE IMPORTER at four resorts (2026-08-27)
+> `apt_rci_reserved` in the source is stale — it exported `Y` for **every** unit at L-10016 (30),
+> L-10025 (22), L-10026 (14), L-101 (10) and CP-PBR (48), and for 12 of L-10024's 34.
+> **`RCI_RESERVED` in `prisma/migrate-resort-units.ts` overrides it** for the resorts it names: a
+> unit there is `Y` only if listed, everything else is forced `N`.
+>
+> | Resort | | RCI-reserved | Was |
+> |---|---|---|---|
+> | L-10016 | KEMANG INDAH | **none** | 30 |
+> | L-10025 | GOLDEN CITY | **none** | 22 |
+> | L-101 | SANTANA | **none** | 10 |
+> | L-10024 | GREENHILL | `A6`, `A7` | 12 |
+> | L-10026 | LEISURE COVE | `504`, `506` | 14 |
+> | CP-PBR | PERDANA | `3201/3202`, `3203/3204` | 48 |
+>
+> **Total RCI-qualified units: 6**, down from 136. The map now covers **all six resorts on our own
+> products** (`02`/`03`), so the only resorts still taking the source value are the `V-*` partner
+> ones — and every one of those already exports `N` throughout. **Resorts ABSENT from the map keep
+> whatever the source says**, so a newly activated partner resort is not silently forced to `N`.
+>
+> Same reconciling shape as `ACTIVE_CODES` in `migrate-products.ts` — the flag is stamped on fresh
+> inserts *and* swept over the table afterwards (`updateMany` in both directions), so it holds on a
+> truncate-and-load *and* an additive re-run, and it warns if the map names a unit that isn't in the
+> register. All three callers route through the script (`refresh-test-db.ps1`,
+> `migrate-table.ps1 -Table ResortUnit`, `-Table Resort`), so no PowerShell change was needed.
+> **A box ticked in fn 4 does NOT survive a refresh at those four resorts** — edit `RCI_RESERVED`
+> and re-run instead.
+>
+> **Existing `RciBulkBank` history is unaffected.** `rciReserved='Y'` is a **save-time** rule, so
+> `migrate-rci-bulk-bank.ts` imports a banked week on an un-flagged unit verbatim with a WARN
+> (`imported anyway`). Un-flagging only stops **new** weeks being banked. Three units that hold
+> banked weeks are now `N` — CP-PBR `3205/3206` (51 weeks), CP-PBR `3227/3228` (103) and L-10024
+> `A8` (51) — so those 205 records stay readable, editable and deletable in RCI fn 3, and their
+> units simply stop appearing in its Add picker.
 **Delete is refused 409** while the unit still has any `AptBlock` (fn 5), `ResortMaintenance` (fn 6)
 or `RciBulkBank` (RCI fn 3) record, of any date — all three carry the unit as a denormalized
 `resortCode` + `unitNo` pair and cascade off **`Resort`**, not `ResortUnit`, so without the count a
@@ -1538,8 +1628,10 @@ re-import **clobbers CRUD edits**.
 
 ### RciWeek
 RCI week-number calendar for the **RCI Weekly Interval** function (`/rci/weekly-interval`,
-RCI fn 2). **209 records** from `rci_week.txt` (Informix `rci_week`) — **2026:52, 2027:53,
-2028:52, 2029:52**.
+RCI fn 2). **105 records** from `rci_week.txt` (Informix `rci_week`) — **2026:52, 2027:53**
+as of the 2026-08-27 refresh. The earlier export also carried 2028:52 and 2029:52 (209 rows); the
+current source stops at 2027, so **fn 3 Bulk Bank can only bank 2026/2027 weeks** until staff
+re-generate the later years through fn 2's **Add year** (which derives them from the year alone).
 
 **A week runs Friday → the FOLLOWING Friday**, so consecutive weeks **share a boundary
 date** (`week[n].friEnd == week[n+1].friStart`) and the last week of a year **crosses into
@@ -1800,16 +1892,16 @@ Source tables and their column counts (verified from actual export files):
 
 | `ps_bookent1.txt` | CP booking entitlement (point balances) | 9 cols + trailer, pipe-delimited | psb_cocode[0] (always `02`), psb_memno[1] (e.g. `M00020/I`), psb_agmtno[2] (e.g. `P00020`), psb_useyear[3] (`dd-mm-yyyy` anniversary date), psb_totalpts[4], psb_curusepts[5], psb_advusepts[6], psb_acrusepts[7], **psb_balpts[8]** (balance points — the value the CP card displays). **All rows** imported (a fully-unused future year `balPts` and terminal 0-balance rows are both meaningful) → `CpBookingEntitlement`. `agreementId` left null (natural-key read path). Schema verified in `ps_bookent1.sql`. See `prisma/migrate-cp-booking-entitlement.ts`. |
 
-| `ps_company.txt` | Product / operating-company master | 17 cols pipe-delimited (+ trailing empty field, so `NF=18`); **only [0..8] migrated** | psc_cocode[0] (→ `coCode`), psc_coname[1] (→ `coName`), psc_enttype[2] (→ `entType`; `W`=Week / `P`=Points, any other value skipped with a WARN), psc_coaddr1-3[3-5] (→ `add1`/`add2`/`add3`), psc_cotel[6] (→ `telNo`), psc_cofax[7] (→ `faxNo`), psc_contact[8] (→ `contactPerson`). **psc_coincode[9], psc_invt[10], psc_arco[11] (accounting/invoicing codes), psc_usercreate/datecreate/usermodify/datemodify[12-15] and psc_lockstatus[16] NOT migrated.** `UNLOAD TO 'ps_company.txt' DELIMITER '\|' SELECT * FROM ps_company;` (**unfiltered** — the first export handed over was filtered to 7 rows and had to be re-extracted) → `Product` (unique on `coCode`). **29 rows, coCodes 01-29:** 02 (P, CP), 03/15 (W, LHC) are our own products and the only ones carrying agreements; the other 26 are exchange partners / affiliated companies and are what `LvcCode.coCode` references. 02/03/15 carry no address/tel/fax/contact; most partners do. See `prisma/migrate-products.ts`. |
+| `ps_company.txt` | Product / operating-company master | 17 cols pipe-delimited (+ trailing empty field, so `NF=18`); **only [0..8] migrated** | psc_cocode[0] (→ `coCode`), psc_coname[1] (→ `coName`), psc_enttype[2] (→ `entType`; `W`=Week / `P`=Points, any other value skipped with a WARN), psc_coaddr1-3[3-5] (→ `add1`/`add2`/`add3`), psc_cotel[6] (→ `telNo`), psc_cofax[7] (→ `faxNo`), psc_contact[8] (→ `contactPerson`). **psc_coincode[9], psc_invt[10], psc_arco[11] (accounting/invoicing codes), psc_usercreate/datecreate/usermodify/datemodify[12-15] and psc_lockstatus[16] NOT migrated.** `UNLOAD TO 'ps_company.txt' DELIMITER '\|' SELECT * FROM ps_company;` (**unfiltered** — the first export handed over was filtered to 7 rows and had to be re-extracted) → `Product` (unique on `coCode`). **29 rows, coCodes 01-29:** 02 (P, CP), 03/15 (W, LHC) are our own products and the only ones carrying agreements; the other 26 are exchange partners / affiliated companies and are what `LvcCode.coCode` references. 02/03/15 carry no address/tel/fax/contact; most partners do. **`status` is NOT from the source** — `prisma/migrate-products.ts` applies its own `ACTIVE_CODES` whitelist (`02`, `03`, `15`, `24`, `25`, `26`) and deactivates every other coCode on each run, sweeping the whole table so it holds on both a truncate-and-load and an additive re-run. See `### Product` and `prisma/migrate-products.ts`. |
 
-| `lvc_master.txt` | LVC exchange-programme master | 14 cols pipe-delimited (+ trailing empty field, so `NF=15`); **only [0..6] migrated** | lvc_code[0] (→ `lvcCode`, e.g. `LVC-CP`), lvc_cocode[1] (→ `coCode` — **references `ps_company.psc_cocode` → `Product.coCode`**; all 23 rows resolve against the full 29-row export; validated on CRUD, no hard FK), lvc_name[2] (→ `lvcName`), lvc_status[3] (→ `status`; `A`/`U`, defaults `A` when blank, any other value skipped with a WARN), lvc_incoming[4], lvc_outgoing[5], lvc_fax_batch[6] (→ `incoming`/`outgoing`/`faxBatch`). **user_create[7], date_create[8], user_modify[9], date_modify[10], user_cancel[11], date_cancel[12], lock_status[13] NOT migrated.** `UNLOAD TO 'lvc_master.txt' DELIMITER '\|' SELECT * FROM lvc_master;` → `LvcCode` (unique on `lvcCode`). **The three counters are `decimal(5,0)` but export as FLOAT strings (`"519.0"`) — parse with `Math.round(parseFloat(…))`, the same trap `pssa_year` (`"2000.0"`) has in `migrate-cp-season-points.ts`.** Names are imported **verbatim including source typos** (`LVC-RR` = `ROYAL RESORTS GROU[P`, `LVC-AWT` = `ABSOLUTE WORL TRAVEL LTD`) — staff correct them via the CRUD screen; rewriting them here would make a re-import disagree with Informix. **23 rows, all `status='A'` in the source** — the app shows **5 active / 18 inactive** as of 2026-08-12 (staff retirements, which a re-import overwrites back to `A`). See `prisma/migrate-lvc-codes.ts`. |
+| `lvc_master.txt` | LVC exchange-programme master | 14 cols pipe-delimited (+ trailing empty field, so `NF=15`); **only [0..6] migrated** | lvc_code[0] (→ `lvcCode`, e.g. `LVC-CP`), lvc_cocode[1] (→ `coCode` — **references `ps_company.psc_cocode` → `Product.coCode`**; all 23 rows resolve against the full 29-row export; validated on CRUD, no hard FK), lvc_name[2] (→ `lvcName`), lvc_status[3] (→ `status`; `A`=Active, `U`=Inactive, defaults `A` when blank. **Informix also uses `C` (Cancelled), which is MAPPED TO `U`** — the same way `re_resort_status` `I` → `U` is mapped in `migrate-resorts.ts`. Any *other* value is still skipped with a WARN), lvc_incoming[4], lvc_outgoing[5], lvc_fax_batch[6] (→ `incoming`/`outgoing`/`faxBatch`). **user_create[7], date_create[8], user_modify[9], date_modify[10], user_cancel[11], date_cancel[12], lock_status[13] NOT migrated.** `UNLOAD TO 'lvc_master.txt' DELIMITER '\|' SELECT * FROM lvc_master;` → `LvcCode` (unique on `lvcCode`). **The three counters are `decimal(5,0)` but export as FLOAT strings (`"519.0"`) — parse with `Math.round(parseFloat(…))`, the same trap `pssa_year` (`"2000.0"`) has in `migrate-cp-season-points.ts`.** Names are imported **verbatim including source typos** (`LVC-RR` = `ROYAL RESORTS GROU[P`, `LVC-AWT` = `ABSOLUTE WORL TRAVEL LTD`) — staff correct them via the CRUD screen; rewriting them here would make a re-import disagree with Informix. **22 rows as of the 2026-08-27 export — 11 `A` / 11 `C`, loading as 11 Active / 11 Inactive.** The earlier export was 23 rows all `A`. **Before the `C` → `U` mapping existed, all 11 `C` rows were silently dropped** as unknown statuses, so the 2026-08-27 refresh loaded only **11** codes. A re-import still overwrites any staff retirement of an `A` row back to `A`. See `prisma/migrate-lvc-codes.ts`. |
 
 | `resort_mast.txt` | Resort master | 26 cols pipe-delimited | re_resort_code[0], re_cocode[1], re_short_name[2], re_resort_name[3], **re_exc_reg[4] + re_rci_release[7] skipped**, re_rci_aff[5] (→ `rciAffiliate`), re_rci_code[6], re_lock_onoff[8] (lock-on/lock-off: apartment splits as Sleep2/4/6), re_resort_mgmt[9], re_contact_person[10], re_add1-3[11-13], re_city[14], re_state[15], re_country[16], re_telno[17], re_faxno[18], re_resort_status[19] (Informix `A`/`I` — **`I` is mapped to `U`** for this codebase's A/U convention), re_paymt[20], re_create_user/date[21-22], re_mod_user/date[23-24], re_lock_status[25]. `UNLOAD TO 'resort_mast.txt' DELIMITER '\|' SELECT * FROM resort_mast;` (**unfiltered since 2026-07-30**; was `WHERE re_resort_status='A' AND re_cocode IN ('03','15','02')` = 7 rows) → `Resort`. **324 rows** — **12 active / 312 inactive** (was 49/275 at import; staff retired resorts in the app afterwards and the additive re-import never pushes Informix statuses back), all coCodes, including the `V-*` LVC exchange resorts needed by fn 9's Non-Home tab. The script does NOT truncate and uses `skipDuplicates`, so running it alone is **additive**. See `prisma/migrate-resorts.ts`. |
 
 | `apt_category.txt` | Apartment sleep types | 4 cols pipe-delimited (+ trailing empty field, so `NF=5`; deliberately partial export of the 11-col `apt_category`) | aptc_resort_code[0] (→ `resortCode`; 320 distinct, **all resolve against `Resort`** — 0 unmatched), aptc_type[1] (→ `apartmentType`; SLEEP2/4/6, 1BR/2BR/3BR, `HOTEL UNIT`, SLEEPA-E, `D'LUX ROOM`, …), aptc_remark[2] (→ `description`; never blank, max 30 chars), aptc_lock_type[3] (→ `lockType`; LN 471 / LS 10 / LM 6, any other value stored as LN with a WARN). **aptc_timein / aptc_timeout (per-type check-in/out times — the resort-level `checkInTime`/`checkOutTime` cover this today) and the aptc_user_name / aptc_sys_date / aptc_mod_user / aptc_mod_date / aptc_lock_status trailer NOT migrated.** `UNLOAD TO 'apt_category.txt' DELIMITER '\|' SELECT aptc_resort_code, aptc_type, aptc_remark, aptc_lock_type FROM apt_category;` → `ApartmentType` (unique `[resortCode, apartmentType]` = Informix `aptc_idx1`). **487 rows, 320 resorts, 0 duplicate pairs**; verified to round-trip byte-for-byte against the source. **Supersedes the 9 hand-transcribed rows formerly hardcoded as `APARTMENT_TYPES` in `migrate-resorts.ts`** (all 9 reproduced verbatim). The file is **CRLF-terminated** — `readline` with `crlfDelay: Infinity` strips the `
 `, but a raw `diff` against DB output needs `tr -d '
 '` first. See `prisma/migrate-apt-category.ts`. |
-| `apt_mast.txt` | Resort units (Apartments/Units register) | 5 cols pipe-delimited (deliberately partial export of the 15-col `apt_mast` — dates/audit/lock_status skipped) | apt_code[0] (→ `unitNo`; compound lock-off codes `3227/3228`, dotted `1.12A`), apt_resort_code[1], apt_rci_reserved[2] (Y/N), apt_unit_type[3] (matches `ApartmentType.apartmentType`), apt_occupancy[4]. **Do NOT hand-write this UNLOAD — run `migrate/apt_mast_unload.sql`**, which joins `resort_mast` for `re_resort_status = 'A'` and applies the four-resort live-unit whitelist (L-10024 A1-A34, L-10025 B1-B22, L-10026 floors 4-5, CP-PBR the 32xx family). → `ResortUnit` (unique `[resortCode, unitNo]` — apt_code NOT globally unique). **358 rows over 12 active resorts**; an unfiltered export is 12,047 over 316. An optional second file `apt_mast_active.txt` (`migrate/apt_mast_active_unload.sql`) is read by the same loader and de-duplicated. See `prisma/migrate-resort-units.ts`. |
+| `apt_mast.txt` | Resort units (Apartments/Units register) | 5 cols pipe-delimited (deliberately partial export of the 15-col `apt_mast` — dates/audit/lock_status skipped) | apt_code[0] (→ `unitNo`; compound lock-off codes `3227/3228`, dotted `1.12A`), apt_resort_code[1], apt_rci_reserved[2] (Y/N — **STALE in the source and overridden** at four resorts by the `RCI_RESERVED` map in `migrate-resort-units.ts`; see `### ResortUnit`), apt_unit_type[3] (matches `ApartmentType.apartmentType`), apt_occupancy[4]. **Do NOT hand-write this UNLOAD — run `migrate/apt_mast_unload.sql`**, which joins `resort_mast` for `re_resort_status = 'A'` and applies the four-resort live-unit whitelist (L-10024 A1-A34, L-10025 B1-B22, L-10026 floors 4-5, CP-PBR the 32xx family). → `ResortUnit` (unique `[resortCode, unitNo]` — apt_code NOT globally unique). **358 rows over 12 active resorts**; an unfiltered export is 12,047 over 316. An optional second file `apt_mast_active.txt` (`migrate/apt_mast_active_unload.sql`) is read by the same loader and de-duplicated. See `prisma/migrate-resort-units.ts`. |
 
 | `ps_resort_info.txt` | Resort info (4 blocks of print lines) | 38 cols pipe-delimited | psri_resort_code[0], psri_get_there1-10[1-10], psri_res_fac1-10[11-20], psri_pl_int1-6[21-26], psri_unit_amen1-6[27-32], legacy audit[33-36] + lockstatus[37] skipped (all empty). `UNLOAD TO 'ps_resort_info.txt' SELECT * FROM ps_resort_info;` → `ResortInfoLine` (one row per non-empty slot; slot no. = `seq`). See `prisma/migrate-resort-info.ts`. |
 
@@ -1819,7 +1911,7 @@ Source tables and their column counts (verified from actual export files):
 
 | `resmt.txt` | Resorts Maintenance register | 9 cols pipe-delimited (+ trailing empty field, so `NF=10`); only [0..5] migrated | rm_serial_no[0] (→ `serialNo`), rm_resort_code[1], rm_apt_code[2] (→ `unitNo`, incl. `3231/3232` and `3.9B`), rm_checkin[3] (→ `startDate`), rm_checkout[4] (→ `endDate`) (`dd-mm-yyyy` → UTC midnight), rm_remarks[5] (→ `remarks`, the reason). **rm_user_name[6], rm_sys_date[7], rm_lock_status[8] NOT migrated** (lock_status is `U` on all 13,396 rows). `apartmentType` derived by ResortUnit lookup (null when the unit isn't registered — 291 rows, all historic). **Run `migrate/resmt_unload.sql`** — carries the four-resort unit whitelist but is **NOT** status-filtered, so it stays a full-table export → **10,904 rows** (6,069 of them on retired resorts, which import with a null apartmentType). → `ResortMaintenance` (unique `[resortCode, unitNo, startDate]` = Informix `rm_idx1`). An unfiltered export yields 13,396; the extra 6,069 reference retired resort codes (L-10020 3122, L-10027 1626, L-10013 426, L-103 378, …) absent from `Resort`, so the FK can't be satisfied — the script skips them with a summary WARN rather than failing, so either export works. **Applies NO `ResAvailMast` deltas** — the grid export already has maintenance deducted. See `prisma/migrate-maintenance.ts`. |
 
-| `ps_seasondate.txt` | CP season calendar (per-day G/S/D grading) | 2 cols pipe-delimited (+ trailing empty field, so `NF=3`) | ps_date[0] (`dd-mm-yyyy` → UTC midnight), ps_season[1] (`G`=Gold / `S`=Silver / `D`=Diamond; any other value is skipped with a WARN). `year` derived from the date. `UNLOAD TO 'ps_seasondate.txt' DELIMITER '\|' SELECT * FROM ps_seasondate;` → `CpSeasonDate` (unique on `date` — one season per day). **424 rows, 2026-01-01 → 2027-02-28, fully contiguous (no gaps, no duplicate dates); D 40 / G 56 / S 328 forming 33 contiguous runs.** CP-only — see the per-product calendar note under `### Holiday`. See `prisma/migrate-cp-seasons.ts`. |
+| `ps_seasondate.txt` | CP season calendar (per-day G/S/D grading) | **TWO LAYOUTS — the offset is DETECTED, not assumed.** Full table (since the 2026-08-27 export): 8 cols (+ trailing empty, `NF=9`) with a **leading `ps_cocode`** (always `02`, not stored) — date at `[1]`, season at `[2]`, audit/lock trailer `[3..7]` not migrated. Old export: 2 cols (`NF=3`) — date at `[0]`, season at `[1]`. | ps_date (`dd-mm-yyyy` → UTC midnight), ps_season (`G`=Gold / `S`=Silver / `D`=Diamond; any other value is skipped with a WARN). `year` derived from the date. `UNLOAD TO 'ps_seasondate.txt' DELIMITER '\|' SELECT * FROM ps_seasondate;` → `CpSeasonDate` (unique on `date` — one season per day). **424 rows, 2026-01-01 → 2027-02-28, fully contiguous (no gaps, no duplicate dates); D 40 / G 56 / S 328 forming 33 contiguous runs.** CP-only — see the per-product calendar note under `### Holiday`. **`migrate-cp-seasons.ts` picks the offset by VALUE** — whichever of `[0]`/`[1]` parses as `dd-mm-yyyy` is the date column — and throws if neither does. Before that detection existed, the full-table export **silently skipped every row** (cocode `02` fails the date parse, so each line hit the `WARN unparseable date` path), which is exactly what the 2026-08-27 refresh did: **`CpSeasonDate` came back empty**, taking fn 8 and the whole CP season grading with it. See `prisma/migrate-cp-seasons.ts`. |
 
 | `ps_seasonapt.txt` | Season points chart, HOME half (points per night) | 24 cols pipe-delimited (+ trailing empty field, so `NF=25`); **only [0..11] migrated** | pssa_resort_code[0] (`CP-PBR` on every row), pssa_apt_type[1] (→ `apartmentType`; SLEEP2/SLEEP4/SLEEP6), pssa_year[2] (**collapse key only, NOT stored** — see below; exported as a float string `"2000.0"`, so use `parseFloat`, not the `d()` date helper), pssa_effdate[3] (→ `effectiveDate`, `dd-mm-yyyy` → UTC midnight), pssa_season[4] (`G`/`S`/`D`; any other value skipped with a WARN), pssa_norpts0..6[5-11] (→ `ptsSun`..`ptsSat`, **0 = Sunday … 6 = Saturday**). **pssa_lvcpts0..6[12-18] NOT migrated (zero on all 253 rows), plus audit/lock cols [19-23].** `UNLOAD TO 'ps_seasonapt.txt' DELIMITER '\|' SELECT * FROM ps_seasonapt;` → `SeasonPoint` as `pointsType='HOME'` (unique `[resortCode, effectiveDate, apartmentType, season]`). **The source is 253 rows over 28 years (2000-2027) × 3 types × 3 seasons, but SeasonPoint stores effective-dated VERSIONS, not per-year charts** — `collapseToLatestVersion()` keeps only CP-PBR's latest year (the chart in force) and stamps it with the latest `effectiveDate` among those rows, so **9 rows are imported**. The collapse MUST run before `createMany`: `skipDuplicates` would otherwise silently drop the surplus years. CP-only — see the per-product calendar note under `### Holiday`. See `prisma/migrate-cp-season-points.ts`. |
 

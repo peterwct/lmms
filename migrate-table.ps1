@@ -262,6 +262,11 @@ $TableConfig = @{
         # Standalone -- no FKs point at it; Agreement/AmcSchedule/Resort carry coCode
         # as a plain string. Post-go-live products are maintained in MMS -- re-running
         # truncates and clobbers any edits made through the Products Setup CRUD.
+        # ACTIVE SET: the script applies the business-supplied ACTIVE_CODES whitelist
+        # (02/03/15/24/25/26 as of 2026-08-27) and deactivates every other coCode on
+        # each run, since ps_company has no usable status column. Edit ACTIVE_CODES in
+        # prisma/migrate-products.ts to change it -- a status toggled in Products Setup
+        # does NOT survive.
         TruncateSql = @('TRUNCATE "Product";')
         RequiredFiles = @('ps_company.txt')
         Scripts = @('prisma/migrate-products.ts')
@@ -301,6 +306,14 @@ $TableConfig = @{
         # (migrate/apt_mast_active_unload.sql) sweeping in every other ACTIVE resort;
         # migrate-resort-units.ts reads both and de-duplicates on (resortCode, unitNo).
         # Post-go-live units are maintained in MMS -- re-running clobbers CRUD edits.
+        # RCI-RESERVED SET: the script applies the business-supplied RCI_RESERVED map
+        # over the stale apt_rci_reserved column -- at the resorts it names a unit is
+        # 'Y' only if listed, everything else forced 'N'. Currently L-10024 A6/A7,
+        # L-10026 504/506, CP-PBR 3201/3202 + 3203/3204; L-10016, L-10025 and L-101
+        # none -- 6 units in total. Covers all six resorts on our own products; the V-*
+        # partner resorts are absent and keep the source value. Edit RCI_RESERVED in
+        # prisma/migrate-resort-units.ts to change it -- a box ticked in fn 4 does NOT
+        # survive.
         TruncateSql = @('TRUNCATE "ResortUnit";')
         RequiredFiles = @('apt_mast.txt')
         OptionalFiles = @('apt_mast_active.txt')

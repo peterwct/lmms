@@ -14,7 +14,12 @@
  *  [1] lvc_cocode    -> coCode    (references ps_company.psc_cocode -> Product.coCode; all 23
  *                                  rows resolve against the full 29-row ps_company export)
  *  [2] lvc_name      -> lvcName
- *  [3] lvc_status    -> status    (A=Active, U=Inactive; defaults to A when blank)
+ *  [3] lvc_status    -> status    (A=Active, U=Inactive; defaults to A when blank).
+ *                                 Informix also uses 'C' (Cancelled) -- MAPPED TO 'U',
+ *                                 the same way migrate-resorts.ts maps re_resort_status
+ *                                 'I' -> 'U' for this codebase's A/U convention. The
+ *                                 2026-08-27 export was 11 A / 11 C; before that mapping
+ *                                 existed all 11 C rows were SKIPPED as unknown statuses.
  *  [4] lvc_incoming  -> incoming  ) running counters owned by the exchange process --
  *  [5] lvc_outgoing  -> outgoing  ) imported so no data is lost, but never written by
  *  [6] lvc_fax_batch -> faxBatch  ) the CRUD screen and not shown there
@@ -88,7 +93,10 @@ async function main() {
   for await (const c of readLines('lvc_master.txt')) {
     const lvcCode = t(c[0]);
     const lvcName = t(c[2]);
-    const status  = (t(c[3]) ?? 'A').toUpperCase();
+    const raw     = (t(c[3]) ?? 'A').toUpperCase();
+    // Informix 'C' (Cancelled) -> this codebase's 'U' (Inactive), mirroring the
+    // re_resort_status 'I' -> 'U' mapping in migrate-resorts.ts.
+    const status  = raw === 'C' ? 'U' : raw;
 
     if (!lvcCode || !lvcName) {
       console.log(`  WARN missing code/name on "${c.slice(0, 3).join('|')}" — skipped`);

@@ -20,8 +20,24 @@
  *  [12-15] psc_usercreate/datecreate/usermodify/datemodify, [16] psc_lockstatus.
  *  (trailing empty field, so NF=18)
  *
- * 7 rows as of the go-live export. This master is CRUD-maintained in MMS after go-live,
+ * 29 rows as of the 2026-08-27 export. This master is CRUD-maintained in MMS after go-live,
  * so re-running clobbers app edits.
+ *
+ * ACTIVE SET IS BUSINESS-SUPPLIED, NOT FROM THE SOURCE.
+ * psc_lockstatus is not migrated and ps_company has no usable status column, so every row would
+ * otherwise land at the DB DEFAULT 'A'. ACTIVE_CODES below is the authoritative list of products
+ * that stay Active; every other coCode is set to 'U' (Inactive) on each run. Same pattern as
+ * ACTIVE_CODES in seed-cancellation-reasons.ts (a business-defined active set overriding the
+ * source) and CHECK_TIMES in migrate-resorts.ts (business-supplied values baked into the importer).
+ *
+ * Deliberately RECONCILING, not insert-only: the status is applied to fresh inserts AND swept over
+ * the whole table afterwards, so the whitelist holds whether the caller truncated first
+ * (migrate-table.ps1 -Table Product, refresh-test-db.ps1) or the script is re-run additively.
+ * That means a re-run RESETS any status change staff made through Products Setup (fn 1) -- which
+ * is the intent: the whitelist is the source of truth for which products are active.
+ *
+ * To change the active set, edit ACTIVE_CODES and re-run -- do not toggle it in the app and
+ * expect it to survive the next refresh.
  *
  * Does NOT truncate — the caller does (migrate-table.ps1 -Table Product,
  * refresh-test-db.ps1), matching migrate-cp-seasons.ts.
@@ -41,6 +57,18 @@ const DELIM = '|';
 const DRY_RUN = process.argv.includes('--dry-run');
 
 const ENT_TYPES = new Set(['W', 'P']);
+
+/**
+ * Products that remain ACTIVE. Every other coCode is deactivated on each run.
+ * Business decision, 2026-08-27.
+ *   02 CONNECTIONPOINTS SYSTEM (CP)      -- our own product
+ *   03 MALAYSIA WEEK SYSTEM (LHC-A)      -- our own product
+ *   15 8K-BASED WEEK SYSTEM (LHC-B)      -- our own product
+ *   24 CLC RESORT DEVELOPMENTS LIMITED   ) exchange partners we
+ *   25 ABSOLUTE WORLD TRAVEL LTD         ) currently trade with
+ *   26 SGI VACATION CLUB BERHAD          )
+ */
+const ACTIVE_CODES = new Set(['02', '03', '15', '24', '25', '26']);
 
 const t = (s: string | undefined): string | null =>
   s !== undefined && s.trim() !== '' ? s.trim() : null;
@@ -90,6 +118,7 @@ async function main() {
       coCode,
       coName,
       entType,
+      status:        ACTIVE_CODES.has(coCode) ? 'A' : 'U',
       add1:          t(c[3]),
       add2:          t(c[4]),
       add3:          t(c[5]),
@@ -108,10 +137,35 @@ async function main() {
   console.log(`\n  OK products: ${total} inserted, ${skipped} skipped`);
   console.log(`     Week ${counts.W}, Points ${counts.P}`);
 
+  // Reconcile status against ACTIVE_CODES. Covers rows that already existed (skipDuplicates
+  // leaves those untouched) and any status changed through Products Setup since the last run.
+  const wanted = [...ACTIVE_CODES];
   if (!DRY_RUN) {
-    const rows = await prisma.product.findMany({ orderBy: { coCode: 'asc' } });
-    console.log(`  DB count: ${rows.length}`);
-    for (const r of rows) console.log(`     ${r.coCode}  ${r.entType}  ${r.coName}`);
+    const on = await prisma.product.updateMany({
+      where: { coCode: { in: wanted }, status: { not: 'A' } },
+      data:  { status: 'A', updatedAt: new Date() },
+    });
+    const off = await prisma.product.updateMany({
+      where: { coCode: { notIn: wanted }, status: { not: 'U' } },
+      data:  { status: 'U', updatedAt: new Date() },
+    });
+    console.log(`  Status sweep: ${on.count} reactivated, ${off.count} deactivated`);
+  }
+  console.log(`     Active set: ${wanted.join(', ')}`);
+
+  const missing = wanted.filter(w => !batch.some(b => b.coCode === w));
+  if (missing.length) {
+    console.log(`  WARN ACTIVE_CODES names ${missing.join(', ')} - absent from ps_company.txt`);
+  }
+
+  if (!DRY_RUN) {
+    const rows = await prisma.product.findMany({ orderBy: [{ status: 'asc' }, { coCode: 'asc' }] });
+    const act = rows.filter(r => r.status === 'A').length;
+    console.log(`  DB count: ${rows.length} (${act} active, ${rows.length - act} inactive)`);
+    for (const r of rows) {
+      const flag = r.status === 'A' ? 'ACTIVE  ' : 'inactive';
+      console.log(`     ${r.coCode}  ${r.entType}  ${flag}  ${r.coName}`);
+    }
   }
 
   console.log('\nProduct master migration complete.\n');

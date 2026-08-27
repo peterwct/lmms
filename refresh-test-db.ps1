@@ -356,6 +356,10 @@ Invoke-Migration "prisma/migrate-salesperson.ts"   "migrate-salesperson.ts"
 # Product / operating-company master (coCode). No FK points at it -- Agreement,
 # AmcSchedule and Resort carry coCode as a plain string -- but it is the conceptual
 # parent, so it loads before the resorts.
+# ACTIVE SET: ps_company has no usable status column, so the script applies the
+# business-supplied ACTIVE_CODES whitelist (02/03/15/24/25/26 as of 2026-08-27) and
+# deactivates every other coCode on each run. Edit ACTIVE_CODES in the script to
+# change it -- a status toggled in Products Setup does NOT survive this refresh.
 Invoke-Migration "prisma/migrate-products.ts"      "migrate-products.ts"
 # LVC exchange-programme master. lvc_cocode references Product.coCode (no hard FK,
 # validated on CRUD), so this runs after migrate-products.ts.
@@ -365,6 +369,14 @@ Invoke-Migration "prisma/migrate-resort-info.ts"   "migrate-resort-info.ts"
 # Apartment sleep types (fn 3). Needs Resort for the FK. Runs before migrate-resort-units
 # so unit rows land against types that already exist.
 Invoke-Migration "prisma/migrate-apt-category.ts"  "migrate-apt-category.ts"
+# RCI-RESERVED SET: apt_rci_reserved in the source is stale (nearly every unit at our
+# own resorts exports as 'Y'), so the script applies the business-supplied RCI_RESERVED
+# map -- at the resorts it names a unit is 'Y' only if listed there and every other unit
+# is forced to 'N'. Currently: L-10024 A6/A7, L-10026 504/506, CP-PBR 3201/3202 +
+# 3203/3204; L-10016, L-10025 and L-101 none -- 6 RCI-qualified units in total. The map
+# covers all six resorts on our own products; the V-* partner resorts are absent from it
+# and keep the source value. Edit RCI_RESERVED in the script to change it -- a box ticked
+# in fn 4 Apartments/Units Setup does NOT survive this refresh.
 Invoke-Migration "prisma/migrate-resort-units.ts"  "migrate-resort-units.ts"
 # Units Availability (per-day grid + input blocks). apt-block needs ResortUnit
 # present for the apartmentType lookup, so it runs after migrate-resort-units.

@@ -29,6 +29,26 @@
  * Unique key: (resortCode, unitNo) — apt_code is NOT globally unique
  * (codes 1-21 repeat across L-10024 / L-10025 / L-101).
  *
+ * RCI-RESERVED SET IS BUSINESS-SUPPLIED FOR THE RESORTS IT NAMES.
+ * apt_rci_reserved in the source is stale — nearly every unit at our own resorts exported
+ * as 'Y'. RCI_RESERVED below overrides it for the resorts listed there: at those resorts a
+ * unit is 'Y' only if it is named, and every other unit is forced to 'N'. Resorts ABSENT
+ * from the map keep whatever the source says — today that is the V-* partner resorts only,
+ * since the map covers all six resorts on our own products (02/03).
+ *
+ * Deliberately RECONCILING, not insert-only: the flag is applied to fresh inserts AND
+ * swept over the whole table afterwards, so the set holds whether the caller truncated
+ * first (migrate-table.ps1 -Table ResortUnit / -Table Resort, refresh-test-db.ps1) or the
+ * script is re-run additively. A re-run therefore RESETS any rciReserved change made
+ * through Apartments/Units Setup (fn 4) at those four resorts -- that is the intent.
+ *
+ * To change the set, edit RCI_RESERVED and re-run -- do not tick the box in fn 4 and
+ * expect it to survive the next refresh.
+ *
+ * Existing RciBulkBank history is NOT affected: rciReserved='Y' is a SAVE-TIME rule, so
+ * migrate-rci-bulk-bank.ts imports a banked week on an un-flagged unit verbatim with a
+ * WARN. Un-flagging a unit only stops NEW weeks being banked against it.
+ *
  * Run: npx ts-node --transpile-only prisma/migrate-resort-units.ts
  */
 
@@ -48,6 +68,28 @@ const SOURCES: { file: string; required: boolean }[] = [
   { file: 'apt_mast.txt',        required: true  },
   { file: 'apt_mast_active.txt', required: false },
 ];
+
+/**
+ * Units that are RCI-reserved, per resort. Business decision, 2026-08-27.
+ * A resort listed here has its whole register forced to 'N' except the units named;
+ * an empty array means NO unit at that resort is RCI-reserved.
+ * Resorts NOT listed here are left exactly as apt_rci_reserved has them.
+ */
+const RCI_RESERVED: Record<string, string[]> = {
+  'L-10016': [],                            // KEMANG INDAH  -- none
+  'L-10025': [],                            // GOLDEN CITY   -- none
+  'L-101':   [],                            // SANTANA       -- none
+  'L-10024': ['A6', 'A7'],                  // GREENHILL
+  'L-10026': ['504', '506'],                // LEISURE COVE
+  'CP-PBR':  ['3201/3202', '3203/3204'],    // PERDANA (lock-off whole units)
+};
+
+/** 'Y'/'N' for a unit, or null when the resort is not covered by RCI_RESERVED. */
+function rciOverride(resortCode: string, unitNo: string): 'Y' | 'N' | null {
+  const named = RCI_RESERVED[resortCode];
+  if (!named) return null;
+  return named.includes(unitNo) ? 'Y' : 'N';
+}
 
 const t = (s: string | undefined): string | null =>
   s !== undefined && s.trim() !== '' ? s.trim() : null;
@@ -123,7 +165,7 @@ async function main() {
         resortId,
         resortCode,
         unitNo,
-        rciReserved:   t(c[2]) ?? 'N',
+        rciReserved:   rciOverride(resortCode, unitNo) ?? t(c[2]) ?? 'N',
         apartmentType: t(c[3]) ?? '',
         occupancy:     Number.isNaN(occ) ? null : occ,
       });
@@ -143,9 +185,57 @@ async function main() {
     console.log('  resort_mast active join; re-run migrate/apt_mast_unload.sql to shrink the file.');
   }
 
+  // Reconcile rciReserved against RCI_RESERVED for the resorts it covers. Catches rows
+  // that already existed (skipDuplicates leaves those untouched) and any flag changed
+  // through Apartments/Units Setup since the last run.
+  for (const [resortCode, named] of Object.entries(RCI_RESERVED)) {
+    if (DRY_RUN) {
+      const have = await prisma.resortUnit.count({ where: { resortCode } });
+      console.log(`  RCI sweep (dry run) ${resortCode}: ${have} unit(s), ` +
+                  `${named.length ? named.join(', ') : 'none'} reserved`);
+      continue;
+    }
+    const on = named.length
+      ? await prisma.resortUnit.updateMany({
+          where: { resortCode, unitNo: { in: named }, rciReserved: { not: 'Y' } },
+          data:  { rciReserved: 'Y', updatedAt: new Date() },
+        })
+      : { count: 0 };
+    const off = await prisma.resortUnit.updateMany({
+      where: { resortCode, unitNo: { notIn: named }, rciReserved: { not: 'N' } },
+      data:  { rciReserved: 'N', updatedAt: new Date() },
+    });
+    console.log(`  RCI sweep ${resortCode}: ${on.count} set Y, ${off.count} set N`);
+  }
+
+  // Warn if RCI_RESERVED names a unit that does not exist at that resort.
+  if (!DRY_RUN) {
+    for (const [resortCode, named] of Object.entries(RCI_RESERVED)) {
+      if (!named.length) continue;
+      const found = await prisma.resortUnit.findMany({
+        where: { resortCode, unitNo: { in: named } },
+        select: { unitNo: true },
+      });
+      const have = new Set(found.map(f => f.unitNo));
+      const gone = named.filter(u => !have.has(u));
+      if (gone.length) {
+        console.log(`  WARN RCI_RESERVED names ${resortCode} unit(s) ${gone.join(', ')} ` +
+                    `- not in the register`);
+      }
+    }
+  }
+
   if (!DRY_RUN) {
     const count = await prisma.resortUnit.count();
+    const rci = await prisma.resortUnit.groupBy({
+      by: ['resortCode'],
+      where: { rciReserved: 'Y' },
+      _count: { _all: true },
+      orderBy: { resortCode: 'asc' },
+    });
     console.log(`  DB count: ${count}`);
+    console.log(`  RCI-reserved units by resort:`);
+    for (const r of rci) console.log(`     ${r.resortCode.padEnd(10)} ${r._count._all}`);
   }
 
   console.log('\nResort unit migration complete.\n');
