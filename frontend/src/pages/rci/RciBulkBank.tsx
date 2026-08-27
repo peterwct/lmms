@@ -95,11 +95,14 @@ function BulkBankFormModal({ open, row, onClose, onSaved }: FormModalProps) {
   const set = (k: string) => (v: string) => setForm(f => ({ ...f, [k]: v }));
 
   // RCI-qualified units at this resort, each carrying its fn 5 availability ranges
-  const { data: units } = useQuery({
+  const { data: unitsResp } = useQuery({
     queryKey: ['rci-bulk-bank', 'units', form.resortCode],
-    queryFn: () => rciBulkBankApi.units(form.resortCode).then(r => r.data.data),
+    queryFn: () => rciBulkBankApi.units(form.resortCode).then(r => r.data),
     enabled: open && !!form.resortCode && !isEdit,
   });
+  const units = unitsResp?.data;
+  // Non-empty only at a lock-on/lock-off resort: the half types the server filtered out.
+  const splitTypes = unitsResp?.splitTypes ?? null;
 
   // Year list comes straight from fn 2 and shares its cache key, so generating a year
   // there refreshes this picker with no extra endpoint.
@@ -223,8 +226,16 @@ function BulkBankFormModal({ open, row, onClose, onSaved }: FormModalProps) {
 
         {!isEdit && form.resortCode && units && units.length === 0 && (
           <p className="text-xs text-amber-600">
-            No RCI-qualified units at this resort. Tick RCI Reserved in Apartment&apos;s Unit No.
-            Maintenance and Setup (fn 4) first.
+            No bankable RCI-qualified units at this resort. Tick RCI Reserved in Apartment&apos;s
+            Unit No. Maintenance and Setup (fn 4) first.
+          </p>
+        )}
+
+        {!isEdit && !!splitTypes?.length && (
+          <p className="text-xs text-gray-500">
+            {form.resortCode} has the lock-on/lock-off feature, so only whole units can be banked —
+            the split halves ({splitTypes.join(', ')}) are not listed. Banking a half as well as the
+            whole apartment would promise the same room to RCI twice.
           </p>
         )}
 
@@ -527,9 +538,25 @@ export function RciBulkBank() {
                   <th className="px-4 py-3 text-right w-28">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {rows.map(b => (
-                  <tr key={b.id} className="hover:bg-gray-50">
+              {/* No divide-y here: the row borders are drawn per row below, so the batch
+                  rule can be heavier than the hairline without fighting divide-y's
+                  higher-specificity `> * + *` selector. */}
+              <tbody>
+                {rows.map((b, i) => {
+                  // The list is ordered resortCode -> weekYear -> unitNo -> checkIn, so a
+                  // change in (resort, year, unit) starts a new batch of weeks for the next
+                  // unit. Those get a heavier rule; rows inside a batch keep the hairline.
+                  const prev = i > 0 ? rows[i - 1] : null;
+                  const newBatch = !!prev && (
+                    prev.resortCode !== b.resortCode ||
+                    prev.weekYear !== b.weekYear ||
+                    prev.unitNo !== b.unitNo
+                  );
+                  const rule = i === 0
+                    ? ''
+                    : newBatch ? 'border-t-2 border-gray-300' : 'border-t border-gray-100';
+                  return (
+                  <tr key={b.id} className={`hover:bg-gray-50 ${rule}`}>
                     <td className="px-4 py-2">
                       <span className="font-mono font-medium">{b.resortCode}</span>
                       <span className="ml-2 text-xs text-gray-500">{b.resort?.shortName || b.resort?.resortName}</span>
@@ -559,7 +586,8 @@ export function RciBulkBank() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {rows.length === 0 && (
                   <tr>
                     <td colSpan={9} className="px-4 py-16 text-center">

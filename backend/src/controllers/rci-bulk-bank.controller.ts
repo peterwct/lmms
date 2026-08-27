@@ -208,6 +208,37 @@ async function fullDays(resortCode: string, apartmentType: string, days: Date[])
   return rows.map(r => r.date);
 }
 
+// Apartment types that may NOT be banked at this resort - the lock-off halves - or null
+// when the resort has no such restriction.
+//
+// A lock-on/lock-off resort (Resort.lockOnOff='Y' -- CP-PBR today) sells ONE physical
+// apartment three ways: the whole unit and each of its two halves are separate ResortUnit
+// rows with separate apartment types. At CP-PBR that is 3201/3202 SLEEP6 (lockType LM,
+// the whole unit) alongside 3201 SLEEP4 and 3202 SLEEP2 (lockType **LS**, the halves) --
+// 48 unit rows for 16 apartments, and all 48 are flagged rciReserved='Y'.
+//
+// Only whole units may be banked to RCI (business rule 2026-08-26): the SPLIT (LS) types
+// are excluded. Banking a half and the whole would promise the same physical apartment to
+// RCI twice, and the ResAvailMast grid could not even express it -- the halves and the
+// whole are separate apartment types, so deducting one leaves the others untouched and the
+// double-commitment is invisible. Every existing CP-PBR bulk bank row is already SLEEP6
+// (308 of them), so this codifies what the legacy data does rather than changing it.
+//
+// The rule excludes LS specifically rather than allowing only LM, because the hazard is the
+// master/half relationship. An LN (normal, non-splitting) apartment at a lock-off resort is
+// a whole unit with no half to clash with, so it stays bankable. CP-PBR has no LN type
+// today, so the two readings currently give the identical result: SLEEP6 only.
+//
+// Resorts with lockOnOff='N' are unrestricted -- their types are all LN.
+async function splitUnitTypes(resortCode: string, lockOnOff: string | null): Promise<string[] | null> {
+  if (lockOnOff !== 'Y') return null;
+  const types = await prisma.apartmentType.findMany({
+    where: { resortCode, lockType: 'LS' },
+    select: { apartmentType: true },
+  });
+  return types.map(t => t.apartmentType);
+}
+
 // Migrated rows always carry an apartmentType (the importer skips units that aren't
 // registered), but fall back to the ResortUnit register defensively so the grid can
 // always be maintained.
@@ -252,7 +283,15 @@ export async function listRciBulkBank(req: Request, res: Response): Promise<void
     prisma.rciBulkBank.findMany({
       where,
       include: { resort: resortSelect },
-      orderBy: [{ checkIn: 'desc' }, { resortCode: 'asc' }, { unitNo: 'asc' }],
+      // Resort, then year, then unit, then check-in ascending (business decision
+      // 2026-08-26). weekYear is nullable -- nulls last so a legacy row that resolved no
+      // RciWeek sorts after the graded ones for its resort rather than ahead of them.
+      orderBy: [
+        { resortCode: 'asc' },
+        { weekYear: { sort: 'asc', nulls: 'last' } },
+        { unitNo: 'asc' },
+        { checkIn: 'asc' },
+      ],
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
@@ -279,9 +318,19 @@ export async function listBulkBankUnits(req: Request, res: Response): Promise<vo
   const resortCode = typeof req.query.resortCode === 'string' ? req.query.resortCode.trim() : '';
   if (!resortCode) { res.status(400).json({ error: 'resortCode is required' }); return; }
 
+  const resort = await prisma.resort.findUnique({ where: { resortCode }, select: { lockOnOff: true } });
+  if (!resort) { res.status(404).json({ error: 'Resort not found' }); return; }
+
+  // null = unrestricted; an array = these lock-off half types are NOT bankable
+  const splitTypes = await splitUnitTypes(resortCode, resort.lockOnOff);
+
   const [units, blocks] = await Promise.all([
     prisma.resortUnit.findMany({
-      where: { resortCode, rciReserved: 'Y' },
+      where: {
+        resortCode,
+        rciReserved: 'Y',
+        ...(splitTypes?.length ? { apartmentType: { notIn: splitTypes } } : {}),
+      },
       select: { unitNo: true, apartmentType: true, occupancy: true },
       orderBy: { unitNo: 'asc' },
     }),
@@ -301,6 +350,9 @@ export async function listBulkBankUnits(req: Request, res: Response): Promise<vo
 
   res.json({
     data: units.map(u => ({ ...u, blocks: byUnit.get(u.unitNo) ?? [] })),
+    // Lets the form explain WHY the split types are missing, instead of the picker just
+    // looking short. null when the resort is not lock-on/lock-off.
+    splitTypes,
   });
 }
 
@@ -351,6 +403,18 @@ export async function createRciBulkBank(req: Request, res: Response): Promise<vo
       return;
     }
     const apartmentType = unit.apartmentType;
+
+    // Lock-on/lock-off resorts: whole units only. The picker already hides the halves;
+    // this is the authoritative check.
+    const splitTypes = await splitUnitTypes(resortCode, resort.lockOnOff);
+    if (splitTypes?.includes(apartmentType)) {
+      res.status(400).json({
+        error: `Unit ${unitNo} is a ${apartmentType} lock-off half. ${resortCode} has the `
+             + 'lock-on/lock-off feature, so only whole units can be banked to RCI '
+             + `(${splitTypes.join(', ')} are split types).`,
+      });
+      return;
+    }
 
     const { checkIn, checkOut, days } = await resolveWeek(weekYear, weekNo);
 

@@ -36,8 +36,12 @@ export const rciBulkBankApi = {
     api.get<RciBulkBankList>('/rci-bulk-bank', { params }),
   years: () => api.get<{ data: number[] }>('/rci-bulk-bank/years'),
   // RCI-qualified units at this resort WITH their fn 5 availability, in one call
+  // splitTypes: the resort's lock-off half types, which are NOT bankable (null when the
+  // resort has no lock-on/lock-off feature). The units[] are already filtered; this is only
+  // so the form can say why they are missing.
   units: (resortCode: string) =>
-    api.get<{ data: RciBulkBankUnit[] }>('/rci-bulk-bank/units', { params: { resortCode } }),
+    api.get<{ data: RciBulkBankUnit[]; splitTypes: string[] | null }>(
+      '/rci-bulk-bank/units', { params: { resortCode } }),
   create: (data: Record<string, unknown>) => api.post<{ data: RciBulkBank }>('/rci-bulk-bank', data),
   update: (id: string, data: Record<string, unknown>) => api.put<{ data: RciBulkBank }>(`/rci-bulk-bank/${id}`, data),
   remove: (id: string) => api.delete(`/rci-bulk-bank/${id}`),
