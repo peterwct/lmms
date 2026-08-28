@@ -1,6 +1,6 @@
 import { api } from './client';
 import type {
-  RciAgreementLookup, RciBulkBank, RciBulkBankAvailability, RciBulkBankList, RciBulkBankUnit,
+  RciAgreementLookup, RciBulkBankUnit, RciBulkBankYear, RciBulkBankYearSave, RciBulkBankYearSaveResult, RciBulkBankYearDeleteResult,
   RciEnrolment, RciEnrolmentList, RciWeekDeleteResult, RciWeekList, RciWeekYearResult,
 } from '../types';
 
@@ -28,22 +28,24 @@ export const rciWeeksApi = {
   deleteYear: (params: { year: number }) => api.delete<{ data: RciWeekDeleteResult }>('/rci-weeks/year', { params }),
 };
 
-// RCI fn 3 - Bulk Bank. A record is one RCI WEEK: the client sends weekYear + weekNo
-// (picked from fn 2's calendar) and the server derives checkIn/checkOut, so a non-Friday
-// range cannot be keyed. Each save maintains the ResAvailMast grid.
+// RCI fn 3 - Bulk Bank. The screen is a whole-year grid, so there are no per-record
+// calls: read one (resort, unit, year) and save it back whole. The server diffs the
+// payload against what is stored and works out the creates / updates / deletes itself.
 export const rciBulkBankApi = {
-  list: (params: { q?: string; resortCode?: string; unitNo?: string; weekYear?: number; season?: string; page?: number; pageSize?: number }) =>
-    api.get<RciBulkBankList>('/rci-bulk-bank', { params }),
-  years: () => api.get<{ data: number[] }>('/rci-bulk-bank/years'),
-  // RCI-qualified units at this resort WITH their fn 5 availability, in one call
+  // One unit's banked weeks for a year, unpaginated (52/53 rows at most)
+  year: (params: { resortCode: string; unitNo: string; weekYear: number }) =>
+    api.get<RciBulkBankYear>('/rci-bulk-bank', { params }),
+  // Units the grid may show at this resort, WITH their fn 5 availability, in one call.
   // splitTypes: the resort's lock-off half types, which are NOT bankable (null when the
   // resort has no lock-on/lock-off feature). The units[] are already filtered; this is only
   // so the form can say why they are missing.
   units: (resortCode: string) =>
     api.get<{ data: RciBulkBankUnit[]; splitTypes: string[] | null }>(
       '/rci-bulk-bank/units', { params: { resortCode } }),
-  create: (data: Record<string, unknown>) => api.post<{ data: RciBulkBank }>('/rci-bulk-bank', data),
-  update: (id: string, data: Record<string, unknown>) => api.put<{ data: RciBulkBank }>(`/rci-bulk-bank/${id}`, data),
-  remove: (id: string) => api.delete(`/rci-bulk-bank/${id}`),
-  availability: (id: string) => api.get<RciBulkBankAvailability>(`/rci-bulk-bank/${id}/availability`),
+  saveYear: (data: RciBulkBankYearSave) =>
+    api.post<{ data: RciBulkBankYearSaveResult }>('/rci-bulk-bank/year', data),
+  // Clears a unit's whole year unconditionally, for re-entry - not a diff, so it also
+  // removes weeks the save's guards would refuse to recreate
+  deleteYear: (params: { resortCode: string; unitNo: string; weekYear: number }) =>
+    api.delete<{ data: RciBulkBankYearDeleteResult }>('/rci-bulk-bank/year', { params }),
 };

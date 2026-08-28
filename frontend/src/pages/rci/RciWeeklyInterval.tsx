@@ -145,9 +145,12 @@ export function RciWeeklyInterval() {
     ? yearParam
     : (years?.[0] ?? new Date().getFullYear());
 
+  // Unwrap to the ROW ARRAY, not the { data, year, weeks } envelope: RCI fn 3's week
+  // picker reads this same cache key and expects an array. Caching two shapes under one
+  // key made whichever page fetched last win, and fn 3 then crashed on weeks.map.
   const { data: list, isLoading } = useQuery({
     queryKey: ['rci-weeks', year],
-    queryFn: () => rciWeeksApi.list({ year }).then(r => r.data),
+    queryFn: () => rciWeeksApi.list({ year }).then(r => r.data.data),
     enabled: !!years?.length,
   });
 
@@ -164,7 +167,7 @@ export function RciWeeklyInterval() {
     onError: (err) => setDelErr(apiError(err)),
   });
 
-  const weeks = list?.data ?? [];
+  const weeks = list ?? [];
   const noYears = !yearsLoading && !years?.length;
 
   return (

@@ -6,13 +6,20 @@ import * as ctrl from '../controllers/rci-bulk-bank.controller';
 const router = Router();
 router.use(authenticate, requirePasswordChanged);
 
-// /years and /units are declared before /:id so the param route doesn't swallow them
-router.get('/years',            requirePermission('RESORTS_SETUP', 'view'),   ctrl.getRciBulkBankYears);
-router.get('/units',            requirePermission('RESORTS_SETUP', 'view'),   ctrl.listBulkBankUnits);
-router.get('/',                 requirePermission('RESORTS_SETUP', 'view'),   ctrl.listRciBulkBank);
-router.get('/:id/availability', requirePermission('RESORTS_SETUP', 'view'),   ctrl.getRciBulkBankAvailability);
-router.post('/',                requirePermission('RESORTS_SETUP', 'create'), ctrl.createRciBulkBank);
-router.put('/:id',              requirePermission('RESORTS_SETUP', 'edit'),   ctrl.updateRciBulkBank);
-router.delete('/:id',           requirePermission('RESORTS_SETUP', 'delete'), ctrl.deleteRciBulkBank);
+// RCI fn 3 is a whole-year grid, so there are no per-record routes: the year save is the
+// only write path and it reconciles creates, updates AND deletes in one call. All three
+// permissions are therefore required for it - a caller who may only create must not be
+// able to clear a banked week through the same endpoint. Seed defaults give IT and Resort
+// Ops all three, and everyone else at most view, so nothing is locked out today.
+router.get('/units', requirePermission('RESORTS_SETUP', 'view'), ctrl.listBulkBankUnits);
+router.get('/',      requirePermission('RESORTS_SETUP', 'view'), ctrl.listRciBulkBank);
+router.post('/year',
+  requirePermission('RESORTS_SETUP', 'create'),
+  requirePermission('RESORTS_SETUP', 'edit'),
+  requirePermission('RESORTS_SETUP', 'delete'),
+  ctrl.saveRciBulkBankYear);
+// Whole-year clear for re-entry. Only 'delete' - it removes and never writes, unlike the
+// save above, so a delete-only user may run it.
+router.delete('/year', requirePermission('RESORTS_SETUP', 'delete'), ctrl.deleteRciBulkBankYear);
 
 export default router;

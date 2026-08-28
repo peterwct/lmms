@@ -121,9 +121,35 @@ export async function deleteRciWeekYear(req: Request, res: Response): Promise<vo
   const year = yearParam(req);
   if (year === null) { res.status(400).json({ error: 'A valid year is required' }); return; }
 
+  // Deleting the calendar would strand every week RCI fn 3 banked out of it: RciBulkBank
+  // has no FK to RciWeek (it stores the derived dates plus a denormalized weekYear/weekNo),
+  // so nothing at the DB level would stop it - the banked records would simply survive with
+  // no calendar behind them, unreachable from fn 3's grid, which draws one row per RciWeek.
+  // Their ResAvailMast deductions would stay applied with no way to give them back.
+  //
+  // Matched on checkIn against this year's Friday starts, the same way fn 3 matches, so a
+  // legacy row whose weekYear never resolved is still counted.
+  const weeks = await prisma.rciWeek.findMany({ where: { year }, select: { friStart: true } });
+  if (weeks.length === 0) { res.status(404).json({ error: `No RCI weeks found for ${year}` }); return; }
+
+  const banked = await prisma.rciBulkBank.groupBy({
+    by: ['resortCode', 'unitNo'],
+    where: { checkIn: { in: weeks.map(w => w.friStart) } },
+    _count: { _all: true },
+  });
+  if (banked.length) {
+    const total = banked.reduce((n, b) => n + b._count._all, 0);
+    const units = banked.slice(0, 5).map(b => `${b.resortCode} ${b.unitNo}`).join(', ');
+    const more = banked.length > 5 ? `, and ${banked.length - 5} more` : '';
+    res.status(409).json({
+      error: `${year} cannot be deleted - ${total} week(s) are banked to RCI against this calendar `
+           + `(${units}${more}). Clear them in RCI Bulk Bank (fn 3) first.`,
+    });
+    return;
+  }
+
   // Whole-year delete - there is no per-week delete
   const result = await prisma.rciWeek.deleteMany({ where: { year } });
-  if (result.count === 0) { res.status(404).json({ error: `No RCI weeks found for ${year}` }); return; }
 
   await writeAudit({
     userId: req.user.id,

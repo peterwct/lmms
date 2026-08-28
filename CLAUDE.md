@@ -390,6 +390,42 @@ Use `migrate-table.ps1` to re-import a single table without a full refresh:
 - All text inputs in MemberForm use `setU()` handler (auto-uppercase)
 - `buildPayload()` in MemberForm: empty string → null, dates → ISO, booleans → bool
 
+#### One query key, one shape — and never narrow inside `queryFn`
+
+A React Query key names a **cache entry**, not a request. Every `useQuery` with the same
+key shares one stored value, and the last fetch to resolve wins. So two rules, both of
+which have already been broken here:
+
+1. **Every consumer of a key must unwrap the response identically.** Caching two shapes
+   under one key makes the page that reads it second crash or misread, depending on which
+   fetched last — and only sometimes, which is what makes it nasty to diagnose.
+2. **Never filter, slice or otherwise narrow inside `queryFn`.** Cache the full response
+   and narrow afterwards in a `useMemo`. A narrowing fetcher poisons the entry for every
+   other consumer, and there is no local symptom in the file that did it.
+
+> **The bug this cost us (2026-08-28).** RCI fn 2 (`RciWeeklyInterval.tsx`) and fn 3
+> (`RciBulkBank.tsx`) both read `['rci-weeks', year]`, but fn 2 stored the whole
+> `{ data, year, weeks }` envelope (`r.data`) while fn 3 stored the row array
+> (`r.data.data`). Visiting fn 2 to generate a year and then opening fn 3's form for that
+> same year served fn 3 the envelope, `weeks.map` threw, and the page went **blank** — no
+> error boundary, just a white screen. Fixed by unwrapping to the array in both.
+>
+> It had been latent for as long as both pages existed; what made it reachable was
+> advising staff to generate the year in fn 2 first. **Latent means unfired, not absent.**
+
+**When two consumers genuinely need different data, give them different keys** — that is
+the fix, not clever unwrapping. Keys of different lengths are already distinct:
+`['resorts', '']` and `['resorts', q, status]` do **not** collide.
+
+> **Note the shared-key comments in `useActiveResorts.ts` / `useActiveProducts.ts` are now
+> stale on this point.** Each says it must cache the unfiltered response because
+> `ResortMaster` / `Products` reads "the same key with `q=''`". Those list pages have since
+> gained a `status` filter and their keys became three-element
+> (`['resorts', q, status]`), so they no longer share the hooks' two-element
+> `['resorts', '']` at all. **Rule 2 still stands and the hooks should not change** —
+> filtering in `queryFn` would be wrong the moment anyone realigns the keys — but do not
+> trust the stated collision as a live fact.
+
 ## Data model summary
 
 ### Member
@@ -649,9 +685,9 @@ is no longer an active exchange partner needs a status instead.
 **Deactivating hides a product from every product dropdown, and nothing else** — the LVC Code form's
 product picker (fn 10) and the CP Points Deduction **Charged To** picker (fn 9), both via the shared
 **`frontend/src/hooks/useActiveProducts.ts`** hook. Use that hook for any new product dropdown. It
-mirrors `useActiveResorts` exactly, including the cache rule: it keeps the shared `['products', '']`
-key and caches the **unfiltered** response, filtering in a `useMemo` — **never inside `queryFn`**,
-because fn 1 reads the same key with `q=''` and must still show inactive rows, since that page is
+mirrors `useActiveResorts` exactly, including the cache rule: it caches the **unfiltered** response
+under `['products', '']` and filters in a `useMemo` — **never inside `queryFn`** (see *One query key,
+one shape* under Key conventions / Frontend). fn 1 must still show inactive rows, since that page is
 where they are managed. It also returns `allProducts` (unfiltered) because both consumer pages use
 the same array to resolve a stored `coCode` to a display **name**, which must keep working for a
 retired product; its exported `productOptions(products, allProducts, selected)` helper appends the
@@ -792,10 +828,11 @@ the re-import supersedes it).
 > **`frontend/src/hooks/useActiveProducts.ts`** — same cache discipline, plus an `allProducts`
 > escape hatch and a `productOptions()` helper for name resolution and retired selections.
 > See `### Product`.
-> - The hook keeps the shared `['resorts', '']` query key and caches the **unfiltered** response,
->   then filters in a `useMemo`. **Never filter inside `queryFn`** — `ResortMaster` (fn 2) reads the
->   same key with `q=''` and must still show all 324 rows; filtering in the fetcher would poison
->   that cache entry.
+> - The hook caches the **unfiltered** response under `['resorts', '']` and filters in a
+>   `useMemo`. **Never filter inside `queryFn`** — see *One query key, one shape* under
+>   Key conventions / Frontend. (That rule stands, but the `ResortMaster` collision this
+>   comment used to cite is no longer live: its key gained a `status` element and became
+>   `['resorts', q, status]`, which is a different cache entry.)
 > - `ResortMaster` is the only screen that still calls `resortsApi.list()` directly, by design.
 > - **Server-side status checks were deliberately NOT added.** Existing records belonging to a
 >   resort that later goes inactive stay reachable and editable (e.g. a CP season-points URL naming
@@ -1657,6 +1694,16 @@ All four date columns are plain `TIMESTAMP` at UTC midnight — do NOT convert t
 **404** if empty). There is no per-week create, update or delete, and the routes never use
 the `'edit'` permission. Correcting a year = delete it and re-add.
 
+> **A year holding banked weeks cannot be deleted** (2026-08-28) — **409** naming the count
+> and the units, pointing at RCI fn 3. `RciBulkBank` has **no FK to `RciWeek`** (it stores
+> the derived dates plus a denormalized `weekYear`/`weekNo`), so nothing at the DB level
+> stops it: the banked records would simply survive with no calendar behind them,
+> **unreachable from fn 3's grid**, which draws one row per `RciWeek` — while their
+> `ResAvailMast` deductions stayed applied with no way to give them back. The count is
+> matched on `checkIn` against the year's Friday starts, the same way fn 3 matches, so a
+> legacy row whose `weekYear` never resolved is still counted. As of 2026-08-28 all three
+> set-up years are protected (2026: 459 banked, 2027: 313, 2028: 1).
+
 **`MIN_YEAR = 2026`** (business decision) — declared in both the controller and
 `migrate-rci-week.ts`, and mirrored in the page. Older Informix years were **not
 migrated**: 1,846 of the 2,055 source rows are pre-2026, and they are also where every
@@ -1733,7 +1780,9 @@ added in the 2026-08-26 re-export), **all of which already carry `rciReserved='Y
 Verified across all 774: check-in is a Friday on every row,
 `checkOut - checkIn = 6` on every row, and there are zero duplicates on the `bb_idx1` key.
 
-**Six save-time guards**, each returning a message that names the function to fix it in:
+**Six save-time guards**, each returning a message that names the function to fix it in.
+They run over the year save's **creates** only (see the whole-year grid note below), and
+their failures are collected rather than thrown one at a time:
 
 | Guard | Status |
 |---|---|
@@ -1802,11 +1851,13 @@ Verified across all 774: check-in is a Friday on every row,
 > solves by splitting into two saves, which is impossible for an indivisible week. The
 > union is also what actually matters for the grid.
 
-**`resortCode` / `unitNo` / `apartmentType` / `serialNo` / `bankStatus` are immutable after
-create** (move = delete + re-add, the `ResortMaintenance` rule). **Editable: the week
-(`weekYear` + `weekNo`) and the `season`** - a mis-keyed week and an RCI regrade are the two
-realistic corrections. Delete is a hard delete with **no usage guard** - nothing references
-`RciBulkBank` yet; add one when the Resorts Reservation module books against a banked week.
+**A record's identity is fixed once written** - `resortCode` / `unitNo` / `apartmentType` /
+`serialNo` / `bankStatus` / the week itself. **The only editable field is `season`.** The
+grid has no move: correcting a mis-keyed week is blanking it and setting the right one,
+which the year save turns into a delete plus a create in the same transaction (the old
+`PUT` that re-pointed a record at another week is gone with the modal). Deletes are hard
+deletes with **no usage guard** - nothing references `RciBulkBank` yet; add one when the
+Resorts Reservation module books against a banked week.
 
 **Why `weekYear`/`weekNo` are denormalized** (and nullable): they are what the user actually
 keys - the dates are derived; `RciWeek.friStart` has no index so a reverse lookup would be a
@@ -1815,16 +1866,111 @@ whenever staff regenerate a year. Nullable follows `ResortMaintenance.apartmentT
 legacy row that fails to resolve imports with a WARN rather than being dropped. All 771
 resolve today, and CRUD always writes both.
 
-**Grid sync on RciBulkBank CRUD** (`applyBankDelta` in `rci-bulk-bank.controller.ts`, one
-transaction, `maxWait: 15_000, timeout: 120_000`). Identical in shape to fn 6's
-`applyMaintDelta` - **`actNight` is never touched** (the unit still exists, it just isn't
-ours to book), grid rows are **never created or deleted**, and a day with no grid row is
-skipped. Create -> each of the 7 days `balNight-1`, floored at 0. Delete -> `balNight+1`,
-ceilinged at `actNight`. Edit -> reverse the old week (`+1`) then apply the new one (`-1`);
-a **season-only edit skips the grid work entirely** rather than netting to zero over 14
-round-trips. `clamped` is recorded in the `AuditLog` metadata. The function is a deliberate
-**copy** of `applyMaintDelta`, not a shared helper - extract to `utils/availabilityGrid.ts`
-when Resorts Reservation becomes the third caller.
+### The screen is a WHOLE-YEAR GRID, and the year save is the only write path (2026-08-28)
+
+fn 3 was a paginated searchable list of individual weeks with an Add/Edit modal. It is now
+a fn 8-style grid: pick **resort + unit + year** and every RCI week of that year is a row
+with an editable season beside it. The shape follows the data - each (resort, unit, year)
+is banked for **essentially the whole year** (51 of 52 weeks in 2026, 52 of 53 in 2027, the
+gap always being the year's **last** week) - where the modal cost **52 trips and ~1,000
+queries** to key one year.
+
+**A blank season means NOT BANKED**, so one dropdown does all three operations:
+blank -> colour **creates**, colour -> colour **updates**, colour -> blank **deletes**.
+`POST /year` is **replace-all within the year**: the client sends every week the grid
+showed and the server diffs it, so the page never has to know which of the three an edit
+became.
+
+**An empty year is the add form, prefilled Red** (2026-08-28, `DEFAULT_SEASON` in
+`RciBulkBank.tsx`). When a unit/year holds nothing, every **bankable** week starts at Red
+— the dominant grade, 495 of the 774 migrated records — and one Save banks the year, the
+same way fn 8 prefills an ungraded month with Silver. A year that already holds weeks is
+**never** prefilled: there, blank has to keep meaning "not banked". Weeks the grid can see
+are unbankable are **excluded from the prefill** — the save is all-or-nothing, so
+defaulting one to Red would make an untouched new year refuse to save. `canSave` follows
+fn 8 in being true for a new year with no edits, but only when something was actually
+prefilled, so a clear-only unit's all-blank grid doesn't offer a no-op save.
+
+**Delete year clears the whole thing, for re-entry** (`DELETE /year`, 2026-08-28). The
+bottom-up bin makes correcting a badly keyed year deliberately slow — up to 53 clicks — so
+a header **Delete year** button removes every week that unit has banked in that year and
+gives each night back to the grid. Unlike the save it is **not a diff and is
+unconditional**, so it also removes weeks the save's guards would refuse to recreate (a
+week on a since-un-flagged unit, or one whose fn 5 availability has lapsed) — that is the
+point: it exists to get a unit back to a clean slate, and it is the only bulk path that can
+empty a clear-only unit. It takes only the `delete` permission (it never writes), and after
+it runs the grid is an empty year again, so it immediately re-offers the Red-prefilled add
+state to re-key into.
+
+> **A booking guard is still missing here, deliberately.** Once Resorts Reservation exists,
+> a banked week a guest has already exchanged into **must not** be withdrawn — deleting it
+> would give back a unit-night that is physically occupied, and the grid would over-report
+> availability for the rest of the year. The insertion point is marked with a `TODO` in
+> `deleteRciBulkBankYear`, before the transaction, and it must be added to the **year
+> save's `deletes` branch at the same time** — today a booked week could equally be cleared
+> one cell at a time through the bin. The sibling placeholder is `maintenanceWithin()` in
+> `apt-blocks.controller.ts`, which carries the same note for fn 5's delete.
+
+**The season cell is the colour, not the name** (2026-08-28) — Red / Blue / White fill the
+select's background with the **text left black throughout**, so a year's grading is
+readable at a glance down the column. `SEASON_BG` in `RciBulkBank.tsx`; White carries a
+border so it reads as a filled cell against the white card rather than an empty one, and
+the blank (not banked) cell is transparent. Because black text is now fixed, the **unsaved
+marker is an amber ring**, not amber text as in fn 8. The single letter stays in the cell:
+`<option>` tinting is only honoured by Chromium, so elsewhere the open dropdown degrades to
+plain text.
+
+**Weeks are cleared from the END backwards** (business rule 2026-08-28): only the
+**highest-numbered banked week** carries a bin button, and clearing it moves the button up
+to the week before, so a year unwinds 53, 52, 51... The bin only blanks the cell — nothing
+is written until Save year, so it participates in the same all-or-nothing save and
+`Cancel changes` undoes it. It is computed from what is **displayed**, not what is stored,
+which is what lets the button walk up within a single unsaved edit. The season dropdown
+**keeps its blank option**, so an out-of-order clear is still possible when genuinely
+needed; the bin is the guided path, not a cage.
+
+**Guards run over the CREATES only.** That is what makes a unit fn 4 has un-flagged
+**clear-only for free**: blanking its weeks produces no creates, so the `rciReserved` guard
+never fires, while banking a new one is refused 400 naming fn 4. No separate rule was
+needed. The picker returns such a unit only when `bankedCount > 0`, so the **205 records**
+on CP-PBR `3205/3206` + `3227/3228` and L-10024 `A8` stay reachable.
+
+**All-or-nothing, and failures are collected.** Every guard is one query for the whole
+batch before the transaction opens; a year save is **~12-15 queries** whatever changed. One
+failing week means nothing is written, and the message names the offenders (first 10)
+rather than surfacing them one round trip at a time. The grid also greys weeks it can see
+are unbankable (advisory - the server is authoritative), so this rarely fires.
+
+**These were removed with the list**: `POST /`, `PUT /:id`, `DELETE /:id`,
+`GET /:id/availability` (and the per-week Eye modal), `GET /years`, and `listRciBulkBank`'s
+`q` / `season` / pagination. The Year picker now reads **fn 2's calendar**
+(`GET /rci-weeks/years`), not years that have been banked - the grid draws one row per RCI
+week, so a year with no calendar has nothing to draw. **A year must exist in fn 2 before it
+can be banked into.**
+
+**Grid sync** (`applyBankDelta` in `rci-bulk-bank.controller.ts`, one transaction,
+`maxWait: 15_000, timeout: 120_000`). Same semantics as fn 6's `applyMaintDelta` -
+**`actNight` is never touched** (the unit still exists, it just isn't ours to book), grid
+rows are **never created or deleted**, and a day with no grid row is skipped. Banking ->
+`balNight-1` per day, floored at 0; clearing -> `balNight+1`, ceilinged at `actNight`; a
+**regrade does no grid work at all**. `clamped` is recorded in the `AuditLog` metadata.
+
+> ### Do NOT rewrite `applyBankDelta` as `$executeRaw`
+> It is **two** queries for the whole save - read the affected rows, decide in memory which
+> may move, then one `updateMany` with an atomic `increment`/`decrement`. The per-day
+> read+write form it replaced cost 14 round-trips per week (~730 for a year).
+>
+> The obvious raw-SQL version - `"date" IN (...)` with the `Date` objects bound directly -
+> **silently matches nothing**. `date` is a plain `TIMESTAMP` holding UTC midnight, a bound
+> JS `Date` arrives as `timestamptz`, and comparing the two makes Postgres convert using the
+> server zone (`Asia/Kuala_Lumpur`), shifting every value 8 hours off. Measured 2026-08-28
+> against the test DB: **0 rows updated where 7 should have been**, on both the increment and
+> the decrement. Prisma's own `date: { in: days }` binding gets this right, which is why the
+> read stays in Prisma. This is the same UTC-midnight trap the date-filter convention warns
+> about, in a place it is easy to reintroduce while optimising.
+
+`applyMaintDelta` (fn 6) is still the older per-day form - extract to
+`utils/availabilityGrid.ts` when Resorts Reservation becomes the third caller.
 
 > **The migration deliberately applies NO grid deltas.** `res_avail_mast.txt` was exported
 > from Informix with the bulk-bank weeks **already deducted** from `ram_bal_night`, exactly
@@ -2091,14 +2237,11 @@ DELETE /api/rci-enrolments/:id              Delete enrolment (RESORTS_SETUP dele
 GET  /api/rci-weeks?year=                    One year's RCI weeks, unpaginated, ordered weekNo asc; year REQUIRED (400 otherwise). Returns { data, year, weeks } (RESORTS_SETUP view)
 GET  /api/rci-weeks/years                   Distinct years set up, newest first — feeds the year dropdown (RESORTS_SETUP view)
 POST /api/rci-weeks/year                    Generate a whole year's 52/53 weeks from the year alone (body: year; RESORTS_SETUP create; 400 below MIN_YEAR 2026, 409 if the year already has weeks). Returns { year, weeks, firstFriday, lastWeekEnd }
-DELETE /api/rci-weeks/year?year=            Delete a whole year's weeks (RESORTS_SETUP delete; 404 if the year is empty). There is NO per-week delete and no update endpoint at all
-GET  /api/rci-bulk-bank?q=&resortCode=&unitNo=&weekYear=&season=&page=&pageSize=  RCI Bulk Bank list, paginated (50, max 200), sorted resortCode -> weekYear (nulls last) -> unitNo -> checkIn, all ASCENDING; q searches resort code/unit/apartment type/resort name (RESORTS_SETUP view)
-GET  /api/rci-bulk-bank/years               Distinct weekYear values present, newest first - feeds the Year filter (RESORTS_SETUP view)
-GET  /api/rci-bulk-bank/units?resortCode=   RCI-QUALIFIED units (rciReserved='Y') at that resort, each with its fn 5 availability ranges: [{ unitNo, apartmentType, occupancy, blocks[] }]. A unit with an empty blocks[] cannot be banked and is listed disabled. At a lockOnOff='Y' resort the lock-off HALVES (lockType='LS') are excluded - whole units only - and the response carries splitTypes: string[]|null naming them so the form can explain the omission. 400 without resortCode, 404 unknown resort (RESORTS_SETUP view)
-GET  /api/rci-bulk-bank/:id/availability    Per-day grid (date/act/bal) for a banked week's resort+type over its 7 days (RESORTS_SETUP view)
-POST /api/rci-bulk-bank                     Bank one RCI week + deduct ResAvailMast.balNight per day (body: resortCode, unitNo, weekYear, weekNo, season R|B|W). checkIn/checkOut are DERIVED from RciWeek - there is no date input. serialNo is allocated as max+1 inside the transaction. RESORTS_SETUP create; 404 unknown resort; 400 if the unit isn't registered / isn't rciReserved='Y' / is a lock-off half at a lockOnOff='Y' resort / the week isn't set up in fn 2 / the week's 7 days aren't covered by the unit's fn 5 availability; 409 if already banked or overlapping, if the unit is under maintenance that week, or if any day of the week has balNight=0 for that apartment type (naming the full days - banking is refused, never clamped)
-PUT  /api/rci-bulk-bank/:id                 Change the WEEK (weekYear + weekNo) and/or the season, re-syncing the grid; resortCode/unitNo/apartmentType/serialNo/bankStatus are immutable and are not accepted. A season-only edit skips the grid work. Same 400/409 guards as POST (RESORTS_SETUP edit)
-DELETE /api/rci-bulk-bank/:id               Delete a banked week + restore its balNight contribution (RESORTS_SETUP delete; no usage guard - nothing references RciBulkBank yet)
+DELETE /api/rci-weeks/year?year=            Delete a whole year's weeks (RESORTS_SETUP delete; 404 if the year is empty; **409 if any RCI fn 3 bulk bank week is banked against that calendar**, naming the count and the first 5 units - RciBulkBank has no FK to RciWeek, so this count is the only thing stopping the banked rows being stranded with no calendar behind them). There is NO per-week delete and no update endpoint at all
+GET  /api/rci-bulk-bank?resortCode=&unitNo=&weekYear=  One unit's banked weeks for one year, UNPAGINATED (52/53 rows at most), ordered checkIn asc. All three params REQUIRED (400 otherwise). Rows are matched on checkIn against the year's RciWeek Friday starts, NOT on the weekYear column, so a legacy row whose weekYear never resolved still appears in the year it falls in - saveRciBulkBankYear matches identically, so the grid displays exactly what the save diffs against. Returns { data, resortCode, unitNo, weekYear } (RESORTS_SETUP view)
+GET  /api/rci-bulk-bank/units?resortCode=   Units the fn 3 grid may show at that resort, each with its fn 5 availability ranges: [{ unitNo, apartmentType, occupancy, rciReserved, bankable, bankedCount, blocks[] }]. `bankable` (rciReserved='Y' AND not a lock-off half) means new weeks can be banked; a NON-bankable unit is returned only when bankedCount > 0, so the 205 records on units fn 4 has since un-flagged (CP-PBR 3205/3206 + 3227/3228, L-10024 A8) stay visible and clearable. A unit with an empty blocks[] has no availability and is listed disabled. At a lockOnOff='Y' resort the response also carries splitTypes: string[]|null naming the excluded halves so the form can explain the omission. 400 without resortCode, 404 unknown resort (RESORTS_SETUP view)
+DELETE /api/rci-bulk-bank/year?resortCode=&unitNo=&weekYear=  Clear a unit's WHOLE year unconditionally + restore each day's balNight - for re-entry, since the bottom-up bin makes clearing a year cell by cell deliberately slow. NOT a diff: it also removes weeks the save would refuse to recreate (un-flagged unit, lapsed availability), and is the only bulk path that can empty a clear-only unit. All three params REQUIRED (400); 404 if the year has no calendar or the unit has nothing banked in it. **No booking guard yet** - see the TODO in deleteRciBulkBankYear (RESORTS_SETUP delete)
+POST /api/rci-bulk-bank/year                Save one unit's whole year - the ONLY write path (body: resortCode, unitNo, weekYear, weeks[{ weekNo, season R|B|W or null }]). REPLACE-ALL within the year: every week the grid shows is sent, season null = not banked, and the server diffs it against what is stored into creates (blank -> season), updates (season -> season) and deletes (season -> blank). checkIn/checkOut are DERIVED from RciWeek - there is no date input anywhere. serialNos are allocated max+1..max+N inside the transaction. Requires RESORTS_SETUP create AND edit AND delete (the diff can do all three). Guards run over the CREATES only, which is what makes a non-RCI-qualified unit clear-only for free. 404 unknown resort; 400 if the unit isn't registered / a weekNo isn't in the year's fn 2 calendar / a weekNo repeats; 400 naming fn 4 if creates exist and the unit isn't rciReserved='Y'; 400 if it is a lock-off half at a lockOnOff='Y' resort. Per-week failures are COLLECTED, not thrown on the first: a week not covered by the unit's fn 5 availability (400), under maintenance (409 -> fn 6), already banked/overlapping (409), or containing a day with balNight=0 (409 - banking is refused, never clamped). ALL-OR-NOTHING - one failing week means nothing is written, and the message names the offending weeks (first 10). Returns { created, updated, deleted, clamped } (RESORTS_SETUP create+edit+delete)
 GET  /api/pbs?q=&coCode=&acctClassify=&schemeType=&claimIndc=  PBS scheme list (search+filters)
 GET  /api/pbs/:id                                  PBS scheme detail + claims
 PUT  /api/pbs/:id                                  Update PBS scheme (certNo, schemeType, remark)
@@ -2162,7 +2305,7 @@ renumbering means editing both. **Prose elsewhere may still cite pre-merge numbe
 | AMC Billing — Day-End | ✅ Done | DayEnd file generation |
 | Reports | ✅ Done | Per-user access control; IT grants via UserDetail; sidebar shows single "Reports" link → card grid at `/reports`. 6 reports: Member, SSM Agreement, Expiry Analysis, Expiring Members, Remaining Value, Expiry Summary by Years. |
 | Resorts Setup | ✅ Done | New `RESORTS_SETUP` AppModule (seed defaults: IT+Resort Ops FULL, Member Services VIEW, Finance/Credit NONE). Landing page `/resorts` (PBS-style menu, sidebar group "Resorts"). Function 1 done: **Products Setup** (`/resorts/products`) — `Product` CRUD over the operating-company / product master (list+search on code/name/contact, add/edit modal with the product code read-only in edit mode, `ConfirmDeleteModal`). **Delete is refused 409** when any Agreement/AmcSchedule/Resort/LvcCode still carries the `coCode` — there is no DB-level FK, so this controller count is the only guard; the message names the counts and surfaces inside the confirm modal. Because that guard makes deletion impossible for nearly every row, an **A/U status toggle** was added 2026-08-17 (`ToggleRight`/`ToggleLeft` icon first in the row's action group, green Active / grey Inactive badge column, inactive rows dimmed, list ordered Active first then by code; status is also editable in the add/edit form). Same shape as the Resort and LvcCode toggles, including the deliberate **no-success-dialog** exception — the badge flips in place, but a failed toggle still surfaces through a `variant="error"` `ResultDialog`. Deactivating removes the product from the fn 10 LVC Code and fn 9 **Charged To** dropdowns (via the shared `useActiveProducts` hook) and changes nothing else — no server-side status check was added, so records already naming a retired product stay editable. 29 rows from `ps_company.txt` (first 9 of 17 cols; the initial 7-row export was filtered and was re-extracted in full), all backfilled to Active. Nothing else reads this table yet — `ProductBadge` still hardcodes the LHC/CP names. Function 2 done: **Resorts Setup** (`/resorts/setup`) — Resort master CRUD (list+search, add/edit modal shared via `ResortFormModal.tsx`, status toggle A/U, delete; buttons gated by canCreate/canEdit/canDelete; Eye icon on every row → detail). **Resort Detail** (`/resorts/setup/:id`) — details card + Edit + 4 info tabs (Getting There / Resort Facilities / Places of Interest / Unit Amenities) from `ResortInfoLine`; per-tab single-textarea editor, remark-style free text (400 chars total per category, validated client+server, no auto-uppercase — legacy print lines are mixed-case). Function 3 done: **Apartment Types Setup** (`/resorts/apartment-types`) — `ApartmentType` CRUD (list+search, add/edit modal, delete; resort picker from Resort master, lockType Select disabled/forced-LN unless resort `lockOnOff='Y'`; **delete refused 409** while any unit / availability / grid / season-points row still names the type, the message naming the counts inside the confirm modal). **The list is scoped to ACTIVE resorts server-side** (2026-08-10) — 17 of the 487 rows, across 12 resorts. 487 rows from `apt_category.txt` (4 of 11 cols), which on 2026-08-10 replaced the 9 hand-transcribed rows formerly hardcoded in `migrate-resorts.ts`. Function 4 done: **Apartments/Units Setup** (`/resorts/units`) — `ResortUnit` CRUD (paginated list with resort filter + search, add/edit modal with apartment-type dropdown restricted to the selected resort's types, RCI Reserved checkbox; **delete refused 409** while the unit still has availability, maintenance or RCI bulk bank records, the message naming all three counts inside the confirm modal; **358 rows** from `apt_mast.txt`, which since 2026-08-11 is exported ACTIVE-resorts-only with a live-unit whitelist for 4 resorts — see `### ResortUnit`). Function 5 done: **Resorts Unit Availability/Inventory Setup** (`/resorts/availability`) — **add / view / delete only, no edit** (2026-08-14): the list is add-only, so correcting a record means deleting and re-adding it. **Two Add buttons, split by `coCode` (2026-08-14)**: **+ Add availability** for our own products (`03`/`15`/`02`, whose resorts have real numbered apartments) is the cascade add form Resort→ApartmentType→Unit→start/end dates, and its resort dropdown now lists only those resorts; **Add MAR availability** for every other resort (the partner/exchange **MAR** resorts, which allocate N interchangeable units of a sleep type for a period) is a **batch** form keying Resort→ApartmentType→number of units→occupancy→start/end dates, which generates unit numbers `1-{occupancy}`..`{N}-{occupancy}` (the format the legacy data already uses — `V-CLC1` SLEEP4 = `1-4`..`15-4`), **creates the `ResortUnit` rows and their availability records together**, all-or-nothing, and **reuses** any unit already registered with that apartment type so a second run just adds next year's dates. It shows a live preview of the numbers it will generate, and the result dialog reports the created/reused split. The split is enforced server-side (400), not just in the dropdowns; the page's resort **filter** still lists every active resort so MAR records stay viewable, and Delete is one path for both. Per-row Eye + Delete, styled delete-confirm modal. **The page lands EMPTY** — nothing is fetched until a resort is picked from the filter (5,162 records over 12 resorts is not a useful first screen, and staff work one resort at a time); the placeholder reads "Select a resort to view its availability records." Each save auto-maintains the generated `ResAvailMast` per-day grid (`act/bal +1` per day on create, `-1` on delete; a MAR batch does **one** pass at `+N`; overlap-guarded 409). **Delete is refused 409** while the unit has maintenance inside the record's dates. Per-row Eye icon → modal of the block's day grid. Header **Resorts Availability** button opens a **draggable, non-modal** popup (`DraggableWindow.tsx`) = ResAvailMast pivoted resort×date, cell=balNight (red ≤2, weekends highlighted), **Product Type read from the Product master — every ACTIVE product, not the old fixed LHC/CP pair** (2026-08-17; defaults to `03` so the opening view is unchanged), date + `<<`/`>>` 15-day paging; the chart lives in the shared `components/ResortAvailabilityChart.tsx` so both Function 5 and Function 6 render it. **The chart lists ACTIVE resorts only** (2026-08-11) — it scaffolds a row per resort x apartment type and zero-fills, so retired resorts were drawing full rows of zeros (LHC 56 rows of which 5 were live, CP 10 of 3). **Most products chart empty, and that is the data, not a bug**: only 7 coCodes have any active resort at all (01, 02, 03, 20, 24, 26 + the test row AA), and of those only `03` (6 resorts) and `02` (1) have `ResAvailMast` rows — `res_avail_mast.txt` has not been re-exported since 2026-07-24 and still covers 7 resorts, so the active `V-*` partner resorts on 01/20/24/26 have units and blocks but no grid. Picking any other product shows "No resorts for this product". Function 6 done: **Resorts Unit Under Maintenance** (`/resorts/maintenance`) — `ResortMaintenance` CRUD. **The page lands EMPTY**, like fn 5 — nothing is fetched until a resort is picked (10,904 records is not a useful first screen); the placeholder reads "Select a resort to view its maintenance records." Paginated list sorted startDate desc with resort filter + **Month/Year period filter** + search incl. reason, 3-level add cascade Resort→Unit→**Availability** (the fn 5 record every range must sit inside; **units lacking availability listed but disabled**) with the apartment type shown in the unit option label and derived server-side, **mandatory** remarks/reason field, **up to 3 date ranges per add** (each saved as its own record, all sharing the one reason; all-or-nothing, with client-side row errors mirroring the server's overlap rules), styled delete-confirm modal, per-row Eye icon → day grid, same **Resorts Availability** popup button). Each save maintains `ResAvailMast.balNight` only (`-1` per day on create, `+1` on delete, reverse-then-apply on edit; `actNight` never touched, rows never created/deleted; overlap-guarded 409) — so the availability chart needed no change. **10,904 rows** from `resmt.txt`. Function 7 done: **Public & School Holidays Setup** (`/resorts/holidays`) — `Holiday` CRUD over **one** table holding both kinds, presented as a **tabbed page** (Public Holidays / School Holidays) whose tab lives in the URL (`?tab=school`) alongside the year filter and search, so Back restores the whole view. Each tab keeps its own columns (Public: Date/Day/Year/Holiday; School: Academic Year/Start/End/Days/Holiday), its own year-filter label and its own **Clone to next year** sub-function copying a year to year+1 on the same month/day (both ends for a school range) for staff to correct. One shared add/edit modal branches on the tab: a public holiday is a single date whose `year` is **derived server-side**, a school holiday is a range with an **editable** `academicYear` (pre-filled from the start date only while blank) since a session can cross the calendar boundary. School-only guards: overlapping ranges and a repeated name within one academic year are both rejected 409. Global calendar — no resort/state scope, so no availability-grid interaction. 12 public + 4 school business-supplied 2026 rows via `prisma/seed-holidays.ts`. **Merged 2026-07-31 from the former fns 7/8** (`PublicHoliday` + `SchoolHoliday`), which were ~90% duplicated code; `/resorts/school-holidays` now redirects to the School tab, and fns 9-12 renumbered down to 8-11. Function 8 done: **CP's Seasons Setup** (`/resorts/seasons`, renamed from "CP's Seasons & Points Setup" — the points chart is function 9, `CpSeasonPoint`) — `CpSeasonDate` CRUD over a **per-day** G/S/D calendar, presented **one month at a time** in the legacy Informix 3-across `[dd-mm-yyyy] [S]` grid (Year input + Month dropdown + **Prev/Next** month buttons; season cells are inline selects; **Save month** bulk-upserts every date shown; **Delete month** removes the whole month). An empty month doubles as the add form, pre-filled Silver. Plus **Clone to next year**. 424 rows from `ps_seasondate.txt`. **CP-only** — see the per-product calendar note above `### Holiday`. Function 9 done: **CP Points Deduction** (`/resorts/season-points`) — `SeasonPoint` CRUD over **one** table holding both points charts, presented as a **tabbed page** (Home Resorts / Non-Home Resorts) whose tab lives in the URL (`?type=away`) alongside the resort and version, so Back restores the whole view. **Charts are effective-dated VERSIONS, not per-year grids** (redesigned 2026-08-13): a chart stays in force until a later version supersedes it, so a new one is created only when a rate changes or a room type is introduced. **Home** = a `coCode '02'` resort (CP-PBR today) — the points fn 8's G/S/D grade resolves into. **Non-home** = every other resort (our own LHC resorts and the partner/exchange `V-*` codes) reached through an LVC exchange programme; this is the reason `pssa_lvcpts0..6` are zero in `ps_seasonapt`. Both tabs share the whole shape: a **version list** (resort picker + that resort's versions newest first — Effective From, Status Current/Scheduled/Superseded, Room Types, Seasons, Rows — plus **New version**), and a **version editor** reached at `?eff=YYYY-MM-DD` or `?eff=new`: a legacy-style read-only header block, **one Effective from date for the whole chart**, and a grid scaffolded from the resort's apartment types × `['S','G','D']` with seven day cells (`Sun(0)`…`Sat(6)`) and a live **Total/Wk** column (derived, never stored). Save is **replace-all within the version**, so a blanked row is deleted and there is no per-row delete; rows left blank are never submitted, so an untouched grid can't be saved as zeros. A version's date can be corrected in place (the client sends `replaces`), and landing on a date the resort already uses returns 409. The resort pickers are exact inverses (`coCode === '02'` vs `!== '02'`, 48 resorts) and the server rejects a kind mismatch with 400 via `requireResortOfType()`. The Non-Home tab adds an editable **Charged To** product dropdown (`lvcCoCode`, validated against `Product.coCode`); the Home tab stores null. **Apartment types are validated against fn 3 but pairs already stored are grandfathered**, which mattered most before the `apt_category.txt` load — only 5 of the 412 non-home source pairs were registered then, vs **408** now; the remaining 4 (all on Inactive resorts) show a `(legacy)` hint. **No clone action** (deliberate, unlike fns 7 and 8) — instead **New Rate opens pre-filled from the rate in force**, so staff amend a copy rather than key a whole chart, and a new rate must take effect **after** the resort's latest one (400 server-side, mirrored in the editor; editing an existing rate is exempt). **The UI says "rate" where the code says "version"** — same thing. The 2026-08-13 redesign collapsed 4,766 rows / 1,062 resort-years (only **303** distinct charts; five active resorts had re-keyed an identical chart 24 years running) down to **1,209 rows — one current version per resort across 265** — and deleted the previous-year prefill and the "years cannot skip ahead" rule built the day before, both of which only meant anything under per-year charts. **Merged 2026-07-31 from the former fns 9/10** (`CpSeasonPoint` + `LvcSeasonPoint`), which shared ~78% of controller and ~86% of page code; `/resorts/lvc-season-points` now redirects to the Non-Home tab, fn 11 renumbered to 10, and the merge closed a gap where the old CP delete-year skipped its resort scope check. Function 10 done: **Leisure Vacation Club (LVC) Code Maintenance and Setup** (`/resorts/lvc-codes`) — `LvcCode` CRUD over the exchange-programme master: the arrangement under which a member books outside their own product, either between our own products (`LVC-CP`, 03/15 ↔ 02) or into an external partner's **MAR (Make Available Resorts)** (`LVC-SGI`, `LVC-CLC`, …). List+search on code/name/product code, add/edit modal with `lvcCode` read-only in edit mode and a product dropdown, **A/U status toggle** (same shape as the Resort toggle, and the same deliberate no-success-dialog exception), `ConfirmDeleteModal` on a hard delete with **no usage guard** (nothing references `LvcCode` yet). **The `incoming`/`outgoing`/`faxBatch` counters are imported but appear nowhere on the screen and are absent from the zod schema, so CRUD can never write them.** `coCode` is a **product dropdown** validated server-side against `Product.coCode` (400 on an unknown code), with the product name resolved client-side in the list. The list is sorted **Active first, then Inactive**, each alphabetical by code. 23 rows from `lvc_master.txt` (**5 active / 18 inactive** as of 2026-08-12). **Functions 1-10 are complete — the Resorts Setup module is done.** See the **Resorts Setup — function list** table above for the authoritative menu labels and numbering. |
-| RCI | ✅ Done | New sidebar item **RCI** (Resort Condominiums International) in the existing **Resorts** group, gated by `canView('RESORTS_SETUP')` — **no new AppModule enum value** was added (a new variant needs a migration and is what broke login on 2026-07-23). Landing page `/rci` lists 3 functions, all now implemented. **1. RCI Enrolment** (`/rci/enrolment`) — **done**: full `RciEnrolment` CRUD over the 17,915-row register. Paginated list (50/page, ordered membershipNo → agreementNo → serialNo) with product + RCI-status filters and search over membership/agreement/RCI no/name/co-owner/resort code, all in the URL so Back restores the view. Per-row Eye (detail modal, resolves the member name by natural key) / Pencil / Trash. The add form keys product + membership + agreement and **live-checks the agreement**, naming the member before Save is enabled; on edit that key is shown read-only (immutable). Follows the CRUD feedback convention (`ResultDialog`, `ConfirmDeleteModal`, `onError` on every mutation). Renewal/expiry dates carry an on-form note that they are information only. **2. RCI Weekly Interval** (`/rci/weekly-interval`, renamed from "RCI Interval") — **done**: Create / Read / Delete over `RciWeek`, **whole years only**. Year-scoped screen (year in the URL, dropdown fed by `/years`) showing that year's 52/53 weeks unpaginated — **Week / Start (Friday) / End (Friday)**, with a `carries into YYYY` hint on the last week; the stored Saturday pair is fetched but deliberately not rendered. **Add year** keys a year and nothing else, with a live client-side preview of the week count and first/last Friday before generating; **Delete year** removes the whole year via `ConfirmDeleteModal`. There is no edit path anywhere — correcting a year means deleting and re-adding it. Empty state prompts to add a year when none exist. 209 rows from `rci_week.txt` (2026-2029). `RciPlaceholder.tsx` was deleted once both functions were implemented. **3. RCI Bulk Bank** (`/rci/bulk-bank`) — **done**: full `RciBulkBank` CRUD over the 774-row register of LHB inventory deposited into the RCI exchange network. One record = **one RCI week of one RCI-qualified unit** (`ResortUnit.rciReserved='Y'`), graded **Red / Blue / White** by RCI. **There is no date input anywhere on the form** — staff pick a week from fn 2's calendar (Resort → Unit → Year → Week No → Season) and the server derives `checkIn = RciWeek.friStart` and `checkOut = friStart + 6`, so the "check-in is a Friday" rule is unbreakable rather than merely validated; all migrated rows match an `RciWeek.friStart` exactly. Paginated list (50/page, ordered resort code -> year -> unit no -> check-in, all ascending) with resort + year + season filters and search, all in the URL so Back restores the view; per-row Eye (the week's 7-day availability grid) / Pencil / Trash. The unit picker offers **only RCI-qualified units** and disables those with no fn 5 availability, suffixed `(no availability set up)`; at a lock-on/lock-off resort (CP-PBR) it also **hides the lock-off halves** (`lockType='LS'` — SLEEP2/SLEEP4), leaving whole units only, with a note saying why; the week picker greys weeks already banked or outside availability (advisory — the server checks are authoritative). **Each save deducts one unit-night per day from `ResAvailMast.balNight`** (`actNight` never touched, rows never created or deleted) and gives it back on delete; edit reverses the old week then applies the new one, and a season-only edit skips the grid work. **Five save-time guards**, each naming the function to fix it in: unit not registered (400), unit not RCI-qualified (400 → fn 4), the week not covered by fn 5 availability (400, naming the uncovered days — checked against the **union** of the unit's blocks, with no `aptBlockId` in the payload unlike fn 6), the unit under maintenance that week (409 → fn 6), already banked / overlapping (409), and **any day of the week already fully committed** (`balNight=0`, 409 naming the full days — banking is refused rather than clamped, unlike fn 6 maintenance, because it is an external promise to RCI; costs 12 of 16,648 bankable weeks). **Three mirror guards live in other controllers** — fn 4's unit delete counts banked weeks, fn 5 refuses to delete availability under a banked week, and fn 6 refuses maintenance over one (a correctness fix: both deduct the same unit-night). `resortCode`/`unitNo`/`apartmentType`/`serialNo`/`bankStatus` are immutable after create; the week and season stay editable. `serialNo` continues the Informix sequence (max 39261 → first app row 39262). `bb_status` is migrated as `bankStatus` for provenance but is rendered nowhere and is absent from both zod schemas, so CRUD can never write it. Follows the CRUD feedback convention (`ResultDialog`, `ConfirmDeleteModal`, `onError` on every mutation). **Functions 1-3 are complete — the RCI module is done.** |
+| RCI | ✅ Done | New sidebar item **RCI** (Resort Condominiums International) in the existing **Resorts** group, gated by `canView('RESORTS_SETUP')` — **no new AppModule enum value** was added (a new variant needs a migration and is what broke login on 2026-07-23). Landing page `/rci` lists 3 functions, all now implemented. **1. RCI Enrolment** (`/rci/enrolment`) — **done**: full `RciEnrolment` CRUD over the 17,915-row register. Paginated list (50/page, ordered membershipNo → agreementNo → serialNo) with product + RCI-status filters and search over membership/agreement/RCI no/name/co-owner/resort code, all in the URL so Back restores the view. Per-row Eye (detail modal, resolves the member name by natural key) / Pencil / Trash. The add form keys product + membership + agreement and **live-checks the agreement**, naming the member before Save is enabled; on edit that key is shown read-only (immutable). Follows the CRUD feedback convention (`ResultDialog`, `ConfirmDeleteModal`, `onError` on every mutation). Renewal/expiry dates carry an on-form note that they are information only. **2. RCI Weekly Interval** (`/rci/weekly-interval`, renamed from "RCI Interval") — **done**: Create / Read / Delete over `RciWeek`, **whole years only**. Year-scoped screen (year in the URL, dropdown fed by `/years`) showing that year's 52/53 weeks unpaginated — **Week / Start (Friday) / End (Friday)**, with a `carries into YYYY` hint on the last week; the stored Saturday pair is fetched but deliberately not rendered. **Add year** keys a year and nothing else, with a live client-side preview of the week count and first/last Friday before generating; **Delete year** removes the whole year via `ConfirmDeleteModal`. There is no edit path anywhere — correcting a year means deleting and re-adding it. Empty state prompts to add a year when none exist. 209 rows from `rci_week.txt` (2026-2029). `RciPlaceholder.tsx` was deleted once both functions were implemented. **3. RCI Bulk Bank** (`/rci/bulk-bank`) — **done, rebuilt as a whole-year grid 2026-08-28**: the 774-row register of LHB inventory deposited into the RCI exchange network. One record = **one RCI week of one RCI-qualified unit** (`ResortUnit.rciReserved='Y'`), graded **Red / Blue / White** by RCI. **The page is a fn 8-style grid, not a list**: pick **resort + unit + year** and every RCI week of that year is a row with an editable season beside it, in the same monospace `[dd-mm-yyyy] [S]` layout as CP's Seasons. **The page lands blank** until all three are chosen ("Select a resort, unit and year to view its RCI weeks."). **A blank season means NOT BANKED**, so the one dropdown banks (blank -> colour), regrades (colour -> colour) and clears (colour -> blank) a week; an **empty year is the add form, prefilled Red** on every bankable week (fn 8's Silver prefill, applied to the dominant grade), and only the **highest banked week** carries a bin so a year unwinds 53, 52, 51... (the bin blanks the cell, it does not write). A header **Delete year** button clears the whole year unconditionally for re-entry, leaving the grid back in its Red-prefilled add state - **a booking guard for it is noted as a TODO, not built, since the booking module does not exist yet**. **Save year** posts every week shown and the server diffs it, reporting the created / regraded / cleared split in a `ResultDialog`. **There is no date input anywhere** — weeks come from fn 2's calendar and the server derives `checkIn = friStart`, `checkOut = friStart + 6`, so the "check-in is a Friday" rule is unbreakable rather than merely validated. The Year picker lists **fn 2's years**, so a year must be generated there before it can be banked into. The unit picker offers RCI-qualified units, disables those with no fn 5 availability (`(no availability set up)`), hides the lock-off halves at CP-PBR with a note saying why, and additionally lists **clear-only** units that fn 4 has un-flagged but which still hold weeks (`(not RCI-qualified)`) so their 205 records stay visible and removable. Weeks the grid can tell are unbankable are greyed with the reason (advisory — the server is authoritative). **Each save deducts/restores one unit-night per day in `ResAvailMast.balNight`** (`actNight` never touched, rows never created or deleted); a regrade does no grid work. **Six save-time guards**, each naming the function to fix it in, run over the **creates** only — which is what makes a clear-only unit work with no extra rule — and their failures are **collected**: unit not registered (400), not RCI-qualified (400 -> fn 4), a lock-off half (400), week not covered by fn 5 availability (400, by the **union** of the unit's blocks), under maintenance (409 -> fn 6), already banked/overlapping (409), and any day already fully committed (`balNight=0`, 409 — refused rather than clamped, because banking is an external promise to RCI). **All-or-nothing**: one failing week means nothing is written and the message names the offenders. A year save is **~12-15 queries** whatever changed, against ~1,000 for the 52 modal round trips it replaced. **Three mirror guards live in other controllers** — fn 4's unit delete counts banked weeks, fn 5 refuses to delete availability under a banked week, and fn 6 refuses maintenance over one. `serialNo` continues the Informix sequence (max 39261 -> first app row 39262), allocated max+1..max+N inside the transaction. `bb_status` is migrated as `bankStatus` for provenance but is rendered nowhere and absent from the zod schema. Removed with the old list: the Add/Edit modal, search, pagination, the per-week Eye availability modal, and the `POST /`, `PUT /:id`, `DELETE /:id`, `GET /:id/availability` and `GET /years` endpoints. **Functions 1-3 are complete — the RCI module is done.** |
 | Zurich PBS | 🔨 In progress | PBS landing page (`/pbs`) with 9 function cards. PBS Enquiry & Maintenance (`/pbs/enquiry`) done. PBS Pay By Month/Year (`/pbs/pay-by-month`) done: Excel with 2 worksheets (monthly + yearly summary), tabbed preview. PBS Claim Report (`/pbs/claim-report`) done: Excel with 2 worksheets (non-ND claims + ND claims), tabbed preview. Not In PBS Report (`/pbs/not-in-pbs`) done: text file output matching Informix format, preview table. PBS Variance Report (`/pbs/variance`) done: Excel comparing rightful vs Zurich scheme type, preview with variance highlighting. All PBS reports use per-user `requireReportAccess` (not department permission); menu items hidden when not granted. Remaining: Proforma, Certificate Tracking, Auto Transfer, 1 report (PBS Report). |
 
 ## Navigation / permissions

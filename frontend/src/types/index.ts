@@ -260,24 +260,59 @@ export interface RciBulkBank {
   season: string;                // 'R' Red | 'B' Blue | 'W' White
   createdAt: string;
   updatedAt: string;
-  resort: { shortName: string | null; resortName: string; coCode: string };
 }
 
-export interface RciBulkBankList {
+// One (resort, unit, year)'s banked weeks - the grid's read. Rows are matched on checkIn
+// against the year's Friday starts, not on weekYear, so a legacy row whose weekYear never
+// resolved still appears in the year it falls in.
+export interface RciBulkBankYear {
   data: RciBulkBank[];
-  total: number;
-  page: number;
-  pageSize: number;
+  resortCode: string;
+  unitNo: string;
+  weekYear: number;
 }
 
-// RCI-qualified units (rciReserved='Y') at one resort, with their fn 5 availability.
-// A unit with an empty blocks[] has no availability and cannot be banked - the picker
-// lists it disabled, the same treatment fn 6 gives.
+// Units at one resort the grid may show, with their fn 5 availability.
+// `bankable` (rciReserved='Y' and not a lock-off half) means new weeks can be banked;
+// a non-bankable unit is listed only when it already holds banked weeks, so that history
+// stays visible and removable. A unit with an empty blocks[] has no availability and
+// cannot be banked - the picker lists it disabled, the same treatment fn 6 gives.
 export interface RciBulkBankUnit {
   unitNo: string;
   apartmentType: string;
   occupancy: number | null;
+  rciReserved: string;           // 'Y' | 'N'
+  bankable: boolean;
+  bankedCount: number;
   blocks: { id: string; startDate: string; endDate: string }[];
+}
+
+// Replace-all save of one unit's year: every week the grid shows is sent, season null
+// meaning "not banked". The server diffs it and reports what the edit actually turned into.
+export interface RciBulkBankYearSave {
+  resortCode: string;
+  unitNo: string;
+  weekYear: number;
+  weeks: { weekNo: number; season: string | null }[];
+}
+
+// Unconditional whole-year clear, for re-entry
+export interface RciBulkBankYearDeleteResult {
+  resortCode: string;
+  unitNo: string;
+  weekYear: number;
+  deleted: number;
+  clamped: boolean;
+}
+
+export interface RciBulkBankYearSaveResult {
+  resortCode: string;
+  unitNo: string;
+  weekYear: number;
+  created: number;
+  updated: number;
+  deleted: number;
+  clamped: boolean;
 }
 
 export interface Resort {
@@ -453,9 +488,6 @@ export interface AptBlockAvailability {
 
 // Same shape as AptBlockAvailability — the per-day grid for a maintenance record's range
 export type ResortMaintenanceAvailability = AptBlockAvailability;
-
-// Same shape again — the per-day grid over an RCI bulk bank week's 7 days (RCI fn 3)
-export type RciBulkBankAvailability = AptBlockAvailability;
 
 // Holidays (Resorts Setup fn 7) — one global calendar, no resort/state scope, covering
 // both public holidays (single dates) and school breaks (date ranges).
