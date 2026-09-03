@@ -1679,6 +1679,25 @@ re-import **clobbers CRUD edits**.
 > shadow it are gone. **Remove `migrate-rci-enrolment.ts` from `refresh-test-db.ps1` and the
 > `RciEnrolment` entry from `migrate-table.ps1` before go-live.** Same class of hazard as the
 > `migrate-rci-week.ts` and `migrate-rci-bulk-bank.ts` caveats, but with no fallback.
+>
+> **ORDER MATTERS: refresh, verify, THEN retire.** Data defects in `rci_enrol` are being
+> corrected in **Informix**, not in MMS — six were rectified on 2026-09-03 (see the
+> `/api/rci-enrolments` entry in the API reference) — precisely because an MMS-side fix would
+> be clobbered by the next re-import, and because re-keying here burns a new `serialNo` (the
+> agreement key is immutable, so a correction is delete-and-re-add). Those corrections only
+> reach this database **through a refresh**. Retire the importer before that refresh runs and
+> they never arrive, leaving them to be re-done by hand under exactly the constraints the
+> source fix was avoiding. Confirm the fixes have landed first:
+>
+> ```sql
+> -- expect 0 rows; check RciEnrolment is still ~17,908 at the same time, since a silently
+> -- failed import also returns 0 here (see "After ANY refresh: verify row counts")
+> SELECT e."serialNo", e."coCode", e."membershipNo", e."agreementNo"
+> FROM "RciEnrolment" e
+> WHERE NOT EXISTS (SELECT 1 FROM "Agreement" a WHERE a."coCode"=e."coCode"
+>                     AND a."membershipNo"=e."membershipNo" AND a."agreementNo"=e."agreementNo")
+>    OR NOT EXISTS (SELECT 1 FROM "Member" m WHERE m."membershipNo"=e."membershipNo");
+> ```
 
 > **This is the ONLY store of RCI data, and the only script that reads `rci_enrol.txt`.**
 > A sibling, `migrate-rci-enrol.ts` (no "ment", `-Table RciEnrol`), used to read the same file
@@ -2258,7 +2277,7 @@ GET  /api/season-points?type=&resortCode=&effectiveDate=  One VERSION's points r
 GET  /api/season-points/versions?resortCode=  Every version set up for that resort, newest first: { effectiveDate, rows, apartmentTypes, seasons, lvcCoCode, isCurrent } - feeds the version list (RESORTS_SETUP view)
 POST /api/season-points/version             Save a whole version (body: pointsType, resortCode, effectiveDate, replaces? [the version's stored date when editing], lvcCoCode? [AWAY only], rows[{apartmentType,season,ptsSun..ptsSat}]) - the add AND edit path, REPLACE-ALL within the version so rows dropped from the payload are deleted. pointsType and coCode are derived from the resort, never the payload. 400 on a kind mismatch, an unknown lvcCoCode product, an apartment type neither registered in fn 3 nor already stored, or a repeated (type,season); 409 if the resort already has a version on the target date; 400 if a CREATE (no `replaces`) is dated on or before the resort's latest existing version - a new rate must supersede, not backdate (RESORTS_SETUP create)
 DELETE /api/season-points/version?type=&resortCode=&effectiveDate=  Delete a whole version (RESORTS_SETUP delete; 400 on a kind mismatch, 404 if empty). There is no per-row delete - blank a row and re-save instead
-GET  /api/rci-enrolments?q=&coCode=&rciStatus=&page=&pageSize=  RCI enrolment list, paginated (q = membership/agreement/RCI no/name/co-owner/resort code; RESORTS_SETUP view). Each row also carries memberId + agreementId, resolved per page by natural key and NOT stored, so the list can link back to Member/Agreement detail. Either may be null - 4 rows name no member and 6 name no agreement
+GET  /api/rci-enrolments?q=&coCode=&rciStatus=&page=&pageSize=  RCI enrolment list, paginated (q = membership/agreement/RCI no/name/co-owner/resort code; RESORTS_SETUP view). Each row also carries memberId + agreementId, resolved per page by natural key and NOT stored, so the list can link back to Member/Agreement detail. Either may be null when the row's natural key resolves to nothing, which on the 2026-08-27 data was 4 rows (no member) and 6 (no agreement) - all six Informix source defects (a branch-code typo, a coCode typo, a `00000-` placeholder duplicate, a wrong membership, a junk `ABC`/`123` row and a legacy coCode 12), **rectified at source on 2026-09-03, so a refresh after that date should make this zero**
 GET  /api/rci-enrolments/lookup?coCode=&membershipNo=&agreementNo=  Confirm an agreement exists and return its member name for the add form (400 if any param missing, 404 if unknown; RESORTS_SETUP view)
 GET  /api/rci-enrolments/:id                Enrolment + memberName/acctClassify resolved by natural key (RESORTS_SETUP view)
 POST /api/rci-enrolments                    Create enrolment; serialNo allocated as max+1 (RESORTS_SETUP create; 400 if the agreement key names no agreement)
