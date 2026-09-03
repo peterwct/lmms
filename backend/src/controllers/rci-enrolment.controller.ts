@@ -64,6 +64,27 @@ async function findAgreement(coCode: string, membershipNo: string, agreementNo: 
   });
 }
 
+// The CURRENT enrolment for an agreement, plus how many it has in total.
+//
+// An agreement can hold several rows - typically a lapsed 1704-* enrolment alongside a
+// newer PENDING one - so "the" enrolment has to be chosen: the ACTIVE row wins, falling
+// back to the highest serialNo. Only 2 agreement keys in the migrated data carry more
+// than one active row, so this is deterministic in practice.
+//
+// Matched on the full natural key (coCode + membershipNo + agreementNo), never the FK
+// direction - agreementNo alone is duplicated across TT/TF transfer pairs. Covered by
+// the @@index([coCode, membershipNo, agreementNo]) on RciEnrolment.
+//
+// This is what Agreement Detail's read-only RCI card renders; RciEnrolment is the single
+// source of truth for RCI data, and RCI fn 1 is the only place it can be edited.
+export async function currentEnrolment(coCode: string, membershipNo: string, agreementNo: string) {
+  const rows = await prisma.rciEnrolment.findMany({ where: { coCode, membershipNo, agreementNo } });
+  if (!rows.length) return { enrolment: null, count: 0 };
+  const rank = (r: { rciStatus: string | null }) => (r.rciStatus === 'A' ? 0 : 1);
+  rows.sort((a, b) => rank(a) - rank(b) || b.serialNo - a.serialNo);
+  return { enrolment: rows[0], count: rows.length };
+}
+
 export async function listRciEnrolments(req: Request, res: Response): Promise<void> {
   const q         = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const coCode    = typeof req.query.coCode === 'string' ? req.query.coCode.trim() : '';
@@ -98,7 +119,45 @@ export async function listRciEnrolments(req: Request, res: Response): Promise<vo
     }),
   ]);
 
-  res.json({ data: rows, total, page, pageSize });
+  // Resolve the member and agreement each row points at, so the list can link back to
+  // their detail pages. RciEnrolment has no FK - it stores the natural key - so both are
+  // looked up per page (<=200 rows) and returned as resolved-on-read fields, never
+  // stored, the same way getRciEnrolment returns memberName/acctClassify.
+  //
+  // The two lookups are deliberately independent: 6 migrated rows resolve to no agreement
+  // (legacy coCode 12 / membership 00000-KL-M-0000/M/I), and the membership link should
+  // still work for them if the member exists. Agreement is matched on the FULL natural
+  // key - agreementNo alone is duplicated across TT/TF transfer pairs.
+  const [members, agreements] = await Promise.all([
+    rows.length
+      ? prisma.member.findMany({
+          where: { membershipNo: { in: [...new Set(rows.map(r => r.membershipNo))] } },
+          select: { id: true, membershipNo: true },
+        })
+      : [],
+    rows.length
+      ? prisma.agreement.findMany({
+          where: {
+            OR: rows.map(r => ({
+              coCode: r.coCode, membershipNo: r.membershipNo, agreementNo: r.agreementNo,
+            })),
+          },
+          select: { id: true, coCode: true, membershipNo: true, agreementNo: true },
+        })
+      : [],
+  ]);
+  const memberId = new Map(members.map(m => [m.membershipNo, m.id]));
+  const agreementId = new Map(
+    agreements.map(a => [`${a.coCode}|${a.membershipNo}|${a.agreementNo}`, a.id]),
+  );
+
+  const data = rows.map(r => ({
+    ...r,
+    memberId: memberId.get(r.membershipNo) ?? null,
+    agreementId: agreementId.get(`${r.coCode}|${r.membershipNo}|${r.agreementNo}`) ?? null,
+  }));
+
+  res.json({ data, total, page, pageSize });
 }
 
 export async function getRciEnrolment(req: Request, res: Response): Promise<void> {

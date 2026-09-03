@@ -321,10 +321,10 @@ function mapAgreement(c: string[], memberId: string) {
     transferFlag:            t(c[22]),
     transferToMembership:    t(c[23]),
     transferFromMembership:  t(c[24]),
-    rciRefNo:                t(c[54]),
-    rciEnrolDate:            d(c[55]),
-    rciExpiryDate:           d(c[56]),
-    rciFeePaid:              n(c[57]),
+    // e_rci_refno/enrol_date/expiry_date/fee_paid (c[54..57]) are deliberately NOT
+    // imported: RciEnrolment (prisma/migrate-rci-enrolment.ts, from rci_enrol.txt) is the
+    // single source of truth for RCI data. The Agreement columns they used to fill were
+    // dropped by 20260902090000_drop_agreement_rci_columns.
     outstdDoc:               b(c[58]),
     docDescription:          t(c[59]),
     canCode:                 t(c[61]),

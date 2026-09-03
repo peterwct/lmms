@@ -59,11 +59,14 @@
            e_nom2_name_card, e_nom2_tel_h, e_nom2_tel_hp,
            e_nom2_add1, e_nom2_add2, e_nom2_add3, e_nom2_city_state, e_nom2_postcode, e_nom2_email,
            e_nom2_email,
-           e_rci_refno, e_rci_enrol_date, e_rci_expiry_date, e_rci_fee_paid,
+           e_rci_refno, e_rci_enrol_date, e_rci_expiry_date, e_rci_fee_paid,  -- NOT imported (see below)
            e_outstd_doc, e_doc_desc, e_locality, e_can_code, e_sysdate, e_mod_date,
            e_term_user, e_aterm_date, e_tfdate, e_ttdate, e_tfuser, e_ttuser,
            e_loc_name, e_loc_salutation, e_loc_designation, e_loc_name_card, e_cse_code
     FROM si_entitlement WHERE e_cocode IN ('03', '15', '02');
+    -- The four e_rci_* columns above are still exported but no longer imported: RCI data
+    -- lives in RciEnrolment (rci_enrol.txt) alone. Kept in the SELECT so the column
+    -- offsets migrate-informix.ts parses stay unchanged.
 
     UNLOAD TO 'csp_mast.txt' DELIMITER '|'
     SELECT csp_code, csp_name, csp_branch, csp_status
@@ -88,8 +91,8 @@
     UNLOAD TO 'rci_enrol.txt' DELIMITER '|'
     SELECT * FROM rci_enrol;
     -- Full table (43 cols) since 2026-08-20. This supersedes the old 29-col SELECT
-    -- joined against si_entitlement; both migrate-rci-enrol.ts and
-    -- migrate-rci-enrolment.ts detect the layout from the field count.
+    -- joined against si_entitlement; migrate-rci-enrolment.ts detects the layout from
+    -- the field count. It is now the ONLY reader of this file.
 
     UNLOAD TO 'rci_week.txt' DELIMITER '|'
     SELECT * FROM rci_week;
@@ -339,12 +342,14 @@ Write-Host ("[3/7] Importing AMC schedules and Zurich PBS...") -ForegroundColor 
 Invoke-Migration "prisma/migrate-amc-schedules.ts" "migrate-amc-schedules.ts"
 Invoke-Migration "prisma/migrate-maa-mem.ts"       "migrate-maa-mem.ts"
 Invoke-Migration "prisma/migrate-maa-claim.ts"     "migrate-maa-claim.ts"
-Invoke-Migration "prisma/migrate-rci-enrol.ts"     "migrate-rci-enrol.ts"
-# RCI Enrolment register (RCI fn 1). Same source file as the line above, but this one
-# loads the full table into RciEnrolment rather than backfilling Agreement columns.
+# RCI Enrolment register (RCI fn 1) -- the SINGLE SOURCE OF TRUTH for RCI data. It used
+# to be paired with migrate-rci-enrol.ts, which read the same file to backfill four RCI
+# columns on Agreement; those columns were dropped (see
+# 20260902090000_drop_agreement_rci_columns) and that script is gone. Agreement Detail now
+# renders the current RciEnrolment row read-only.
 Invoke-Migration "prisma/migrate-rci-enrolment.ts" "migrate-rci-enrolment.ts"
-# RCI week-number calendar (RCI fn 2). Standalone -- no FK, no dependency on the two
-# scripts above; only years >= 2026 are imported.
+# RCI week-number calendar (RCI fn 2). Standalone -- no FK, no dependency on the script
+# above; only years >= 2026 are imported.
 Invoke-Migration "prisma/migrate-rci-week.ts"      "migrate-rci-week.ts"
 
 # ── Step 4: Salesperson + Resort master ──────────────────────────────────────

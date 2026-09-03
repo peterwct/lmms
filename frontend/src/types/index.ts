@@ -187,6 +187,11 @@ export interface RciEnrolment {
   // Resolved on read by natural key, never stored (detail endpoint only)
   memberName?: string | null;
   acctClassify?: string | null;
+  // Resolved on read by natural key, never stored (LIST endpoint only) - the ids the list
+  // links back to. Either can be null: 6 migrated rows name no agreement, and a row can
+  // name a membership that no longer exists.
+  memberId?: string | null;
+  agreementId?: string | null;
 }
 
 export interface RciEnrolmentList {
@@ -780,10 +785,11 @@ export interface Agreement {
   salespersonCode?: string;
   salespersonName?: string;
   certificateNo?: string;
-  rciRefNo?: string;
-  rciNominee?: string;
-  rciEnrolDate?: string;
-  rciExpiryDate?: string;
+  // RCI is NOT stored on Agreement - RciEnrolment is the single source of truth. The
+  // detail endpoint resolves the current enrolment by natural key and returns it here for
+  // the read-only card; editing happens only in RCI fn 1 (/rci/enrolment).
+  rciEnrolment?: RciEnrolment | null;
+  rciEnrolmentCount?: number;
   outstdDoc: boolean;
   docDescription?: string;
   canCode?: string;

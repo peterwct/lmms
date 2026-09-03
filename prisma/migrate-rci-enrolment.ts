@@ -4,10 +4,15 @@
  *
  * Loads Informix `rci_enrol` into the RciEnrolment table (RCI fn 1).
  *
+ * RciEnrolment is the SINGLE SOURCE OF TRUTH for RCI data and this is the only script
+ * that reads rci_enrol.txt. A sibling, migrate-rci-enrol.ts, used to read the same file
+ * to backfill four RCI columns on Agreement; those columns were dropped by migration
+ * 20260902090000_drop_agreement_rci_columns and the script is gone. Agreement Detail now
+ * renders the current enrolment read-only, resolved by natural key.
+ *
  * The file is a FULL-TABLE unload: 43 columns + a trailing empty field, so NF=44.
  * (An earlier, narrower export of the same name had 30 columns and was joined with
- * si_entitlement - see prisma/migrate-rci-enrol.ts, which backfills Agreement.rciRefNo
- * and had to be re-indexed for this layout.)
+ * si_entitlement.)
  *
  * Column mapping (0-indexed; only the 25 columns below are migrated):
  *  [0]  re_cocode           -> coCode

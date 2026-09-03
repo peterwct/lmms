@@ -312,7 +312,7 @@ function RciEnrolmentDetailModal({ id, onClose }: { id: string | null; onClose: 
 }
 
 export function RciEnrolment() {
-  const { canCreate, canEdit, canDelete } = useAuth();
+  const { canView, canCreate, canEdit, canDelete } = useAuth();
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const q = searchParams.get('q') ?? '';
@@ -449,8 +449,24 @@ export function RciEnrolment() {
                 <tbody className="divide-y divide-gray-100">
                   {list?.data.map(r => (
                     <tr key={r.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-mono">{r.membershipNo}</td>
-                      <td className="px-4 py-2.5 font-mono font-medium">{r.agreementNo}</td>
+                      <td className="px-4 py-2.5">
+                        {r.memberId && canView('MEMBERS') ? (
+                          <Link to={`/members/${r.memberId}`} className="font-mono text-blue-600 hover:underline">
+                            {r.membershipNo}
+                          </Link>
+                        ) : (
+                          <span className="font-mono text-gray-700">{r.membershipNo}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {r.agreementId && canView('AGREEMENTS') ? (
+                          <Link to={`/agreements/${r.agreementId}`} className="font-mono font-medium text-blue-600 hover:underline">
+                            {r.agreementNo}
+                          </Link>
+                        ) : (
+                          <span className="font-mono font-medium text-gray-700">{r.agreementNo}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5"><ProductBadge coCode={r.coCode} /></td>
                       <td className="px-4 py-2.5 font-mono">{r.rciNo ?? '—'}</td>
                       <td className="px-4 py-2.5">{r.name1 ?? ([r.firstName1, r.lastName1].filter(Boolean).join(' ') || '—')}</td>

@@ -15,7 +15,7 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { AgreementStatusBadge } from '../../components/AgreementStatusBadge';
 import { ProductBadge } from '../../components/ProductBadge';
 import type { Agreement, AgreementStatus } from '../../types';
-import { allowedNewStatuses, canEditNomineesRci } from '../../lib/agreementAuth';
+import { allowedNewStatuses, canEditNominees } from '../../lib/agreementAuth';
 import { format } from 'date-fns';
 
 const STATUS_LABEL: Record<AgreementStatus, string> = {
@@ -24,6 +24,11 @@ const STATUS_LABEL: Record<AgreementStatus, string> = {
 
 const INV_COMPONENT_LABEL: Record<string, string> = {
   MAIN_AMC: 'AMC', SINKING_FUND: 'Sinking Fund', SERVICE_TAX: 'Service Tax', ROUNDING: 'Rounding',
+};
+
+// RciEnrolment.rciStatus - kept in step with RCI_STATUSES in rci-enrolment.controller.ts
+const RCI_STATUS_LABEL: Record<string, string> = {
+  A: 'A — Active', C: 'C — Cancelled', M: 'M — Matured', T: 'T — Terminated',
 };
 
 const LOAN_TYPE_LABEL: Record<string, string> = {
@@ -37,7 +42,7 @@ function fmtRM(val: string | number | undefined | null) {
 
 export function AgreementDetail() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, canView } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [statusModal, setStatusModal] = useState(false);
@@ -46,8 +51,6 @@ export function AgreementDetail() {
   const [reasonCode, setReasonCode] = useState('');
   const [statusError, setStatusError] = useState('');
   const [nominees, setNominees] = useState<Array<Record<string, string>>>([{}, {}, {}]);
-  const [rciModal, setRciModal] = useState(false);
-  const [rciForm, setRciForm] = useState<Record<string, string>>({});
 
   const { data: agmt, isLoading } = useQuery<Agreement>({
     queryKey: ['agreement', id],
@@ -89,12 +92,6 @@ export function AgreementDetail() {
       const n2 = agmt.nominees?.find(n => n.nomineeSeq === 2);
       const n3 = agmt.nominees?.find(n => n.nomineeSeq === 3);
       setNominees([toStr(n1), toStr(n2), toStr(n3)]);
-      setRciForm({
-        rciRefNo: agmt.rciRefNo ?? '',
-        rciNominee: agmt.rciNominee ?? '',
-        rciEnrolDate: agmt.rciEnrolDate ? agmt.rciEnrolDate.slice(0, 10) : '',
-        rciExpiryDate: agmt.rciExpiryDate ? agmt.rciExpiryDate.slice(0, 10) : '',
-      });
     }
   }, [agmt]);
 
@@ -126,24 +123,13 @@ export function AgreementDetail() {
     },
   });
 
-  const [rciError, setRciError] = useState('');
-
-  const rciMut = useMutation({
-    mutationFn: () => {
-      const DATE_FIELDS = new Set(['rciEnrolDate', 'rciExpiryDate']);
-      const payload: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(rciForm)) {
-        if (DATE_FIELDS.has(k)) { payload[k] = v.trim() === '' ? null : `${v}T00:00:00.000Z`; continue; }
-        payload[k] = v.trim() === '' ? null : v.trim();
-      }
-      return agreementsApi.update(id!, payload);
-    },
-    onSuccess: () => { setRciError(''); setRciModal(false); qc.invalidateQueries({ queryKey: ['agreement', id] }); },
-    onError: (err: unknown) => setRciError(apiError(err)),
-  });
-
   if (isLoading) return <PageSpinner />;
   if (!agmt) return <p className="text-gray-500">Agreement not found.</p>;
+
+  // The current RCI enrolment, resolved server-side from RciEnrolment (read-only here).
+  // name1 is the full name; fall back to the first/last pair when it was never populated.
+  const rci = agmt.rciEnrolment;
+  const rciNominee = rci ? (rci.name1 || [rci.firstName1, rci.lastName1].filter(Boolean).join(' ')) : '';
 
   const invoicesByYear = new Map<number, typeof agmt.amcInvoices>();
   agmt.amcInvoices?.forEach(inv => {
@@ -387,7 +373,7 @@ export function AgreementDetail() {
       <Card>
         <CardHeader className="flex items-center justify-between">
           <p className="font-semibold text-gray-700">Nominees</p>
-          {canEditNomineesRci(user) && (
+          {canEditNominees(user) && (
             <Button variant="secondary" size="sm" onClick={() => setNomModal(true)}>
               {agmt.nominees?.length ? 'Edit nominees' : 'Add nominees'}
             </Button>
@@ -420,23 +406,41 @@ export function AgreementDetail() {
         </CardBody>
       </Card>
 
-      {/* ── RCI Info ───────────────────────────────────────────── */}
+      {/* ── RCI Info ────────────────────────────────────────── */}
+      {/* READ-ONLY. RciEnrolment is the single source of truth for RCI data and RCI fn 1
+          (/rci/enrolment) is the only place it can be edited, so there is deliberately no
+          edit button here — not for Member Services, not for IT. `rciEnrolment` is the
+          CURRENT enrolment, resolved server-side by natural key; an agreement can hold
+          several, which is what the count hint is for. */}
       <Card>
         <CardHeader className="flex items-center justify-between">
           <p className="font-semibold text-gray-700">RCI Information</p>
-          {canEditNomineesRci(user) && (
-            <Button variant="secondary" size="sm" onClick={() => setRciModal(true)}>
-              {(agmt.rciRefNo || agmt.rciNominee || agmt.rciEnrolDate || agmt.rciExpiryDate) ? 'Edit RCI info' : 'Add RCI info'}
-            </Button>
+          {canView('RESORTS_SETUP') && (
+            <Link
+              to={`/rci/enrolment?q=${encodeURIComponent(agmt.agreementNo)}`}
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+            >
+              Manage in RCI Enrolment
+            </Link>
           )}
         </CardHeader>
         <CardBody>
-          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
-            <div><dt className="text-xs text-gray-500 uppercase tracking-wide">RCI ID</dt><dd className="mt-0.5 font-medium">{agmt.rciRefNo || '—'}</dd></div>
-            <div><dt className="text-xs text-gray-500 uppercase tracking-wide">RCI Nominee</dt><dd className="mt-0.5 font-medium">{agmt.rciNominee || '—'}</dd></div>
-            <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Joint Date</dt><dd className="mt-0.5 font-medium">{agmt.rciEnrolDate ? format(new Date(agmt.rciEnrolDate), 'dd/MM/yyyy') : '—'}</dd></div>
-            <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Expiry Date</dt><dd className="mt-0.5 font-medium">{agmt.rciExpiryDate ? format(new Date(agmt.rciExpiryDate), 'dd/MM/yyyy') : '—'}</dd></div>
-          </dl>
+          {rci ? (
+            <>
+              <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
+                <div><dt className="text-xs text-gray-500 uppercase tracking-wide">RCI ID</dt><dd className="mt-0.5 font-medium">{rci.rciNo || '—'}</dd></div>
+                <div><dt className="text-xs text-gray-500 uppercase tracking-wide">RCI Nominee</dt><dd className="mt-0.5 font-medium">{rciNominee || '—'}</dd></div>
+                <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Status</dt><dd className="mt-0.5 font-medium">{(rci.rciStatus && RCI_STATUS_LABEL[rci.rciStatus]) || rci.rciStatus || '—'}</dd></div>
+                <div><dt className="text-xs text-gray-500 uppercase tracking-wide">RCI Fees</dt><dd className="mt-0.5 font-medium">{rci.rciFees ? fmtRM(rci.rciFees) : '—'}</dd></div>
+                <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Renewal Date</dt><dd className="mt-0.5 font-medium">{rci.renewalDate ? format(new Date(rci.renewalDate), 'dd/MM/yyyy') : '—'}</dd></div>
+                <div><dt className="text-xs text-gray-500 uppercase tracking-wide">Expiry Date</dt><dd className="mt-0.5 font-medium">{rci.expiryDate ? format(new Date(rci.expiryDate), 'dd/MM/yyyy') : '—'}</dd></div>
+              </dl>
+              <p className="mt-3 text-xs text-gray-400">
+                Renewal and expiry dates are information only — members renew directly with RCI.
+                {(agmt.rciEnrolmentCount ?? 0) > 1 && ` ${agmt.rciEnrolmentCount} enrolments on record — showing the current one.`}
+              </p>
+            </>
+          ) : <p className="text-sm text-gray-400">No RCI enrolment on record.</p>}
         </CardBody>
       </Card>
 
@@ -594,25 +598,6 @@ export function AgreementDetail() {
         </div>
       </Modal>
 
-      <Modal open={rciModal} title="Edit RCI Information" onClose={() => { setRciModal(false); setRciError(''); }}>
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="RCI ID" value={rciForm.rciRefNo ?? ''}
-              onChange={e => setRciForm(f => ({ ...f, rciRefNo: e.target.value.toUpperCase() }))} />
-            <Input label="RCI Nominee" value={rciForm.rciNominee ?? ''}
-              onChange={e => setRciForm(f => ({ ...f, rciNominee: e.target.value.toUpperCase() }))} />
-            <Input label="Joint Date" type="date" value={rciForm.rciEnrolDate ?? ''}
-              onChange={e => setRciForm(f => ({ ...f, rciEnrolDate: e.target.value }))} />
-            <Input label="Expiry Date" type="date" value={rciForm.rciExpiryDate ?? ''}
-              onChange={e => setRciForm(f => ({ ...f, rciExpiryDate: e.target.value }))} />
-          </div>
-          {rciError && <p className="text-sm text-red-600">{rciError}</p>}
-          <div className="flex gap-3">
-            <Button onClick={() => rciMut.mutate()} loading={rciMut.isPending}>Save</Button>
-            <Button variant="secondary" onClick={() => { setRciModal(false); setRciError(''); }}>Cancel</Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

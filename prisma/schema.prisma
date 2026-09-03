@@ -41,11 +41,10 @@ model Agreement {
   transferToUser         String?
   canCode                String?
   suCode                 String?
-  rciRefNo               String?
-  rciNominee             String?
-  rciEnrolDate           DateTime?
-  rciExpiryDate          DateTime?
-  rciFeePaid             Decimal?             @db.Decimal(12, 2)
+  // No RCI columns here — RciEnrolment is the single source of truth for RCI data, and
+  // RCI fn 1 is the only place it is edited. rciRefNo/rciNominee/rciEnrolDate/
+  // rciExpiryDate/rciFeePaid were dropped by 20260902090000_drop_agreement_rci_columns;
+  // the values they held are archived in prisma/archive/.
   outstdDoc              Boolean              @default(false)
   docDescription         String?
   legacyCreatedAt        DateTime?

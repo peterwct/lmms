@@ -11,9 +11,6 @@
       PbsScheme         - Zurich Payback Scheme (migrate-maa-mem.ts)
       PbsClaim          - PBS Claims (migrate-maa-claim.ts)
       AmcSchedule       - AMC Schedules (migrate-amc-schedules.ts)
-      RciEnrol          - RCI backfill of the four Agreement RCI columns from
-                          rci_enrol.txt (migrate-rci-enrol.ts). NOT the RCI Enrolment
-                          register -- that is -Table RciEnrolment.
       RciEnrolment      - RCI Enrolment register (migrate-rci-enrolment.ts from
                           rci_enrol.txt; 25 of 43 cols). Truncates + reimports.
                           Post-go-live enrolments are maintained in MMS -- re-running
@@ -94,7 +91,7 @@
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrol', 'RciEnrolment', 'RciWeek', 'RciBulkBank', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Product', 'LvcCode', 'Resort', 'ApartmentType', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance', 'CpSeasonDate', 'CpSeasonPoint', 'LvcSeasonPoint')]
+    [ValidateSet('Member', 'IndividualMember', 'CorporateMember', 'Agreement', 'PbsScheme', 'PbsClaim', 'AmcSchedule', 'RciEnrolment', 'RciWeek', 'RciBulkBank', 'Salesperson', 'SuPtReason', 'BookingEntitlement', 'CpBookingEntitlement', 'AmcInvoiceCounter', 'Product', 'LvcCode', 'Resort', 'ApartmentType', 'ResortUnit', 'AptBlock', 'ResAvailMast', 'ResortMaintenance', 'CpSeasonDate', 'CpSeasonPoint', 'LvcSeasonPoint')]
     [string]$Table,
 
     [string]$DatabaseUrl = $env:DATABASE_URL,
@@ -135,13 +132,14 @@ $TableConfig = @{
         TruncateSql = @(
             'TRUNCATE "PbsClaim", "PbsScheme", "Salesperson", "Member" CASCADE;'
         )
-        RequiredFiles = @('si_ind_mast.txt', 'si_cor_mast.txt', 'si_entitlement.txt', 'amc_mem.txt', 'ps_amc_mem.txt', 'maa_mem.txt', 'maa_claim.txt', 'rci_enrol.txt', 'csp_mast.txt')
+        RequiredFiles = @('si_ind_mast.txt', 'si_cor_mast.txt', 'si_entitlement.txt', 'amc_mem.txt', 'ps_amc_mem.txt', 'maa_mem.txt', 'maa_claim.txt', 'csp_mast.txt')
+        # rci_enrol.txt is NOT needed here any more: the Agreement RCI columns were
+        # dropped and RciEnrolment is reloaded on its own (-Table RciEnrolment).
         Scripts = @(
             'prisma/migrate-informix.ts',
             'prisma/migrate-amc-schedules.ts',
             'prisma/migrate-maa-mem.ts',
             'prisma/migrate-maa-claim.ts',
-            'prisma/migrate-rci-enrol.ts',
             'prisma/migrate-salesperson.ts'
         )
     }
@@ -167,10 +165,9 @@ $TableConfig = @{
         TruncateSql = @(
             'TRUNCATE "PbsClaim", "PbsScheme", "AmcSchedule", "Nominee", "AmcInvoice", "Agreement" CASCADE;'
         )
-        RequiredFiles = @('si_entitlement.txt', 'rci_enrol.txt')
+        RequiredFiles = @('si_entitlement.txt')
         Scripts = @(
-            'prisma/migrate-informix.ts --only agreements',
-            'prisma/migrate-rci-enrol.ts'
+            'prisma/migrate-informix.ts --only agreements'
         )
     }
     PbsScheme = @{
@@ -189,11 +186,6 @@ $TableConfig = @{
         TruncateSql = @('TRUNCATE "AmcSchedule" CASCADE;')
         RequiredFiles = @('amc_mem.txt', 'ps_amc_mem.txt')
         Scripts = @('prisma/migrate-amc-schedules.ts')
-    }
-    RciEnrol = @{
-        TruncateSql = @()
-        RequiredFiles = @('rci_enrol.txt')
-        Scripts = @('prisma/migrate-rci-enrol.ts')
     }
     RciWeek = @{
         # RCI week-number calendar (rci_week.txt, 6 of 8 cols). Only years >= 2026 are

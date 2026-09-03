@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { writeAudit } from '../utils/audit';
+import { currentEnrolment } from './rci-enrolment.controller';
 
 const agreementUpdateSchema = z.object({
   agreementDate:    z.string().datetime().optional(),
@@ -18,11 +19,9 @@ const agreementUpdateSchema = z.object({
   salesMonth:       z.string().optional(),
   salesSource:      z.string().optional(),
   certificateNo:    z.string().optional(),
-  rciRefNo:         z.string().optional().nullable(),
-  rciNominee:       z.string().optional().nullable(),
-  rciEnrolDate:     z.string().datetime().optional().nullable(),
-  rciExpiryDate:    z.string().datetime().optional().nullable(),
-  rciFeePaid:       z.number().optional().nullable(),
+  // RCI fields are deliberately absent: RciEnrolment is the single source of truth and
+  // RCI fn 1 (/rci/enrolment) is the only place they can be edited. z.object is
+  // non-strict, so a payload still carrying them is stripped rather than rejected.
   outstdDoc:        z.boolean().optional(),
   docDescription:   z.string().optional().nullable(),
   canCode:          z.string().optional().nullable(),
@@ -164,13 +163,19 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
   if (!agreement) { res.status(404).json({ error: 'Agreement not found' }); return; }
   // Match AMC schedule and PBS by coCode + agreementNo (not the FK) so that
   // agreements sharing the same agreementNo both resolve to the correct records.
-  const [amcSchedule, pbsScheme] = await Promise.all([
+  // RCI comes from RciEnrolment, the single source of truth - the Agreement table no
+  // longer carries RCI columns. An agreement may hold several enrolments, so
+  // currentEnrolment() picks the live one (active, else highest serialNo) and reports the
+  // total so the card can say there are others. Read-only here: RCI fn 1 is the only
+  // place it can be edited.
+  const [amcSchedule, pbsScheme, rci] = await Promise.all([
     prisma.amcSchedule.findFirst({
       where: { coCode: agreement.coCode, agreementNo: agreement.agreementNo },
     }),
     prisma.pbsScheme.findFirst({
       where: { coCode: agreement.coCode, agreementNo: agreement.agreementNo },
     }),
+    currentEnrolment(agreement.coCode, agreement.membershipNo, agreement.agreementNo),
   ]);
 
   // Entitlement Balance (LHC 03/15 only): remaining un-utilized nights per membership
@@ -354,7 +359,7 @@ export async function getAgreement(req: Request, res: Response): Promise<void> {
     transferFromMemberId = m?.id ?? null;
   }
 
-  res.json({ data: { ...agreement, amcSchedule: amcSchedule ?? null, pbsScheme: pbsScheme ?? null, entitlementBalance, cpEntitlementBalance, salespersonName, transferToMemberName, transferFromMemberName, transferToMemberId, transferFromMemberId } });
+  res.json({ data: { ...agreement, amcSchedule: amcSchedule ?? null, pbsScheme: pbsScheme ?? null, rciEnrolment: rci.enrolment, rciEnrolmentCount: rci.count, entitlementBalance, cpEntitlementBalance, salespersonName, transferToMemberName, transferFromMemberName, transferToMemberId, transferFromMemberId } });
 }
 
 export async function updateAgreement(req: Request, res: Response): Promise<void> {
@@ -366,8 +371,6 @@ export async function updateAgreement(req: Request, res: Response): Promise<void
     ...parsed.data,
     agreementDate: parsed.data.agreementDate ? new Date(parsed.data.agreementDate) : undefined,
     endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : undefined,
-    rciEnrolDate: parsed.data.rciEnrolDate ? new Date(parsed.data.rciEnrolDate) : undefined,
-    rciExpiryDate: parsed.data.rciExpiryDate ? new Date(parsed.data.rciExpiryDate) : undefined,
   };
 
   try {

@@ -16,6 +16,8 @@ export function allowedNewStatuses(u: User | null, current: AgreementStatus): Ag
   return [];
 }
 
-// Nominees and RCI info are editable by Member Services only (plus IT).
-export const canEditNomineesRci = (u: User | null): boolean =>
+// Nominees are editable by Member Services only (plus IT). RCI info is NOT covered here
+// any more: it lives in RciEnrolment and is edited only through RCI fn 1, under the
+// RESORTS_SETUP matrix permission - the Agreement page renders it read-only.
+export const canEditNominees = (u: User | null): boolean =>
   isIT(u) || deptName(u) === 'Member Services';
