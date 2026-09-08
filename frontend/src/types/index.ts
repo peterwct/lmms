@@ -201,9 +201,40 @@ export interface RciEnrolmentList {
   pageSize: number;
 }
 
-export interface RciAgreementLookup {
-  memberName: string | null;
-  acctClassify: string;
+// One agreement offered by the RCI Enrolment add form's search picker (RCI fn 1). Served by
+// GET /api/rci-enrolments/agreement-search under RESORTS_SETUP view - NOT /api/agreements,
+// which needs the AGREEMENTS permission the RCI page's users may not hold.
+//
+// `enrolled` is computed for the whole page of results in one batched groupBy over
+// RciEnrolment on the FULL natural key (coCode + membershipNo + agreementNo). Enrolled rows
+// are RETURNED and shown disabled, never hidden - hiding them would read as "no such
+// agreement" and send staff back to re-search.
+//
+// `suggestedName1` is what the form fills into name1: the member's fullName for an
+// INDIVIDUAL member, nominee 1's fullName for a CORPORATE one (a company name is not a
+// person RCI can enrol; nominees hang off Agreement, not Member). Already trimmed to name1's
+// 40-char limit by the server. Null for the 10 of 1,945 corporate agreements with no nominee
+// 1 - the field is then left blank and the mandatory gate forces staff to key it.
+export interface RciAgreementSearchResult {
+  agreementId: string;
+  coCode: string;
+  membershipNo: string;
+  agreementNo: string;
+  acctClassify: AgreementStatus;     // NA | SU | PT | TM
+  memberName: string;
+  memberType: 'INDIVIDUAL' | 'CORPORATE';
+  nominee1Name: string | null;
+  suggestedName1: string | null;
+  enrolled: boolean;
+  enrolmentCount: number;
+  enrolmentSerialNo: number | null;  // highest serial on the key, for the disabled-row hint
+}
+
+export interface RciAgreementSearchList {
+  data: RciAgreementSearchResult[];
+  // Total matches; data is capped at `limit`, so total > data.length means "refine your search"
+  total: number;
+  limit: number;
 }
 
 // RCI week-number calendar - RCI fn 2 (Weekly Interval).

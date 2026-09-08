@@ -8,7 +8,11 @@ interface Props extends SelectHTMLAttributes<HTMLSelectElement> {
 
 export const Select = forwardRef<HTMLSelectElement, Props>(({ label, error, className, children, ...props }, ref) => (
   <div className="flex flex-col gap-1">
-    {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
+    {label && (
+      <label className="text-sm font-medium text-gray-700">
+        {label}{props.required && <span className="ml-0.5 text-red-500" aria-hidden="true">*</span>}
+      </label>
+    )}
     <select
       ref={ref}
       {...props}

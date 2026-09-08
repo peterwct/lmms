@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Plus, Pencil, Trash2, Search, Eye } from 'lucide-react';
 import { rciEnrolmentsApi } from '../../api/rci';
 import { useActiveProducts, productOptions } from '../../hooks/useActiveProducts';
+import { useRciResorts, resortOptions } from '../../hooks/useRciResorts';
 import { apiError } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -17,7 +18,8 @@ import { PageSpinner } from '../../components/ui/Spinner';
 import { RecordCount } from '../../components/ui/RecordCount';
 import { Pagination } from '../../components/ui/Pagination';
 import { ProductBadge } from '../../components/ProductBadge';
-import type { RciEnrolment as RciEnrolmentRow } from '../../types';
+import { AgreementStatusBadge } from '../../components/AgreementStatusBadge';
+import type { RciAgreementSearchResult, RciEnrolment as RciEnrolmentRow } from '../../types';
 
 const PAGE_SIZE = 50;
 
@@ -36,14 +38,40 @@ const STATUS_BADGE: Record<string, string> = {
   T: 'bg-red-100 text-red-700',
 };
 
+// The agreement key is no longer keyed by hand -- it comes from the search picker -- so it
+// is NOT in this object. See `picked` in RciEnrolmentFormModal.
+//
+// totInterval is gone too (2026-09-08): the column keeps its Prisma @default(1) but appears
+// on no screen and is absent from the zod schemas, so CRUD can never write it.
 const EMPTY_FORM = {
-  coCode: '', membershipNo: '', agreementNo: '',
   rciNo: '', rciStatus: 'A', renewalDate: '', expiryDate: '',
-  rciFees: '', totInterval: '1', resortCode: '',
+  rciFees: '', resortCode: '',
   firstName1: '', lastName1: '', name1: '',
   firstName2: '', lastName2: '', coOwner: '',
   mailAdd1: '', mailAdd2: '', mailAdd3: '', mailCityState: '', mailPostcode: '',
   malaysia: 'Y', telNo1: '', telNo2: '',
+};
+
+// Mandatory on ADD only (business rule 2026-09-08). Edit stays permissive: the 17,915
+// migrated rows have real gaps -- no rciFees on 58%, no renewal/expiry date on ~19%, no
+// telNo1 on 15% -- and a small correction to one of them must not be blocked behind
+// back-filling a value nobody has.
+//
+// rciFees is deliberately NOT here: it is the least-populated column in the table and is
+// not always known at enrolment time. Optional throughout, like first/last name 2, co-owner,
+// the whole mailing-address block and both phone numbers.
+//
+// Mirrors rciEnrolmentCreateSchema in rci-enrolment.controller.ts, which is the
+// AUTHORITATIVE copy -- this gate only saves a pointless round trip.
+const REQUIRED_ADD = [
+  'rciNo', 'rciStatus', 'resortCode', 'renewalDate', 'expiryDate',
+  'firstName1', 'lastName1', 'name1',
+] as const;
+
+const FIELD_LABELS: Record<string, string> = {
+  rciNo: 'RCI no', rciStatus: 'RCI status', resortCode: 'Resort code',
+  renewalDate: 'Renewal date', expiryDate: 'Expiry date',
+  firstName1: 'First name 1', lastName1: 'Last name 1', name1: 'Full name 1',
 };
 
 // Stored dates are UTC midnight; <input type="date"> wants YYYY-MM-DD
@@ -55,6 +83,129 @@ const fmtDate = (iso: string | null) => {
 };
 const fmtFees = (v: string | null) => (v == null ? '—' : Number(v).toFixed(2));
 
+const SEARCH_MIN = 2;
+
+/**
+ * Step 1 of Add: find the agreement to enrol.
+ *
+ * Replaces hand-keying product + membership no + agreement no, which could not tell staff
+ * that an agreement was already enrolled. Already-enrolled rows are shown DISABLED rather
+ * than hidden -- hiding them reads as "no such agreement" and sends staff back to re-search.
+ */
+function AgreementSearchStep({ onPick, onCancel }: {
+  onPick: (a: RciAgreementSearchResult) => void;
+  onCancel: () => void;
+}) {
+  const { products, allProducts } = useActiveProducts();
+  const [term, setTerm] = useState('');
+  const [coCode, setCoCode] = useState('');
+  const [debounced, setDebounced] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(term.trim()), 400);
+    return () => clearTimeout(t);
+  }, [term]);
+
+  // Its own key, deliberately NOT under ['rci-enrolments', ...]: a different shape, and the
+  // save handler invalidate would otherwise refetch it. See "One query key, one shape".
+  const { data, isFetching } = useQuery({
+    queryKey: ['rci-agreement-search', debounced, coCode],
+    queryFn: () => rciEnrolmentsApi
+      .searchAgreements({ q: debounced, coCode: coCode || undefined, limit: 20 })
+      .then(r => r.data),
+    enabled: debounced.length >= SEARCH_MIN,
+  });
+
+  // Without `settled` the previous term results sit under a box that says something else,
+  // and "No agreements found" flashes for a term that has not been searched yet. Same guard
+  // as the agreement verify in Invoices.tsx.
+  const settled  = debounced === term.trim() && !isFetching;
+  const rows     = data?.data ?? [];
+  const short    = term.trim().length < SEARCH_MIN;
+  const noResult = !short && settled && rows.length === 0;
+  const more     = data ? data.total - rows.length : 0;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-3">
+        <div className="w-44">
+          <Select value={coCode} onChange={e => setCoCode(e.target.value)}>
+            <option value="">All products</option>
+            {productOptions(products, allProducts, coCode).map(p => (
+              <option key={p.coCode} value={p.coCode}>{p.coCode} — {p.coName}</option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex-1">
+          <Input
+            autoFocus
+            placeholder="Search by membership no, member name or agreement no"
+            value={term}
+            onChange={e => setTerm(e.target.value.toUpperCase())}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-md border border-gray-200">
+        {short ? (
+          <p className="px-3 py-8 text-center text-sm text-gray-400">
+            Type at least {SEARCH_MIN} characters to search.
+          </p>
+        ) : !settled ? (
+          <p className="px-3 py-8 text-center text-sm text-gray-400">Searching...</p>
+        ) : noResult ? (
+          <p className="px-3 py-8 text-center text-sm text-gray-400">
+            No agreements found for "{debounced}".
+          </p>
+        ) : (
+          <div className="max-h-80 overflow-y-auto">
+            {rows.map(a => (
+              <button
+                key={a.agreementId}
+                type="button"
+                disabled={a.enrolled}
+                onClick={() => onPick(a)}
+                className={`w-full border-b border-gray-100 px-3 py-2 text-left last:border-0 ${
+                  a.enrolled ? 'cursor-not-allowed bg-gray-50 text-gray-400' : 'hover:bg-blue-50'
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-sm font-medium">{a.agreementNo}</span>
+                  <ProductBadge coCode={a.coCode} />
+                  <span className="font-mono text-xs text-gray-500">{a.membershipNo}</span>
+                  <AgreementStatusBadge status={a.acctClassify} />
+                </div>
+                <div className="mt-0.5 text-xs text-gray-600">
+                  {a.memberName}
+                  {a.memberType === 'CORPORATE' && (
+                    <> · Nominee 1: {a.nominee1Name
+                      ?? <span className="text-amber-600">none on record</span>}</>
+                  )}
+                </div>
+                {a.enrolled && (
+                  <div className="mt-0.5 text-xs text-amber-600">
+                    Already enrolled — serial {a.enrolmentSerialNo}. Edit that record instead.
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {more > 0 && (
+        <p className="text-xs text-gray-500">
+          Showing the first {rows.length} of {data?.total} — refine your search to narrow it down.
+        </p>
+      )}
+
+      <div className="flex gap-3">
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
 interface ModalProps {
   open: boolean;
   row: RciEnrolmentRow | null;   // null = add mode
@@ -64,19 +215,23 @@ interface ModalProps {
 
 function RciEnrolmentFormModal({ open, row, onClose, onSaved }: ModalProps) {
   const qc = useQueryClient();
-  const { products, allProducts } = useActiveProducts();
+  const { resorts, allResorts } = useRciResorts();
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [error, setError] = useState('');
+  // Add mode only. `picked` holds the agreement chosen in step 1 -- the create payload takes
+  // the key from here, not from `form`.
+  const [step, setStep] = useState<'search' | 'form'>('search');
+  const [picked, setPicked] = useState<RciAgreementSearchResult | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setError('');
+    setPicked(null);
+    setStep(row ? 'form' : 'search');   // edit mode never leaves the form
     setForm(row ? {
-      coCode: row.coCode, membershipNo: row.membershipNo, agreementNo: row.agreementNo,
       rciNo: row.rciNo ?? '', rciStatus: row.rciStatus ?? 'A',
       renewalDate: dateInput(row.renewalDate), expiryDate: dateInput(row.expiryDate),
       rciFees: row.rciFees != null ? String(Number(row.rciFees)) : '',
-      totInterval: String(row.totInterval),
       resortCode: row.resortCode ?? '',
       firstName1: row.firstName1 ?? '', lastName1: row.lastName1 ?? '', name1: row.name1 ?? '',
       firstName2: row.firstName2 ?? '', lastName2: row.lastName2 ?? '', coOwner: row.coOwner ?? '',
@@ -87,16 +242,29 @@ function RciEnrolmentFormModal({ open, row, onClose, onSaved }: ModalProps) {
     } : { ...EMPTY_FORM });
   }, [open, row]);
 
-  // Confirms the agreement exists and names the member, so staff can check they are
-  // enrolling the right one before saving. Add mode only — the key is fixed after that.
-  const key = { coCode: form.coCode, membershipNo: form.membershipNo.trim(), agreementNo: form.agreementNo.trim() };
-  const keyComplete = !!(key.coCode && key.membershipNo && key.agreementNo);
-  const { data: lookup, isFetching: looking, isError: lookupFailed } = useQuery({
-    queryKey: ['rci-lookup', key.coCode, key.membershipNo, key.agreementNo],
-    queryFn: () => rciEnrolmentsApi.lookup(key).then(r => r.data.data),
-    enabled: open && !row && keyComplete,
-    retry: false,
-  });
+  // Picking seeds the enrolled name and moves to the form. The member own name is used for
+  // an INDIVIDUAL member and nominee 1 for a CORPORATE one -- a company name is not a person
+  // RCI can enrol -- and the server has already resolved which, and truncated it to name1
+  // 40-char column.
+  //
+  // First/last name 1 are mandatory, so they are PREFILLED by splitting the suggestion at the
+  // first space rather than left blank for staff to retype the same name a third time. That
+  // matches how the legacy data is shaped (name1 = firstName1 + space + lastName1 on 15,630
+  // of 17,897 rows, e.g. "YEE" | "MIEW LING", "KRISHNABAL" | "A/P NARAYANASAMY"). It is a
+  // starting point, not a rule -- both fields stay editable, and a first token longer than
+  // the 10-char column is truncated for correction.
+  const pick = (a: RciAgreementSearchResult) => {
+    const name1 = (a.suggestedName1 ?? '').trim().toUpperCase();
+    const [first = '', ...rest] = name1 ? name1.split(/\s+/) : [];
+    setPicked(a);
+    setForm({
+      ...EMPTY_FORM,
+      name1,
+      firstName1: first.slice(0, 10),
+      lastName1: rest.join(' ').slice(0, 20),
+    });
+    setStep('form');
+  };
 
   const saveMut = useMutation({
     mutationFn: () => {
@@ -106,7 +274,6 @@ function RciEnrolmentFormModal({ open, row, onClose, onSaved }: ModalProps) {
         renewalDate: form.renewalDate || null,
         expiryDate: form.expiryDate || null,
         rciFees: form.rciFees === '' ? null : Number(form.rciFees),
-        totInterval: form.totInterval === '' ? 1 : Number(form.totInterval),
         resortCode: form.resortCode.trim() || null,
         firstName1: form.firstName1.trim() || null,
         lastName1: form.lastName1.trim() || null,
@@ -125,7 +292,12 @@ function RciEnrolmentFormModal({ open, row, onClose, onSaved }: ModalProps) {
       };
       return row
         ? rciEnrolmentsApi.update(row.id, payload)
-        : rciEnrolmentsApi.create({ ...key, ...payload });
+        : rciEnrolmentsApi.create({
+            coCode: picked!.coCode,
+            membershipNo: picked!.membershipNo,
+            agreementNo: picked!.agreementNo,
+            ...payload,
+          });
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['rci-enrolments'] });
@@ -141,59 +313,63 @@ function RciEnrolmentFormModal({ open, row, onClose, onSaved }: ModalProps) {
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
 
-  const canSave = row ? true : (keyComplete && !!lookup);
+  // String comparison, NOT falsiness -- a field could legitimately hold '0'.
+  const missing = row ? [] : REQUIRED_ADD.filter(k => String(form[k] ?? '').trim() === '');
+  const canSave = row ? true : (!!picked && missing.length === 0);
+  const need = !row;   // required markers on add only
+
+  const title = row
+    ? 'Edit RCI Enrolment'
+    : step === 'search' ? 'Add RCI Enrolment — find agreement' : 'Add RCI Enrolment';
+
+  // The key shown read-only in both modes: the stored row on edit, the picked agreement on
+  // add. Immutable either way (move = delete + re-add).
+  const key = row ?? picked;
 
   return (
-    <Modal open={open} title={row ? 'Edit RCI Enrolment' : 'Add RCI Enrolment'} onClose={onClose} size="lg">
+    <Modal open={open} title={title} onClose={onClose} size="lg">
+      {step === 'search' ? (
+        <AgreementSearchStep onPick={pick} onCancel={onClose} />
+      ) : (
+      <>
       <div className="space-y-4">
         {/* Agreement — immutable after create (move = delete + re-add) */}
         <section>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Agreement</h3>
-          {row ? (
-            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-              <span className="text-gray-500">Product:</span> <span className="font-mono">{row.coCode}</span>
-              <span className="mx-2 text-gray-300">|</span>
-              <span className="text-gray-500">Membership:</span> <span className="font-mono font-medium">{row.membershipNo}</span>
-              <span className="mx-2 text-gray-300">|</span>
-              <span className="text-gray-500">Agreement:</span> <span className="font-mono font-medium">{row.agreementNo}</span>
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-3 gap-3">
-                <Select label="Product" value={form.coCode} onChange={set('coCode')} required>
-                  <option value="">Select...</option>
-                  {productOptions(products, allProducts, form.coCode).map(p => (
-                    <option key={p.coCode} value={p.coCode}>{p.coCode} — {p.coName}</option>
-                  ))}
-                </Select>
-                <Input label="Membership no" value={form.membershipNo} onChange={setU('membershipNo')} maxLength={19} required />
-                <Input label="Agreement no" value={form.agreementNo} onChange={setU('agreementNo')} maxLength={8} required />
-              </div>
-              {keyComplete && (
-                <p className={`mt-1.5 text-xs ${lookup ? 'text-green-700' : 'text-amber-600'}`}>
-                  {looking ? 'Checking agreement...'
-                    : lookup ? `Agreement found — ${lookup.memberName ?? 'name unavailable'} (${lookup.acctClassify})`
-                    : lookupFailed ? 'No such agreement for this membership and product.'
-                    : ''}
-                </p>
-              )}
-            </>
-          )}
+          <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+            <span className="text-gray-500">Product:</span> <span className="font-mono">{key?.coCode}</span>
+            <span className="mx-2 text-gray-300">|</span>
+            <span className="text-gray-500">Membership:</span> <span className="font-mono font-medium">{key?.membershipNo}</span>
+            <span className="mx-2 text-gray-300">|</span>
+            <span className="text-gray-500">Agreement:</span> <span className="font-mono font-medium">{key?.agreementNo}</span>
+            {picked && <span className="ml-2 text-gray-600">— {picked.memberName} ({picked.acctClassify})</span>}
+            {!row && (
+              <button type="button" onClick={() => setStep('search')}
+                className="ml-3 text-xs text-blue-600 hover:underline">Change</button>
+            )}
+          </div>
         </section>
 
         {/* RCI */}
         <section>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">RCI</h3>
           <div className="grid grid-cols-3 gap-3">
-            <Input label="RCI no" value={form.rciNo} onChange={setU('rciNo')} maxLength={10} />
-            <Select label="RCI status" value={form.rciStatus} onChange={set('rciStatus')}>
+            <Input label="RCI no" value={form.rciNo} onChange={setU('rciNo')} maxLength={10} required={need} />
+            <Select label="RCI status" value={form.rciStatus} onChange={set('rciStatus')} required={need}>
               {Object.entries(RCI_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </Select>
-            <Input label="Resort code" value={form.resortCode} onChange={setU('resortCode')} maxLength={8} />
-            <Input label="Renewal date" type="date" value={form.renewalDate} onChange={set('renewalDate')} />
-            <Input label="Expiry date" type="date" value={form.expiryDate} onChange={set('expiryDate')} />
+            {/* Active RCI-affiliated resorts only. A stored code outside that set -- L-10013
+                on 12,961 rows, or free text like L.COVE -- is appended by resortOptions so it
+                round-trips instead of being silently rewritten on save. */}
+            <Select label="Resort code" value={form.resortCode} onChange={set('resortCode')} required={need}>
+              <option value="">Select...</option>
+              {resortOptions(resorts, allResorts, form.resortCode).map(o => (
+                <option key={o.resortCode} value={o.resortCode}>{o.label}</option>
+              ))}
+            </Select>
+            <Input label="Renewal date" type="date" value={form.renewalDate} onChange={set('renewalDate')} required={need} />
+            <Input label="Expiry date" type="date" value={form.expiryDate} onChange={set('expiryDate')} required={need} />
             <Input label="RCI fees" type="number" step="0.01" min={0} value={form.rciFees} onChange={set('rciFees')} />
-            <Input label="Total intervals" type="number" min={0} max={99} value={form.totInterval} onChange={set('totInterval')} />
           </div>
           <p className="mt-1.5 text-xs text-gray-400">
             Renewal and expiry dates are recorded for information only — members renew directly with RCI.
@@ -204,9 +380,9 @@ function RciEnrolmentFormModal({ open, row, onClose, onSaved }: ModalProps) {
         <section>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Enrolled names</h3>
           <div className="grid grid-cols-3 gap-3">
-            <Input label="First name 1" value={form.firstName1} onChange={setU('firstName1')} maxLength={10} />
-            <Input label="Last name 1" value={form.lastName1} onChange={setU('lastName1')} maxLength={20} />
-            <Input label="Full name 1" value={form.name1} onChange={setU('name1')} maxLength={40} />
+            <Input label="First name 1" value={form.firstName1} onChange={setU('firstName1')} maxLength={10} required={need} />
+            <Input label="Last name 1" value={form.lastName1} onChange={setU('lastName1')} maxLength={20} required={need} />
+            <Input label="Full name 1" value={form.name1} onChange={setU('name1')} maxLength={40} required={need} />
             <Input label="First name 2" value={form.firstName2} onChange={setU('firstName2')} maxLength={10} />
             <Input label="Last name 2" value={form.lastName2} onChange={setU('lastName2')} maxLength={20} />
             <Input label="Co-owner" value={form.coOwner} onChange={setU('coOwner')} maxLength={40} />
@@ -239,12 +415,20 @@ function RciEnrolmentFormModal({ open, row, onClose, onSaved }: ModalProps) {
       </div>
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {missing.length > 0 && (
+        <p className="mt-2 text-xs text-amber-600">
+          Complete the required fields ({missing.length} remaining):{' '}
+          {missing.map(m => FIELD_LABELS[m]).join(', ')}
+        </p>
+      )}
       <div className="mt-4 flex gap-3">
         <Button onClick={() => saveMut.mutate()} loading={saveMut.isPending} disabled={!canSave}>
           {row ? 'Save changes' : 'Add enrolment'}
         </Button>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
       </div>
+      </>
+      )}
     </Modal>
   );
 }

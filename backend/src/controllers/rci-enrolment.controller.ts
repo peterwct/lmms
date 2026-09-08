@@ -22,6 +22,22 @@ const dateField = z.preprocess(
   z.coerce.date().nullish(),
 );
 
+// Same coercion, but blank/null is NOT accepted - for the create-only mandatory dates.
+// z.coerce.date() alone would turn '' into an Invalid Date rather than failing.
+const requiredDateField = z.preprocess(
+  v => (v === '' || v === null ? undefined : v),
+  z.coerce.date(),
+);
+
+// The permissive base schema, used as-is by the UPDATE path. Only the agreement key is
+// required here: 17,915 rows were migrated from Informix with gaps - no renewal/expiry
+// date on ~19%, no telNo1 on 15%, no rciFees on 58% - and a small correction to one of
+// them (a status change, a resort fix) must not be blocked behind back-filling a date
+// nobody has. The ADD path tightens this; see rciEnrolmentCreateSchema below.
+//
+// totInterval (re_tot_interval) is deliberately ABSENT: it is migrated for provenance but
+// appears on no form, so CRUD can never write it and new rows take the Prisma default of 1.
+// Same treatment as the LvcCode counters and RciBulkBank.bankStatus.
 const rciEnrolmentSchema = z.object({
   coCode:        z.string().trim().min(1).max(2),
   membershipNo:  z.string().trim().min(1).max(19),
@@ -46,7 +62,24 @@ const rciEnrolmentSchema = z.object({
   telNo2:        z.string().trim().max(18).nullish(),
   coOwner:       z.string().trim().max(40).nullish(),
   rciStatus:     z.enum(RCI_STATUSES).nullish(),
-  totInterval:   z.number().int().min(0).max(99).default(1),
+});
+
+// Named reqStr, not req: every handler in this file takes a `req: Request` parameter.
+const reqStr = (max: number) => z.string().trim().min(1).max(max);
+
+// ADD-only rules. A new enrolment must be complete, so eight fields the base schema leaves
+// nullish become required. Optional on add as well as edit: rciFees (not always known at
+// enrolment time - null on 58% of the migrated rows), first/last name 2, co-owner, the whole
+// mailing-address block and both phone numbers.
+const rciEnrolmentCreateSchema = rciEnrolmentSchema.extend({
+  rciNo:       reqStr(10),
+  rciStatus:   z.enum(RCI_STATUSES),
+  resortCode:  reqStr(8),
+  renewalDate: requiredDateField,
+  expiryDate:  requiredDateField,
+  firstName1:  reqStr(10),
+  lastName1:   reqStr(20),
+  name1:       reqStr(40),
 });
 
 // empty string -> null so cleared form fields null out the column
@@ -176,13 +209,37 @@ export async function getRciEnrolment(req: Request, res: Response): Promise<void
 }
 
 export async function createRciEnrolment(req: Request, res: Response): Promise<void> {
-  const parsed = rciEnrolmentSchema.safeParse(req.body);
+  const parsed = rciEnrolmentCreateSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() }); return; }
   const d = parsed.data;
 
   const agmt = await findAgreement(d.coCode, d.membershipNo, d.agreementNo);
   if (!agmt) {
     res.status(400).json({ error: `No agreement ${d.agreementNo} for membership ${d.membershipNo} on product ${d.coCode}` });
+    return;
+  }
+
+  // One enrolment per agreement (business rule 2026-09-08). Matched on the FULL natural
+  // key - agreementNo alone is duplicated across TT/TF transfer pairs.
+  //
+  // NOTE this is a LOOKUP, not a constraint, and it cannot become one: the key is
+  // deliberately NOT unique (90 migrated groups hold 2-4 rows, and a unique index would make
+  // the Informix data unloadable). Read BEFORE the transaction opens - it is a precondition,
+  // not part of the serialNo allocation.
+  //
+  // The UPDATE path is untouched: the agreement key is immutable after create, so an edit
+  // can never introduce a duplicate, and the 90 legacy groups must stay editable.
+  const existing = await prisma.rciEnrolment.findFirst({
+    where: { coCode: d.coCode, membershipNo: d.membershipNo, agreementNo: d.agreementNo },
+    orderBy: { serialNo: 'desc' },
+    select: { serialNo: true, rciNo: true },
+  });
+  if (existing) {
+    res.status(409).json({
+      error: `Agreement ${d.agreementNo} (membership ${d.membershipNo}) is already enrolled `
+           + `- RCI no ${existing.rciNo ?? '-'}, serial ${existing.serialNo}. `
+           + `Edit that enrolment instead of adding another.`,
+    });
     return;
   }
 
@@ -252,18 +309,95 @@ export async function deleteRciEnrolment(req: Request, res: Response): Promise<v
   }
 }
 
-// Agreement lookup for the add form: confirms the key and returns the member name so
-// staff can verify they are enrolling the right agreement before saving.
-export async function lookupAgreement(req: Request, res: Response): Promise<void> {
-  const coCode       = typeof req.query.coCode === 'string' ? req.query.coCode.trim() : '';
-  const membershipNo = typeof req.query.membershipNo === 'string' ? req.query.membershipNo.trim() : '';
-  const agreementNo  = typeof req.query.agreementNo === 'string' ? req.query.agreementNo.trim() : '';
-  if (!coCode || !membershipNo || !agreementNo) {
-    res.status(400).json({ error: 'coCode, membershipNo and agreementNo are all required' });
-    return;
-  }
+// Agreement picker for the add form: staff search by membership no, member name or
+// agreement no, pick a result, and the form fills the key and the enrolled name from it.
+// It replaces the old hand-keyed key + lookupAgreement verify, which could not tell staff
+// that an agreement was already enrolled.
+//
+// It lives HERE, under /rci-enrolments + RESORTS_SETUP view, rather than reusing
+// /api/agreements: that route needs the AGREEMENTS permission, which the departments who
+// maintain RCI do not necessarily hold. Same reason Member Enquiry has its own
+// /api/members/enquiry. See "Cross-Module API Permissions" in CLAUDE.md.
+const SEARCH_MIN = 2;
 
-  const agmt = await findAgreement(coCode, membershipNo, agreementNo);
-  if (!agmt) { res.status(404).json({ error: 'Agreement not found' }); return; }
-  res.json({ data: { memberName: agmt.member?.fullName ?? null, acctClassify: agmt.acctClassify } });
+export async function searchAgreements(req: Request, res: Response): Promise<void> {
+  const q      = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const coCode = typeof req.query.coCode === 'string' ? req.query.coCode.trim() : '';
+  const limit  = Math.min(50, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+
+  // Too short is an EMPTY 200, not a 400 - the form fetches as the user types and a short
+  // term is a normal intermediate state, not a client error.
+  if (q.length < SEARCH_MIN) { res.json({ data: [], total: 0, limit }); return; }
+
+  const where = {
+    ...(coCode ? { coCode } : {}),
+    OR: [
+      { agreementNo:  { contains: q, mode: 'insensitive' as const } },
+      { membershipNo: { contains: q, mode: 'insensitive' as const } },
+      { member: { fullName: { contains: q, mode: 'insensitive' as const } } },
+    ],
+  };
+
+  const [total, rows] = await Promise.all([
+    prisma.agreement.count({ where }),
+    prisma.agreement.findMany({
+      where,
+      // AgreementStatus is declared NA, SU, PT, TM, so 'asc' puts live agreements first.
+      orderBy: [{ acctClassify: 'asc' }, { membershipNo: 'asc' }, { agreementNo: 'asc' }],
+      take: limit,
+      select: {
+        id: true, coCode: true, membershipNo: true, agreementNo: true, acctClassify: true,
+        member: { select: { fullName: true, memberType: true } },
+        // Nominees hang off Agreement, not Member. Nominee 1 is the person actually enrolled
+        // with RCI when the member is a company - 1,935 of the 1,945 corporate agreements
+        // have one with a name.
+        nominees: { where: { nomineeSeq: 1 }, select: { fullName: true }, take: 1 },
+      },
+    }),
+  ]);
+
+  // Which of these are already enrolled, for the WHOLE page in one query - never a lookup
+  // per row. Matched on the FULL natural key, since RciEnrolment has no FK and agreementNo
+  // alone is duplicated across TT/TF transfer pairs. groupBy gives one row per key plus the
+  // highest serialNo, which the disabled row uses to name the record to edit instead.
+  const keys = rows.map(a => ({
+    coCode: a.coCode, membershipNo: a.membershipNo, agreementNo: a.agreementNo,
+  }));
+  const enrolments = keys.length
+    ? await prisma.rciEnrolment.groupBy({
+        by: ['coCode', 'membershipNo', 'agreementNo'],
+        where: { OR: keys },
+        _count: { _all: true },
+        _max: { serialNo: true },
+      })
+    : [];
+  const keyOf = (r: { coCode: string; membershipNo: string; agreementNo: string }) =>
+    `${r.coCode}|${r.membershipNo}|${r.agreementNo}`;
+  const byKey = new Map(enrolments.map(e => [keyOf(e), e]));
+
+  const data = rows.map(a => {
+    const hit = byKey.get(keyOf(a));
+    const nominee1Name = a.nominees[0]?.fullName ?? null;
+    // The name the form fills into name1: the member for an INDIVIDUAL, nominee 1 for a
+    // CORPORATE member (a company name is not a person RCI can enrol). Truncated to name1's
+    // 40-char column limit HERE, next to the zod .max(40) that would otherwise 400 a long
+    // member name straight back at the user.
+    const suggested = a.member.memberType === 'CORPORATE' ? nominee1Name : a.member.fullName;
+    return {
+      agreementId: a.id,
+      coCode: a.coCode, membershipNo: a.membershipNo, agreementNo: a.agreementNo,
+      acctClassify: a.acctClassify,
+      memberName: a.member.fullName,
+      memberType: a.member.memberType,
+      nominee1Name,
+      suggestedName1: suggested ? suggested.trim().slice(0, 40) : null,
+      // Returned FLAGGED, not filtered out: hiding an enrolled agreement would read as "no
+      // such agreement" and send staff back to re-search. The form disables the row.
+      enrolled: !!hit,
+      enrolmentCount: hit?._count._all ?? 0,
+      enrolmentSerialNo: hit?._max.serialNo ?? null,
+    };
+  });
+
+  res.json({ data, total, limit });
 }

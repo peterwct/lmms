@@ -1,0 +1,500 @@
+<title>LMMS VPS Runbook</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital@0;1&display=swap">
+<style>
+  :root{
+    --ground:#F4F6F8; --surface:#FFFFFF; --surface-2:#EDF1F4;
+    --ink:#14181D; --ink-2:#48535F; --ink-3:#6E7A87;
+    --rule:#DCE2E8; --rule-2:#C6D0D9;
+    --accent:#0B6E7F; --accent-soft:#E3F1F4;
+    --warn:#8F5406; --warn-soft:#FCF2E1; --warn-rule:#E8CFA3;
+    --danger:#A02318; --danger-soft:#FAEBE9; --danger-rule:#E7BDB7;
+    --ok:#1A6B3C; --ok-soft:#E6F4EB;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+    --serif:"IBM Plex Serif",Georgia,serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0F1317; --surface:#171C22; --surface-2:#1E242B;
+      --ink:#E7ECF1; --ink-2:#A5B1BD; --ink-3:#7C8996;
+      --rule:#283038; --rule-2:#39434D;
+      --accent:#4FC9DC; --accent-soft:#123039;
+      --warn:#E2A65B; --warn-soft:#2E2311; --warn-rule:#5A431C;
+      --danger:#F0897C; --danger-soft:#331714; --danger-rule:#5E2B24;
+      --ok:#6FC791; --ok-soft:#12301F;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0F1317; --surface:#171C22; --surface-2:#1E242B;
+    --ink:#E7ECF1; --ink-2:#A5B1BD; --ink-3:#7C8996;
+    --rule:#283038; --rule-2:#39434D;
+    --accent:#4FC9DC; --accent-soft:#123039;
+    --warn:#E2A65B; --warn-soft:#2E2311; --warn-rule:#5A431C;
+    --danger:#F0897C; --danger-soft:#331714; --danger-rule:#5E2B24;
+    --ok:#6FC791; --ok-soft:#12301F;
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--ground); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:920px; margin:0 auto; padding:0 24px 96px}
+
+  .rail{position:sticky; top:0; z-index:20; background:var(--ground); border-bottom:1px solid var(--rule)}
+  .rail-in{max-width:920px; margin:0 auto; padding:10px 24px; display:flex; align-items:center; gap:14px}
+  .rail-label{font-family:var(--mono); font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); white-space:nowrap}
+  .bar{flex:1; height:5px; border-radius:99px; background:var(--surface-2); overflow:hidden}
+  .bar > i{display:block; height:100%; width:0%; background:var(--accent); transition:width .25s ease}
+  .rail-count{font-family:var(--mono); font-size:12.5px; font-variant-numeric:tabular-nums; color:var(--ink-2); white-space:nowrap}
+  .reset{font:inherit; font-size:12px; color:var(--ink-3); background:var(--surface); border:1px solid var(--rule); border-radius:6px; padding:3px 9px; cursor:pointer}
+  .reset:hover{color:var(--ink); border-color:var(--rule-2)}
+  .reset:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  header.top{padding:56px 0 34px; border-bottom:1px solid var(--rule); margin-bottom:40px}
+  .eyebrow{font-family:var(--mono); font-size:11.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 14px}
+  h1{font-size:clamp(30px,4.6vw,42px); line-height:1.1; letter-spacing:-.021em; font-weight:600; margin:0 0 16px; text-wrap:balance}
+  .lede{font-family:var(--serif); font-size:17px; line-height:1.62; color:var(--ink-2); max-width:63ch; margin:0}
+  .meta{display:flex; flex-wrap:wrap; gap:8px 22px; margin-top:24px; font-family:var(--mono); font-size:12px; color:var(--ink-3)}
+  .meta b{font-weight:500; color:var(--ink-2)}
+
+  section.phase{margin:0 0 52px; scroll-margin-top:64px}
+  .phase-head{display:grid; grid-template-columns:52px 1fr; gap:16px; align-items:start; margin-bottom:14px}
+  .num{font-family:var(--mono); font-size:12px; font-weight:500; color:var(--accent); border:1px solid var(--rule-2); border-radius:7px; height:34px; display:flex; align-items:center; justify-content:center; background:var(--surface); letter-spacing:.02em}
+  h2{font-size:21px; font-weight:600; letter-spacing:-.012em; margin:4px 0 0; line-height:1.28; text-wrap:balance}
+  .when{font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin:5px 0 0; letter-spacing:.02em}
+  .why{font-family:var(--serif); font-style:italic; font-size:15.5px; color:var(--ink-2); margin:0 0 18px; padding-left:68px; max-width:70ch}
+  @media (max-width:620px){ .why{padding-left:0} .phase-head{grid-template-columns:42px 1fr; gap:12px} }
+
+  ul.tasks{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1px; background:var(--rule); border:1px solid var(--rule); border-radius:10px; overflow:hidden}
+  ul.tasks > li{background:var(--surface); margin:0}
+  label.task{display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:start; padding:12px 16px; cursor:pointer}
+  label.task:hover{background:var(--surface-2)}
+  label.task input{appearance:none; -webkit-appearance:none; width:17px; height:17px; margin:3px 0 0; border:1.5px solid var(--rule-2); border-radius:5px; background:var(--surface); cursor:pointer; position:relative}
+  label.task input:checked{background:var(--accent); border-color:var(--accent)}
+  label.task input:checked::after{content:""; position:absolute; left:5px; top:1px; width:4px; height:9px; border:solid var(--surface); border-width:0 2px 2px 0; transform:rotate(42deg)}
+  :root[data-theme="dark"] label.task input:checked::after{border-color:#0F1317}
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) label.task input:checked::after{border-color:#0F1317} }
+  label.task input:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  label.task input:checked ~ .t{color:var(--ink-3)}
+  label.task input:checked ~ .t strong{color:var(--ink-3)}
+  .t{font-size:14.5px}
+  .t strong{font-weight:600; color:var(--ink)}
+  .t .sub{display:block; color:var(--ink-2); font-size:13.5px; margin-top:3px}
+
+  code,kbd{font-family:var(--mono); font-size:.875em; background:var(--surface-2); border:1px solid var(--rule); border-radius:4px; padding:1px 5px; color:var(--ink); word-break:break-word}
+  pre{font-family:var(--mono); font-size:12.5px; line-height:1.6; background:var(--surface-2); border:1px solid var(--rule); border-radius:9px; padding:14px 16px; overflow-x:auto; margin:14px 0}
+  pre code{background:none; border:0; padding:0; font-size:inherit}
+  a{color:var(--accent); text-decoration-thickness:1px; text-underline-offset:2px}
+
+  .note{border:1px solid var(--rule); border-left:3px solid var(--ink-3); background:var(--surface); border-radius:8px; padding:14px 18px; margin:16px 0; font-size:14px}
+  .note p{margin:0 0 9px} .note p:last-child{margin:0}
+  .note .tag{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; display:block; margin-bottom:7px; color:var(--ink-3)}
+  .note.warn{border-left-color:var(--warn); background:var(--warn-soft); border-color:var(--warn-rule)}
+  .note.warn .tag{color:var(--warn)}
+  .note.stop{border-left-color:var(--danger); background:var(--danger-soft); border-color:var(--danger-rule)}
+  .note.stop .tag{color:var(--danger)}
+
+  .scroll{overflow-x:auto; border:1px solid var(--rule); border-radius:10px; margin:18px 0; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-size:13px; min-width:600px}
+  th{text-align:left; font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); font-weight:500; padding:10px 14px; border-bottom:1px solid var(--rule); white-space:nowrap; background:var(--surface-2)}
+  td{padding:10px 14px; border-bottom:1px solid var(--rule); vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  td.mono{font-family:var(--mono); font-size:12px; white-space:nowrap}
+  .was{color:var(--ink-3); text-decoration:line-through}
+
+  footer.end{margin-top:56px; padding-top:24px; border-top:1px solid var(--rule); font-size:12.5px; color:var(--ink-3); font-family:var(--mono); line-height:1.8}
+
+  @media print{
+    .rail{display:none} body{background:#fff}
+    section.phase{break-inside:avoid-page}
+    label.task input{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+  }
+  @media (prefers-reduced-motion:reduce){ *{transition:none !important} }
+</style>
+
+<div class="rail">
+  <div class="rail-in">
+    <span class="rail-label">Runbook progress</span>
+    <span class="bar"><i id="fill"></i></span>
+    <span class="rail-count" id="count">0 / 0</span>
+    <button class="reset" id="reset" type="button">Reset</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">LHB MMS &middot; Phase 1 &middot; Shinjiru VPS</p>
+  <h1>Standing up LMMS on a rented VPS</h1>
+  <p class="lede">Everything from the order form to the moment UAT users get the URL. The order matters: the box is
+  locked down before the stack goes on it, the data is loaded before it faces the internet, and HTTPS is in place
+  before a single real member record is reachable. Your existing <code>deploy/setup-test-server.ps1</code> already
+  does most of the middle &mdash; the work is retargeting it off the <code>E:</code> drive and the LAN IP it was
+  written for.</p>
+  <div class="meta">
+    <span><b>Prepared</b> 7 Sep 2026</span>
+    <span><b>Plan</b> Shinjiru VALUE &mdash; 2 vCPU / 2 GB / 50 GB</span>
+    <span><b>Target</b> Windows Server 2022 VPS</span>
+    <span><b>Stack</b> PostgreSQL 18 &middot; Node LTS &middot; PM2 &middot; nginx</span>
+    <span><b>Effort</b> one focused day, plus backups</span>
+  </div>
+</header>
+
+<div class="note warn">
+  <span class="tag">Approved at VALUE &mdash; 2 vCPU / 2 GB / 50 GB</span>
+  <p><strong>2 GB is workable for UAT, provided nothing heavy ever runs on the box.</strong> Steady-state LMMS is one
+  Node process, nginx and PostgreSQL serving a handful of testers, and that fits. What does not fit is the
+  <em>setup</em> work: the Informix data load and the frontend build are each far hungrier than anything UAT will ask
+  of the server afterwards, and they are where the 8 GB test box already fell over &mdash; the <code>CachedPlan</code>
+  out-of-memory that forced <code>MIGRATE_BATCH</code> to 100, and the commit-limit crash loop (error 1455).</p>
+  <p>So this runbook moves both off the VPS. <strong>The data is loaded on your dev machine and shipped as a database
+  dump</strong> (phase 6), and <strong>both halves are built locally and shipped as <code>dist</code> folders</strong>
+  (phases 4&ndash;5). Neither is a workaround &mdash; <code>deploy-test.ps1</code> already builds locally for exactly
+  this reason. With those two off the box, the memory ceiling stops being what decides whether this works.</p>
+  <p><strong>The escape hatch:</strong> upgrading to PRO is in-place and prorated, so trying VALUE first costs setup
+  time, not money. Phase 10 sets a tripwire that tells you with measurements, rather than argument, whether to go back
+  to management for the extra RM29 a month.</p>
+</div>
+
+<section class="phase" id="p1">
+  <div class="phase-head">
+    <span class="num">01</span>
+    <div><h2>Before you place the order</h2><p class="when">15 min &middot; on the order form or the phone</p></div>
+  </div>
+  <p class="why">The specs memo covers most of this already. The additions are the ones that only matter because this
+  box is public, unlike 199.1.1.32.</p>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="1a"><span class="t"><strong>Confirm the Windows Server 2022 licence is included in the quoted price</strong><span class="sub">Not billed separately, and not bring-your-own.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="1b"><span class="t"><strong>Confirm NVMe or SSD storage, not spinning disk</strong></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="1c"><span class="t"><strong>Confirm a dedicated public IPv4 and full inbound firewall control</strong><span class="sub">You need to open 80/443 yourself and scope 3389 and 5985 to the office IP.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="1d"><span class="t"><strong>Ask what snapshot or backup product exists, and what it costs</strong><span class="sub">A whole-box snapshot is your fastest recovery path, but it does not replace the nightly dump in phase 9.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="1e"><span class="t"><strong>Confirm the bandwidth cap and the overage rate</strong></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="1f"><span class="t"><strong>Confirm the 36-month price is what renews, and that 8% SST is on top</strong><span class="sub">Both assumptions the approved proposal was costed on.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="1g"><span class="t"><strong>Ask whether a second volume can be presented as <code>E:</code></strong><span class="sub">If yes, every hardcoded path in phase 4 keeps working untouched. Worth asking before you spend an hour on find-and-replace.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="1h"><span class="t"><strong>Register the DNS name now &mdash; e.g. <code>mms.leisureholidays.com.my</code></strong><span class="sub">You need a real hostname for the certificate in phase 8; a bare IP cannot be certificated. Setting <code>FRONTEND_URL</code> to it from the start also saves re-pointing everything later.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="1i"><span class="t"><strong>Note how the RDP credentials will be delivered</strong><span class="sub">If they arrive by plain email, change the password the moment you log in.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="1j"><span class="t"><strong>Get the VALUE &rarr; PRO upgrade path confirmed in writing</strong><span class="sub">In-place, prorated, and keeping the same IP. This is the escape hatch if the phase 10 tripwire trips, and you are committing to 36 months &mdash; confirm it before you sign, not after.</span></span></label></li>
+  </ul>
+</section>
+
+<section class="phase" id="p2">
+  <div class="phase-head">
+    <span class="num">02</span>
+    <div><h2>First hour: lock the box down</h2><p class="when">45 min &middot; before installing anything</p></div>
+  </div>
+  <p class="why">199.1.1.32 sat behind the company firewall. This one does not. An unhardened Windows box with 3389 open
+  to the world starts collecting brute-force attempts within minutes of coming up.</p>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="2a"><span class="t"><strong>Change the Administrator password</strong><span class="sub">Long and random, stored in the password manager rather than a text file on the box.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="2b"><span class="t"><strong>Scope RDP (3389) to the office public IP only</strong><span class="sub">Windows Firewall rule scope, plus the provider firewall if one is offered. Leave Network Level Authentication on.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="2c"><span class="t"><strong>Run Windows Update to completion and reboot</strong></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="2d"><span class="t"><strong>Set the timezone to (UTC+08:00) Kuala Lumpur</strong><span class="sub">The <code>Timestamptz(3)</code> convention depends on it &mdash; audit timestamps are meant to read as <code>+08</code> in psql and pgAdmin. Business date columns stay UTC-midnight regardless.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="2e"><span class="t"><strong>Set a fixed 6 GB pagefile &mdash; do not leave it system-managed</strong><span class="sub">On 2 GB of RAM this is the single most important setting on the box. It is what stands between you and the commit-limit failure (error 1455) that took PostgreSQL down on the test server &mdash; a Windows commit failure, not a PostgreSQL one, so no amount of <code>postgresql.conf</code> tuning substitutes for it. You have 50 GB of disk; spend 6 here.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="2f"><span class="t"><strong>Check nothing already owns port 80</strong><span class="sub">Windows Server images often ship with IIS enabled. Remove it, or move nginx to 8080 and match <code>FRONTEND_URL</code>.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="2g"><span class="t"><strong>Note the volume layout</strong><span class="sub">If there is only a <code>C:</code>, phase 4 applies in full. If you got an <code>E:</code>, most of it disappears.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="2h"><span class="t"><strong>Add Defender exclusions for the PostgreSQL data directory and the app root</strong><span class="sub">Real-time scanning costs both memory and a great deal of I/O, and it is the usual reason npm and Prisma feel glacial on a small Windows box.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="2i"><span class="t"><strong>Turn off what the image ships that you will not use</strong><span class="sub">IIS, Print Spooler, Windows Search. A few hundred megabytes of idle services is a rounding error on 8 GB and a meaningful share of the budget on 2 GB.</span></span></label></li>
+  </ul>
+</section>
+
+<section class="phase" id="p3">
+  <div class="phase-head">
+    <span class="num">03</span>
+    <div><h2>Install the two things the script cannot</h2><p class="when">30 min</p></div>
+  </div>
+  <p class="why"><code>setup-test-server.ps1</code> installs Node, Git, NSSM and PM2 for you via winget. It only
+  <em>checks for</em> PostgreSQL and nginx, and refuses to run without them.</p>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="3a"><span class="t"><strong>Install PostgreSQL 18</strong><span class="sub">Mind the path. The installer default is <code>C:\Program Files\PostgreSQL\18</code>, which is <em>not</em> the <code>E:\PostgreSQL18</code> the scripts expect. Installing to <code>C:\PostgreSQL18</code> keeps the shape and shortens phase 4.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="3b"><span class="t"><strong>Extract nginx for Windows to <code>C:\Apps\nginx</code></strong><span class="sub">The script requires <code>C:\Apps\nginx\nginx.exe</code> to exist and throws if it does not.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="3c"><span class="t"><strong>Set the postgres superuser password and record it</strong><span class="sub">Both the setup script and <code>deploy-test.ps1 -MigrateDb</code> prompt for it.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="3d"><span class="t"><strong>Leave <code>listen_addresses</code> at <code>localhost</code></strong><span class="sub">Phase 6 removes the last reason you would ever open 5432 to the internet.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="3e"><span class="t"><strong>Apply the 2 GB settings below, then restart the service</strong><span class="sub">Before the data restore, not after.</span></span></label></li>
+  </ul>
+  <div class="note warn">
+    <span class="tag">postgresql.conf on a 2 GB box</span>
+    <p>The stock config is wrong for this machine in both directions &mdash; too little cache, too much room for
+    per-connection growth. Set:</p>
+    <pre><code>shared_buffers = 256MB              # up from 128MB; not the 512MB you would use on 4GB
+work_mem = 4MB                      # leave it - this one multiplies per sort, per connection
+max_connections = 25                # down from 100; each backend costs memory
+max_parallel_workers_per_gather = 0
+plan_cache_mode = force_custom_plan</code></pre>
+    <p><strong><code>force_custom_plan</code> is the targeted fix for the <code>CachedPlan</code> out-of-memory.</strong>
+    Under the default <code>auto</code>, the server switches to a cached <em>generic</em> plan after about five
+    executions of the same statement and accumulates memory across the session &mdash; which is exactly why that
+    failure struck partway through a refresh rather than on the first batch. Forcing a custom plan each time costs a
+    little planning CPU and removes the accumulation entirely.</p>
+  </div>
+</section>
+
+<section class="phase" id="p4">
+  <div class="phase-head">
+    <span class="num">04</span>
+    <div><h2>Retarget the hardcoded paths and IP</h2><p class="when">45 min &middot; on the dev machine, before building the zip</p></div>
+  </div>
+  <p class="why">Ten places across six files still say <code>E:\Apps\lhb-mms</code> or <code>199.1.1.32</code>. Miss one
+  and the failure is usually silent &mdash; nginx serves a 404 for the SPA, or PM2 starts in the wrong working directory.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>File</th><th>Line</th><th>Setting</th><th>Change to</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">deploy/setup-test-server.ps1</td><td class="mono">35&ndash;39</td><td class="mono">$AppDrive, $PsqlExe, $ServerIp</td><td><span class="was">E:</span> &rarr; <code>C:</code>, new psql path, new IP</td></tr>
+        <tr><td class="mono">backend/ecosystem.config.js</td><td class="mono">14</td><td class="mono">cwd</td><td>new app root</td></tr>
+        <tr><td class="mono">backend/ecosystem.config.js</td><td class="mono">36</td><td class="mono">FRONTEND_URL</td><td>your hostname, no trailing slash</td></tr>
+        <tr><td class="mono">backend/ecosystem.config.js</td><td class="mono">43&ndash;44</td><td class="mono">out_file, error_file</td><td>log paths under the new root</td></tr>
+        <tr><td class="mono">nginx/nginx.conf</td><td class="mono">31</td><td class="mono">root</td><td>SPA dist path under the new root</td></tr>
+        <tr><td class="mono">deploy-test.ps1</td><td class="mono">59&ndash;60</td><td class="mono">$RemoteHost, $RemotePath</td><td>new IP and app root</td></tr>
+        <tr><td class="mono">deploy-test.ps1</td><td class="mono">293</td><td class="mono">psql.exe, GRANT step</td><td>new PostgreSQL bin path</td></tr>
+        <tr><td class="mono">diagnose-db-server.ps1</td><td class="mono">412, 719</td><td class="mono">data dir, pg_dump</td><td>new PostgreSQL paths</td></tr>
+        <tr><td class="mono">refresh-test-db.ps1</td><td class="mono">12, 18, 201</td><td class="mono">printed examples</td><td>cosmetic, but the hint should be right</td></tr>
+        <tr><td class="mono">migrate-table.ps1</td><td class="mono">89, 123</td><td class="mono">printed examples</td><td>cosmetic</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="4a"><span class="t"><strong>Work through the table on a branch, not on <code>main</code></strong><span class="sub">The test server still needs the old values until you decommission it.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="4b"><span class="t"><strong>Grep for stragglers before you build</strong><span class="sub"><code>git grep -nE "199\.1\.1\.32|E:[\\/]Apps|PostgreSQL18"</code> should come back with comments only.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="4c"><span class="t"><strong>Use forward slashes in <code>nginx.conf</code></strong><span class="sub">Backslashes are a parse error there. The file already carries the warning.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="4e"><span class="t"><strong>Build both halves locally and include the <code>dist</code> folders in the zip</strong><span class="sub"><code>npm run build</code> in <code>backend/</code> and in <code>frontend/</code> on your own machine. Vite and <code>tsc</code> are the most memory-hungry things in this entire process and there is no reason for either to run on a 2 GB server. Leave <code>frontend/node_modules</code> out of the zip entirely &mdash; nothing on the VPS needs it once <code>dist</code> exists.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="4d"><span class="t"><strong>Build the zip as <code>lhb-mms-deploy.zip</code></strong><span class="sub">Exactly that name. The script's <code>.NOTES</code> header says <code>lhb-mms-app.zip</code> but the code looks for <code>lhb-mms-deploy.zip</code> &mdash; the code wins.</span></span></label></li>
+  </ul>
+</section>
+
+<section class="phase" id="p5">
+  <div class="phase-head">
+    <span class="num">05</span>
+    <div><h2>Run the provisioning script</h2><p class="when">40 min &middot; over RDP, PowerShell as Administrator</p></div>
+  </div>
+  <p class="why">Seven phases, all automated: database and role, extract, <code>.env</code>, npm install, Prisma migrate
+  and seed, both builds, nginx as an NSSM service, PM2 registered for auto-start. It finishes with four HTTP checks.</p>
+  <pre><code>Set-ExecutionPolicy Bypass -Scope Process -Force
+.\setup-test-server.ps1</code></pre>
+  <div class="note stop">
+    <span class="tag">Known defect &mdash; verify this by hand afterwards</span>
+    <p>Phase 3 of the script rewrites credentials into <code>ecosystem.config.js</code> using
+    <code>-replace 'postgresql://lhb_app:CHANGE_ME@'</code>. <strong>That placeholder is no longer in the file.</strong>
+    The committed value now reads <code>postgresql://lhb_app:Lhb@8899@127.0.0.1:5432/lhb_mms</code>, so the replace
+    matches nothing and silently leaves the old test-server password behind.</p>
+    <p>The backend still starts, because <code>index.ts</code> loads the root <code>.env</code> with
+    <code>override: true</code> and that file <em>is</em> written correctly. But a wrong credential sitting in a
+    committed file is a landmine for whoever next runs PM2 without a <code>.env</code> present &mdash; which is exactly
+    how the test server is configured today. <strong>Open <code>ecosystem.config.js</code> after the run and set
+    <code>DATABASE_URL</code> and <code>JWT_SECRET</code> by hand.</strong></p>
+  </div>
+  <div class="note warn">
+    <span class="tag">Edit the script before you run it on 2 GB</span>
+    <p>Phase 5 of <code>setup-test-server.ps1</code> runs <code>npm run build</code> for the backend <em>and</em> the
+    frontend on the server, and Phase 4 runs <code>npm install</code> in <code>frontend/</code> to make that possible.
+    On 2 GB that is the most likely place for the whole run to die &mdash; and it is pure waste, because you already
+    built both in phase 4.</p>
+    <p>Comment out the frontend <code>npm install</code> and both <code>npm run build</code> blocks, but
+    <strong>keep the two <code>Test-Path</code> assertions</strong> so the script still fails loudly if a
+    <code>dist</code> folder is missing from the zip. Keep <code>npm install</code> at the root and in
+    <code>backend/</code> &mdash; the backend's runtime dependencies and the Prisma client are still needed. Use
+    <code>--omit=dev</code> there to halve the work.</p>
+  </div>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="5g"><span class="t"><strong>Comment out the frontend install and both build blocks first</strong><span class="sub">Per the note above. Keep the <code>Test-Path</code> checks.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="5a"><span class="t"><strong>Run the script, supplying a fresh <code>lhb_app</code> password</strong><span class="sub">A different one from the test server's. Do not reuse <code>Lhb@8899</code>.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="5b"><span class="t"><strong>Verify <code>.env</code> and <code>ecosystem.config.js</code> now agree</strong><span class="sub">Per the defect above. Both should carry the new password and a real 64-character JWT secret.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="5c"><span class="t"><strong>Confirm all four verification checks returned HTTP 200</strong><span class="sub">Backend direct, backend through the proxy, frontend root, and SPA routing on <code>/members</code>.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="5d"><span class="t"><strong>Log in and change the <code>admin</code> password immediately</strong><span class="sub">The seed ships <code>admin / LHB@Admin2026!</code> and the script prints it on screen. Acceptable on a LAN box, not here.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="5e"><span class="t"><strong>Check the <code>lhb_app</code> grants</strong><span class="sub">This script creates the database <code>OWNER lhb_app</code>, unlike the test server where <code>postgres</code> owns the tables &mdash; so the usual re-grant-after-every-migration chore may not apply, and <code>migrate deploy</code> may not need the superuser. Verify rather than assume, and keep the GRANT block to hand either way.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="5f"><span class="t"><strong>Leave <code>COOKIE_SECURE=false</code> for now</strong><span class="sub">Correct while the box is HTTP-only &mdash; without it every login bounces straight back to the login page. Phase 8 flips it.</span></span></label></li>
+  </ul>
+</section>
+
+<section class="phase" id="p6">
+  <div class="phase-head">
+    <span class="num">06</span>
+    <div><h2>Load the data &mdash; on your machine, not the VPS</h2><p class="when">2&ndash;4 hours, almost all of it on the dev box</p></div>
+  </div>
+  <p class="why">The Informix load is the heaviest thing this system ever does: roughly 1.2 million rows through Node
+  and Prisma, with several importers holding an entire file in memory because the collapse logic needs it. It is what
+  broke an 8 GB machine. Do not run it on 2 GB &mdash; load it where you have RAM and ship the finished database.</p>
+  <p class="why">A <code>pg_restore</code> is also far cheaper than the migration that produced it: it streams
+  <code>COPY</code>, with no Node process, no thousand-parameter <code>createMany</code>, and none of the plan-cache
+  accumulation that causes the <code>CachedPlan</code> failure. That is why this route works on a small box.</p>
+  <pre><code># ── on your DEV machine, against a LOCAL postgres ──────────────────
+$env:DATABASE_URL  = "postgresql://postgres:PASSWORD@localhost:5432/lhb_mms"
+$env:MIGRATE_BATCH = "100"
+npx prisma migrate deploy
+npm run prisma:seed
+.\refresh-test-db.ps1 -DryRun      # parses every file, writes nothing
+.\refresh-test-db.ps1
+pg_dump.exe -U postgres -F c -f lhb_mms_seed.dump lhb_mms
+
+# ── on the VPS, after copying the dump up ──────────────────────────
+psql.exe  -U postgres -c "DROP DATABASE lhb_mms;"
+psql.exe  -U postgres -c "CREATE DATABASE lhb_mms OWNER lhb_app;"
+pg_restore.exe -U postgres -d lhb_mms --no-owner lhb_mms_seed.dump</code></pre>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="6a"><span class="t"><strong>Load into a local PostgreSQL 18 on your dev machine</strong><span class="sub">Empty database, <code>migrate deploy</code>, seed, then the refresh &mdash; the same sequence the VPS would have run, on a machine that can take it. Keep <code>MIGRATE_BATCH=100</code>; drop to 50 if <code>CachedPlan</code> bites even here.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="6b"><span class="t"><strong>Dry-run first</strong><span class="sub">It parses every file without touching the database, which surfaces a changed column layout before it costs you a load.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="6g"><span class="t"><strong>Verify the row counts <em>here</em>, before you dump</strong><span class="sub">This is the real reason to load on the dev box: verification and re-running are cheap where the data is, and a bad import costs you a re-dump rather than a re-load on a box that cannot do it.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="6h"><span class="t"><strong><code>pg_dump -F c</code> the loaded database and copy it up</strong><span class="sub">Custom format, compressed. Expect a few hundred MB &mdash; a single WAN transfer instead of a million row inserts.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="6i"><span class="t"><strong>Drop, recreate and restore on the VPS</strong><span class="sub">The dump carries <code>_prisma_migrations</code> with it, so Prisma still sees the schema as up to date and later <code>migrate deploy</code> runs behave normally. Restoring over the database the setup script already created is the alternative, but a clean drop avoids conflicts.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="6j"><span class="t"><strong>Re-grant <code>lhb_app</code> after the restore</strong><span class="sub">Non-negotiable &mdash; a restore recreates every table, and grants do not come along with them. Use the GRANT block from <code>CLAUDE.md</code>, then load a page in the app to prove it.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="6k"><span class="t"><strong>Count the rows again on the VPS</strong><span class="sub">One cheap query, and it confirms the transfer as well as the load.</span></span></label></li>
+  </ul>
+  <div class="note">
+    <span class="tag">This becomes the standing refresh procedure</span>
+    <p>Every future UAT data refresh follows the same route: re-export from Informix, load on the dev machine, dump,
+    restore. <code>refresh-test-db.ps1</code> keeps working exactly as written &mdash; you are just pointing it at a
+    different <code>DATABASE_URL</code>. Copy the <code>migrate\</code> folder to the VPS anyway, including the
+    committed <code>*_unload.sql</code> scripts, so the box carries its own provenance.</p>
+  </div>
+  <div class="note warn">
+    <span class="tag">Do not skip &mdash; verify the row counts</span>
+    <p>Importers warn per bad row and carry on, so a run prints "migration complete" over a table that loaded nothing.
+    On 27 August this happened twice at once: <code>ps_seasondate.txt</code> gained a leading <code>ps_cocode</code>
+    column and <code>CpSeasonDate</code> came back <strong>0 of 424</strong>, taking the whole CP season grading with it;
+    <code>lvc_master.txt</code> introduced status <code>C</code> and <code>LvcCode</code> loaded <strong>11 of 22</strong>.</p>
+    <p>Count every migrated table and compare against <code>CLAUDE.md</code>. Treat anything that returns zero or comes
+    back sharply short as a layout change until proven otherwise.</p>
+  </div>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="6d"><span class="t"><strong>Check the fragile tables by name</strong><span class="sub"><code>CpSeasonDate</code> 424, <code>LvcCode</code> 22, <code>Resort</code> 324, <code>RciEnrolment</code> ~17,915, <code>RciBulkBank</code> 774, <code>ResAvailMast</code> ~133,988. These are the ones whose source layouts have actually moved.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="6e"><span class="t"><strong>Confirm the six RCI enrolment key mismatches are gone</strong><span class="sub">They were rectified in Informix on 3 Sep, so an export taken after that date should return zero rows from the orphan query in <code>CLAUDE.md</code>. If they are still present you are loading a stale export.</span></span></label></li>
+  </ul>
+</section>
+
+<section class="phase" id="p7">
+  <div class="phase-head">
+    <span class="num">07</span>
+    <div><h2>Wire your dev machine to the new host</h2><p class="when">20 min</p></div>
+  </div>
+  <p class="why">WinRM over HTTP on 5985 is fine inside an office. Exposed to the internet it is an authentication
+  endpoint anyone can reach, so it gets the same treatment as RDP.</p>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="7a"><span class="t"><strong>On the VPS: <code>Enable-PSRemoting -Force</code>, then a 5985 rule <em>scoped to the office IP</em></strong><span class="sub">Not the wide-open rule from the test-server instructions.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="7b"><span class="t"><strong>On your machine: <code>winrm quickconfig</code>, then add the new IP to TrustedHosts</strong><span class="sub">That order &mdash; the <code>Set-Item WSMan:\</code> call fails with a connection error if the service is not already running.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="7c"><span class="t"><strong>Keep the qualified username form</strong><span class="sub"><code>&lt;IP&gt;\Administrator</code>, never bare <code>Administrator</code> &mdash; workgroup plus IP gives the client no account context and it stalls until timeout. <code>deploy-test.ps1</code> already handles this.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="7d"><span class="t"><strong>Dry-run, then do one real round trip</strong><span class="sub"><code>.\deploy-test.ps1 -SkipFrontend -DryRun</code>, then a genuine deploy, and confirm the change actually appears.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="7e"><span class="t"><strong>Decide deliberately: WinRM over HTTPS (5986), or drop remoting entirely</strong><span class="sub">RDP plus <code>git pull</code> and a build on the box is a legitimate alternative for a public host. Better a decision than an inherited default.</span></span></label></li>
+  </ul>
+</section>
+
+<section class="phase" id="p8">
+  <div class="phase-head">
+    <span class="num">08</span>
+    <div><h2>HTTPS and credential hygiene</h2><p class="when">1 hour &middot; before any real member data is reachable</p></div>
+  </div>
+  <p class="why">32,387 members' personal data behind a session cookie over plain HTTP was acceptable on the company
+  LAN. On a public host it is not &mdash; and the proposal's own risk table committed you to mitigating third-party
+  hosting of PII.</p>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="8a"><span class="t"><strong>Point the DNS A record at the VPS and open 443</strong></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="8b"><span class="t"><strong>Issue a Let's Encrypt certificate with win-acme</strong><span class="sub">Free, and it installs its own renewal task. Needs the hostname from phase 1 &mdash; certificates cannot be issued to a bare IP.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="8c"><span class="t"><strong>Add a 443 server block and redirect 80 &rarr; 443</strong><span class="sub">Keep the SPA fallback, the <code>no-cache</code> rule on <code>index.html</code>, and <code>proxy_buffering off</code> on <code>/api/</code> &mdash; that last one is what stops the day-end file download returning partial responses.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="8d"><span class="t"><strong>Set <code>COOKIE_SECURE=true</code> and <code>FRONTEND_URL</code> to the https address</strong><span class="sub">In <em>both</em> <code>.env</code> and <code>ecosystem.config.js</code>, then <code>pm2 delete</code> and <code>pm2 start</code>. A mismatched <code>FRONTEND_URL</code> breaks CORS and logins.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="8e"><span class="t"><strong>Rotate the JWT secret and the <code>lhb_app</code> password</strong><span class="sub">Rotating the JWT secret invalidates every live session, so do it now rather than once UAT users are mid-task.</span></span></label></li>
+  </ul>
+  <div class="note stop">
+    <span class="tag">Repository hygiene &mdash; fix at the source</span>
+    <p><code>backend/ecosystem.config.js:30</code> is <strong>committed to git carrying a live database password</strong>
+    (<code>Lhb@8899</code>). The <code>JWT_SECRET</code> on the line below it is still a placeholder, which is the
+    correct pattern &mdash; the password should match it.</p>
+    <p>Restore the <code>CHANGE_ME</code> placeholder in the tracked file and keep real values only in the untracked
+    <code>.env</code>. That fixes two things at once: the credential stops travelling with the repo and the deploy zip,
+    and the setup script's <code>-replace</code> from phase 5 starts matching again. If this repository has ever been
+    pushed anywhere off your machine, treat that password as burned and rotate it on the test server too.</p>
+  </div>
+</section>
+
+<section class="phase" id="p9">
+  <div class="phase-head">
+    <span class="num">09</span>
+    <div><h2>Backups &mdash; a condition of the approval</h2><p class="when">45 min, plus a restore test</p></div>
+  </div>
+  <p class="why">The proposal's risk table made nightly off-site database backups a condition of both hosting options.
+  This is the phase that discharges that commitment, and the one most likely to get deferred.</p>
+  <pre><code># Task Scheduler, nightly, running as a service account
+pg_dump.exe -U postgres -F c -f D:\backups\lhb_mms_%DATE%.dump lhb_mms</code></pre>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="9a"><span class="t"><strong>Schedule a nightly <code>pg_dump -F c</code></strong><span class="sub">Custom format, so you can restore selectively. On a 50 GB disk carrying a 6 GB pagefile, keep only the last <strong>3</strong> dumps on the box and let the off-site copy hold the 14-daily / 8-weekly history.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="9b"><span class="t"><strong>Copy each dump off the VPS automatically</strong><span class="sub">A backup that exists only on the box it protects is not a backup. Office NAS, OneDrive, object storage &mdash; anywhere but this server.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="9c"><span class="t"><strong>Back up the configuration alongside the data</strong><span class="sub"><code>.env</code>, <code>ecosystem.config.js</code>, <code>nginx.conf</code> and the <code>migrate\*.txt</code> exports. The database dump alone will not rebuild this server.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="9d"><span class="t"><strong>Restore one dump into a scratch database and open the app against it</strong><span class="sub">Before UAT starts. An untested backup is an assumption, not a control.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="9e"><span class="t"><strong>Turn on the provider snapshot as a second layer</strong><span class="sub">Different failure mode, far faster recovery from whole-box loss. Not a replacement for the dump.</span></span></label></li>
+  </ul>
+</section>
+
+<section class="phase" id="p10">
+  <div class="phase-head">
+    <span class="num">10</span>
+    <div><h2>Acceptance, before you hand out the URL</h2><p class="when">45 min</p></div>
+  </div>
+  <p class="why">The script's four HTTP checks prove the plumbing. These prove the application &mdash; and the reboot
+  test proves it survives the one thing a VPS does without warning.</p>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="10a"><span class="t"><strong>Create a department and a real user, then log in as them</strong><span class="sub">Exercises the permission matrix and the forced password change on first login.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="10b"><span class="t"><strong>Exercise one page per module</strong><span class="sub">A member enquiry with a phone search, an agreement detail with its entitlement card, an AMC invoice generate, a report download, and the RCI bulk-bank year grid. The report and day-end paths are the ones that depend on <code>proxy_buffering off</code>.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="10c"><span class="t"><strong>Reboot the VPS and walk away for five minutes</strong><span class="sub">nginx (NSSM service) and the backend (PM2 resurrect) must both return with no intervention. Single most valuable check on this list.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="10d"><span class="t"><strong>Confirm <code>pm2 logs lhb-mms-backend --err --lines 50 --nostream</code> is clean</strong><span class="sub">In particular no <code>PrismaClientValidationError: Unknown field</code>, which means the client was generated against an older schema.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="10e"><span class="t"><strong>Record the baseline</strong><span class="sub">RAM at idle, RAM with three or four testers working, free disk, database size. This is the evidence both the PRO upgrade and the eventual Phase 2 decision rest on.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="10g"><span class="t"><strong>Set the tripwire: watch Committed Bytes, not free RAM</strong><span class="sub">Add <code>Memory\Committed Bytes</code> and <code>Memory\Commit Limit</code> to Performance Monitor. <strong>Sustained commit above ~85% of the limit is the precursor to the error-1455 crash</strong> &mdash; the box will feel fine right up until PostgreSQL dies. Free RAM tells you nothing useful here; on Windows it is expected to be near zero.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="10h"><span class="t"><strong>Agree the upgrade trigger before UAT widens</strong><span class="sub">If commit sits high with only a few testers, or the box pages heavily during ordinary use, that is the measured case for PRO &mdash; take the numbers to management rather than absorbing it as slowness. The upgrade is in-place and prorated, so acting on it costs nothing but the price difference.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="10f"><span class="t"><strong>Write the one-page access note for staff</strong><span class="sub">URL, who to contact, and what to do when it is down.</span></span></label></li>
+  </ul>
+</section>
+
+<section class="phase" id="p11">
+  <div class="phase-head">
+    <span class="num">11</span>
+    <div><h2>Carry forward to go-live</h2><p class="when">ongoing</p></div>
+  </div>
+  <p class="why">Three things that are harmless now and dangerous later. Worth writing into the go-live checklist while
+  they are fresh.</p>
+  <ul class="tasks">
+    <li><label class="task"><input type="checkbox" data-k="11a"><span class="t"><strong>Keep monthly usage notes</strong><span class="sub">Peak RAM and CPU, concurrent users, database growth. Phase 2 &mdash; on-premise versus staying on the VPS &mdash; was deliberately deferred until you have real numbers; without them the decision reverts to guesswork.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="11b"><span class="t"><strong>Never run <code>prisma migrate dev</code> against this box</strong><span class="sub">Your root <code>.env</code> points at the shared server and <code>migrate dev</code> can offer a reset. Hand-write the migration, <code>migrate deploy</code>, re-grant.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="11c"><span class="t"><strong>At cutover: final refresh <em>first</em>, then retire the RCI importer</strong><span class="sub"><code>RciEnrolment</code> is now the only store of RCI data, so a post-go-live truncate-and-reimport destroys staff edits with no second copy anywhere. Remove <code>migrate-rci-enrolment.ts</code> from <code>refresh-test-db.ps1</code> and its <code>migrate-table.ps1</code> entry &mdash; but only after the last refresh has carried the Informix-side corrections across. <code>AmcInvoiceCounter</code> is the same shape: re-running it resets the invoice number to the Informix baseline.</span></span></label></li>
+  </ul>
+</section>
+
+<footer class="end">
+  Built from: deploy/setup-test-server.ps1 &middot; deploy-test.ps1 &middot; refresh-test-db.ps1 &middot; backend/ecosystem.config.js<br>
+  nginx/nginx.conf &middot; doc/hosting-proposal.md &middot; CLAUDE.md &middot; project memory
+</footer>
+
+</div>
+
+<script>
+(function(){
+  var KEY = "lmms-vps-runbook-v2";
+  var boxes = Array.prototype.slice.call(document.querySelectorAll("label.task input[type=checkbox]"));
+  var fill = document.getElementById("fill");
+  var count = document.getElementById("count");
+
+  function load(){
+    try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; }
+    catch (e) { return {}; }
+  }
+  function save(state){
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* blocked storage */ }
+  }
+  function paint(){
+    var done = 0;
+    for (var i = 0; i < boxes.length; i++) { if (boxes[i].checked) done++; }
+    fill.style.width = (boxes.length ? Math.round(done / boxes.length * 100) : 0) + "%";
+    count.textContent = done + " / " + boxes.length;
+  }
+
+  var state = load();
+  boxes.forEach(function(b){
+    if (state[b.dataset.k]) b.checked = true;
+    b.addEventListener("change", function(){
+      var s = load();
+      if (b.checked) { s[b.dataset.k] = 1; } else { delete s[b.dataset.k]; }
+      save(s); paint();
+    });
+  });
+
+  document.getElementById("reset").addEventListener("click", function(){
+    boxes.forEach(function(b){ b.checked = false; });
+    save({}); paint();
+  });
+
+  paint();
+})();
+</script>

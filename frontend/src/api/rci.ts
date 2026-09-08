@@ -1,6 +1,6 @@
 import { api } from './client';
 import type {
-  RciAgreementLookup, RciBulkBankUnit, RciBulkBankYear, RciBulkBankYearSave, RciBulkBankYearSaveResult, RciBulkBankYearDeleteResult,
+  RciAgreementSearchList, RciBulkBankUnit, RciBulkBankYear, RciBulkBankYearSave, RciBulkBankYearSaveResult, RciBulkBankYearDeleteResult,
   RciEnrolment, RciEnrolmentList, RciWeekDeleteResult, RciWeekList, RciWeekYearResult,
 } from '../types';
 
@@ -14,9 +14,12 @@ export const rciEnrolmentsApi = {
   create: (data: Record<string, unknown>) => api.post<{ data: RciEnrolment }>('/rci-enrolments', data),
   update: (id: string, data: Record<string, unknown>) => api.put<{ data: RciEnrolment }>(`/rci-enrolments/${id}`, data),
   remove: (id: string) => api.delete(`/rci-enrolments/${id}`),
-  // Confirms the agreement key on the add form and returns the member name to verify against
-  lookup: (params: { coCode: string; membershipNo: string; agreementNo: string }) =>
-    api.get<{ data: RciAgreementLookup }>('/rci-enrolments/lookup', { params }),
+  // Agreement picker for the add form - search by membership no, member name or agreement
+  // no. Lives under /rci-enrolments (RESORTS_SETUP view), NOT /api/agreements: a page in one
+  // module must not depend on another module's permission. Already-enrolled agreements come
+  // back FLAGGED, not filtered out, so the form can disable them and say why.
+  searchAgreements: (params: { q: string; coCode?: string; limit?: number }) =>
+    api.get<RciAgreementSearchList>('/rci-enrolments/agreement-search', { params }),
 };
 
 // RCI fn 2 - Weekly Interval. A year is generated as a whole (52 or 53 weeks, all

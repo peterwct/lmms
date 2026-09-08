@@ -7,7 +7,9 @@ const router = Router();
 router.use(authenticate, requirePasswordChanged);
 
 router.get('/',        requirePermission('RESORTS_SETUP', 'view'),   ctrl.listRciEnrolments);
-router.get('/lookup',  requirePermission('RESORTS_SETUP', 'view'),   ctrl.lookupAgreement);
+// Must stay ABOVE '/:id' - Express matches in declaration order, so a literal segment
+// declared after it is swallowed as an id.
+router.get('/agreement-search', requirePermission('RESORTS_SETUP', 'view'), ctrl.searchAgreements);
 router.get('/:id',     requirePermission('RESORTS_SETUP', 'view'),   ctrl.getRciEnrolment);
 router.post('/',       requirePermission('RESORTS_SETUP', 'create'), ctrl.createRciEnrolment);
 router.put('/:id',     requirePermission('RESORTS_SETUP', 'edit'),   ctrl.updateRciEnrolment);
