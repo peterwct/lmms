@@ -61,17 +61,20 @@ const EMPTY_FORM = {
 // not always known at enrolment time. Optional throughout, like first/last name 2, co-owner,
 // the whole mailing-address block and both phone numbers.
 //
+// firstName1/lastName1 were dropped from this set on 2026-09-09, together with the first-space
+// split that used to prefill them: only name1 is prefilled now, and requiring staff to key the
+// same name into three boxes bought nothing. name1 stays mandatory -- it is the name that
+// actually identifies the enrolment.
+//
 // Mirrors rciEnrolmentCreateSchema in rci-enrolment.controller.ts, which is the
 // AUTHORITATIVE copy -- this gate only saves a pointless round trip.
 const REQUIRED_ADD = [
-  'rciNo', 'rciStatus', 'resortCode', 'renewalDate', 'expiryDate',
-  'firstName1', 'lastName1', 'name1',
+  'rciNo', 'rciStatus', 'resortCode', 'renewalDate', 'expiryDate', 'name1',
 ] as const;
 
 const FIELD_LABELS: Record<string, string> = {
   rciNo: 'RCI no', rciStatus: 'RCI status', resortCode: 'Resort code',
-  renewalDate: 'Renewal date', expiryDate: 'Expiry date',
-  firstName1: 'First name 1', lastName1: 'Last name 1', name1: 'Full name 1',
+  renewalDate: 'Renewal date', expiryDate: 'Expiry date', name1: 'Full name 1',
 };
 
 // Stored dates are UTC midnight; <input type="date"> wants YYYY-MM-DD
@@ -247,22 +250,17 @@ function RciEnrolmentFormModal({ open, row, onClose, onSaved }: ModalProps) {
   // RCI can enrol -- and the server has already resolved which, and truncated it to name1
   // 40-char column.
   //
-  // First/last name 1 are mandatory, so they are PREFILLED by splitting the suggestion at the
-  // first space rather than left blank for staff to retype the same name a third time. That
-  // matches how the legacy data is shaped (name1 = firstName1 + space + lastName1 on 15,630
-  // of 17,897 rows, e.g. "YEE" | "MIEW LING", "KRISHNABAL" | "A/P NARAYANASAMY"). It is a
-  // starting point, not a rule -- both fields stay editable, and a first token longer than
-  // the 10-char column is truncated for correction.
+  // ONLY name1 is prefilled. firstName1/lastName1 are deliberately left BLANK for staff to key
+  // (business decision 2026-09-09): they are still mandatory, so the form makes staff supply
+  // them rather than deriving them. A split at the first space was tried and withdrawn -- there
+  // is no rule that survives the data. The migrated rows put the surname in firstName1
+  // ("YEE" | "MIEW LING"), which is the opposite of what the business considers first and last,
+  // and the 10/20 column widths are sized for that older reading: reversing the split would
+  // truncate the given-name half of 46% of member names.
   const pick = (a: RciAgreementSearchResult) => {
     const name1 = (a.suggestedName1 ?? '').trim().toUpperCase();
-    const [first = '', ...rest] = name1 ? name1.split(/\s+/) : [];
     setPicked(a);
-    setForm({
-      ...EMPTY_FORM,
-      name1,
-      firstName1: first.slice(0, 10),
-      lastName1: rest.join(' ').slice(0, 20),
-    });
+    setForm({ ...EMPTY_FORM, name1 });
     setStep('form');
   };
 
@@ -380,8 +378,8 @@ function RciEnrolmentFormModal({ open, row, onClose, onSaved }: ModalProps) {
         <section>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Enrolled names</h3>
           <div className="grid grid-cols-3 gap-3">
-            <Input label="First name 1" value={form.firstName1} onChange={setU('firstName1')} maxLength={10} required={need} />
-            <Input label="Last name 1" value={form.lastName1} onChange={setU('lastName1')} maxLength={20} required={need} />
+            <Input label="First name 1" value={form.firstName1} onChange={setU('firstName1')} maxLength={10} />
+            <Input label="Last name 1" value={form.lastName1} onChange={setU('lastName1')} maxLength={20} />
             <Input label="Full name 1" value={form.name1} onChange={setU('name1')} maxLength={40} required={need} />
             <Input label="First name 2" value={form.firstName2} onChange={setU('firstName2')} maxLength={10} />
             <Input label="Last name 2" value={form.lastName2} onChange={setU('lastName2')} maxLength={20} />

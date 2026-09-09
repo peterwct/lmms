@@ -67,18 +67,20 @@ const rciEnrolmentSchema = z.object({
 // Named reqStr, not req: every handler in this file takes a `req: Request` parameter.
 const reqStr = (max: number) => z.string().trim().min(1).max(max);
 
-// ADD-only rules. A new enrolment must be complete, so eight fields the base schema leaves
+// ADD-only rules. A new enrolment must be complete, so six fields the base schema leaves
 // nullish become required. Optional on add as well as edit: rciFees (not always known at
 // enrolment time - null on 58% of the migrated rows), first/last name 2, co-owner, the whole
 // mailing-address block and both phone numbers.
+//
+// firstName1/lastName1 were REMOVED from this set on 2026-09-09 (business decision) along with
+// the first-space split that prefilled them. Only name1 is prefilled now, and name1 is the name
+// that identifies the enrolment, so making staff key it into three boxes bought nothing.
 const rciEnrolmentCreateSchema = rciEnrolmentSchema.extend({
   rciNo:       reqStr(10),
   rciStatus:   z.enum(RCI_STATUSES),
   resortCode:  reqStr(8),
   renewalDate: requiredDateField,
   expiryDate:  requiredDateField,
-  firstName1:  reqStr(10),
-  lastName1:   reqStr(20),
   name1:       reqStr(40),
 });
 
