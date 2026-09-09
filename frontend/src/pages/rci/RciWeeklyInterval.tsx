@@ -202,10 +202,10 @@ export function RciWeeklyInterval() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {canCreate('RESORTS_SETUP') && (
+            {canCreate('RESORT_BOOKING') && (
               <Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" /> Add year</Button>
             )}
-            {canDelete('RESORTS_SETUP') && !!weeks.length && (
+            {canDelete('RESORT_BOOKING') && !!weeks.length && (
               <Button size="sm" variant="secondary" onClick={() => { setDelErr(''); setConfirmDelete(true); }}>
                 <Trash2 className="h-4 w-4" /> Delete year
               </Button>

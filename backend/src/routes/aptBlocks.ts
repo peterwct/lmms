@@ -1,17 +1,21 @@
 import { Router } from 'express';
 import { authenticate, requirePasswordChanged } from '../middleware/auth';
-import { requirePermission } from '../middleware/permissions';
+import { requireResortsSetupAccess } from '../middleware/permissions';
 import * as ctrl from '../controllers/apt-blocks.controller';
 
 const router = Router();
-router.use(authenticate, requirePasswordChanged);
+// Resorts Setup is gated PER USER by the RESORTS_SETUP_ACCESS grant and nothing else -- the
+// RESORTS_SETUP department-matrix row is inert (see requireResortsSetupAccess). The grant is
+// all-or-nothing, hence no per-route view/create/edit/delete checks below. IT bypasses.
+// Must come after authenticate -- it reads req.user.
+router.use(authenticate, requirePasswordChanged, requireResortsSetupAccess);
 
-router.get('/',                 requirePermission('RESORTS_SETUP', 'view'),   ctrl.listAptBlocks);
-router.get('/availability-chart', requirePermission('RESORTS_SETUP', 'view'), ctrl.getAvailabilityChart);
-router.get('/units',            requirePermission('RESORTS_SETUP', 'view'),   ctrl.listUnitsWithAvailability);
-router.get('/:id/availability', requirePermission('RESORTS_SETUP', 'view'),   ctrl.getAptBlockAvailability);
-router.post('/batch',  requirePermission('RESORTS_SETUP', 'create'), ctrl.createAptBlockBatch);
-router.post('/',       requirePermission('RESORTS_SETUP', 'create'), ctrl.createAptBlock);
-router.delete('/:id',  requirePermission('RESORTS_SETUP', 'delete'), ctrl.deleteAptBlock);
+router.get('/',                 ctrl.listAptBlocks);
+router.get('/availability-chart', ctrl.getAvailabilityChart);
+router.get('/units',            ctrl.listUnitsWithAvailability);
+router.get('/:id/availability', ctrl.getAptBlockAvailability);
+router.post('/batch',  ctrl.createAptBlockBatch);
+router.post('/',       ctrl.createAptBlock);
+router.delete('/:id',  ctrl.deleteAptBlock);
 
 export default router;

@@ -601,7 +601,7 @@ export function RciEnrolment() {
             <Button type="submit" size="sm" variant="secondary"><Search className="h-4 w-4" /> Search</Button>
             {(q || coCode || rciStatus) && <Button type="button" size="sm" variant="secondary" onClick={clearSearch}>Clear</Button>}
           </form>
-          {canCreate('RESORTS_SETUP') && (
+          {canCreate('RESORT_BOOKING') && (
             <Button size="sm" onClick={() => setModal({ open: true, row: null })}><Plus className="h-4 w-4" /> Add enrolment</Button>
           )}
         </CardHeader>
@@ -664,13 +664,13 @@ export function RciEnrolment() {
                             className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-blue-600">
                             <Eye className="h-3.5 w-3.5" />
                           </button>
-                          {canEdit('RESORTS_SETUP') && (
+                          {canEdit('RESORT_BOOKING') && (
                             <button onClick={() => setModal({ open: true, row: r })} title="Edit"
                               className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-blue-600">
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
                           )}
-                          {canDelete('RESORTS_SETUP') && (
+                          {canDelete('RESORT_BOOKING') && (
                             <button onClick={() => { setDelErr(''); setDeleteTarget(r); }} title="Delete"
                               className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600">
                               <Trash2 className="h-3.5 w-3.5" />

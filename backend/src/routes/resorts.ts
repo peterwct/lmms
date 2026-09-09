@@ -1,17 +1,25 @@
 import { Router } from 'express';
 import { authenticate, requirePasswordChanged } from '../middleware/auth';
-import { requirePermission } from '../middleware/permissions';
+import { requireResortsReferenceRead, requireResortsSetupAccess } from '../middleware/permissions';
 import * as ctrl from '../controllers/resorts.controller';
 
 const router = Router();
 router.use(authenticate, requirePasswordChanged);
 
-router.get('/',           requirePermission('RESORTS_SETUP', 'view'),   ctrl.listResorts);
-router.get('/:id',        requirePermission('RESORTS_SETUP', 'view'),   ctrl.getResort);
-router.post('/',          requirePermission('RESORTS_SETUP', 'create'), ctrl.createResort);
-router.put('/:id/info',   requirePermission('RESORTS_SETUP', 'edit'),   ctrl.updateResortInfo);
-router.put('/:id',        requirePermission('RESORTS_SETUP', 'edit'),   ctrl.updateResort);
-router.patch('/:id/toggle', requirePermission('RESORTS_SETUP', 'edit'), ctrl.toggleResortStatus);
-router.delete('/:id',     requirePermission('RESORTS_SETUP', 'delete'), ctrl.deleteResort);
+// SHARED REFERENCE READ, declared BEFORE the grant guard below so the guard does not apply to it.
+// RCI fn 1 (useRciResorts) and RCI fn 3 (useActiveResorts) both read this for their resort
+// dropdowns, and RCI runs on RESORT_BOOKING -- so it must stay reachable without the Resorts Setup
+// grant. Keep it above the router.use; moving it down silently empties those dropdowns.
+router.get('/', requireResortsReferenceRead(), ctrl.listResorts);
+
+// Everything below is Resorts Setup fn 2 proper: granted per user, all-or-nothing.
+router.use(requireResortsSetupAccess);
+
+router.get('/:id',          ctrl.getResort);
+router.post('/',            ctrl.createResort);
+router.put('/:id/info',     ctrl.updateResortInfo);
+router.put('/:id',          ctrl.updateResort);
+router.patch('/:id/toggle', ctrl.toggleResortStatus);
+router.delete('/:id',       ctrl.deleteResort);
 
 export default router;

@@ -11,6 +11,7 @@ router.post('/',             requirePermission('ADMIN', 'create'), ctrl.createUs
 router.get('/:id',           requirePermission('ADMIN', 'view'),   ctrl.getUser);
 router.put('/:id',           requirePermission('ADMIN', 'edit'),   ctrl.updateUser);
 router.patch('/:id/suspend', requirePermission('ADMIN', 'edit'),   ctrl.toggleSuspend);
+router.delete('/:id',        requirePermission('ADMIN', 'delete'), ctrl.deleteUser);
 router.patch('/:id/reset-password', requireIT,                     ctrl.resetPassword);
 router.post('/:id/clone',    requirePermission('ADMIN', 'create'), ctrl.cloneUser);
 

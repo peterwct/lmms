@@ -1,5 +1,5 @@
 export type AppModule = 'ADMIN' | 'MEMBERS' | 'AGREEMENTS' | 'AMC_BILLING' | 'RESORT_BOOKING' | 'ENTITLEMENTS' | 'PBS_SCHEME' | 'RESORTS_SETUP';
-export type ReportKey = 'MEMBER_REPORT' | 'AGREEMENT_REPORT' | 'EXPIRY_REPORT' | 'EXPIRING_MEMBER_REPORT' | 'REMAINING_VALUE_REPORT' | 'EXPIRY_SUMMARY_REPORT' | 'PBS_PAY_BY_MONTH_REPORT' | 'PBS_CLAIM_REPORT' | 'PBS_NOT_IN_PBS_REPORT' | 'PBS_VARIANCE_REPORT' | 'PBS_AUTO_TRANSFER';
+export type ReportKey = 'MEMBER_REPORT' | 'AGREEMENT_REPORT' | 'EXPIRY_REPORT' | 'EXPIRING_MEMBER_REPORT' | 'REMAINING_VALUE_REPORT' | 'EXPIRY_SUMMARY_REPORT' | 'PBS_PAY_BY_MONTH_REPORT' | 'PBS_CLAIM_REPORT' | 'PBS_NOT_IN_PBS_REPORT' | 'PBS_VARIANCE_REPORT' | 'PBS_AUTO_TRANSFER' | 'RESORTS_SETUP_ACCESS';
 export type UserStatus = 'ACTIVE' | 'SUSPENDED';
 export type MemberStatus = 'ACTIVE' | 'SUSPENDED' | 'CLOSED' | 'DECEASED' | 'TRANSFERRED';
 export type MemberType = 'INDIVIDUAL' | 'CORPORATE';
@@ -28,9 +28,14 @@ export interface Department {
   permissions?: Permission[];
 }
 
+// Split served by the backend (FUNCTION_KEYS in access.controller.ts), not re-derived here -- the
+// User Detail card tabs Reports and Functions apart on it.
+export type AccessKind = 'REPORT' | 'FUNCTION';
+
 export interface UserReportAccessEntry {
   reportKey: ReportKey;
   label: string;
+  kind: AccessKind;
   granted: boolean;
   grantedAt: string | null;
   grantedBy: { id: number; fullName: string } | null;
@@ -202,7 +207,7 @@ export interface RciEnrolmentList {
 }
 
 // One agreement offered by the RCI Enrolment add form's search picker (RCI fn 1). Served by
-// GET /api/rci-enrolments/agreement-search under RESORTS_SETUP view - NOT /api/agreements,
+// GET /api/rci-enrolments/agreement-search under RESORT_BOOKING view - NOT /api/agreements,
 // which needs the AGREEMENTS permission the RCI page's users may not hold.
 //
 // `enrolled` is computed for the whole page of results in one batched groupBy over
@@ -908,14 +913,18 @@ export interface AmcPricePoints {
 
 export interface AuditLog {
   id: number;
-  userId: number;
+  // null once the acting user's account is deleted (FK is ON DELETE SET NULL) — the row
+  // itself is kept, and actorUsername/actorName still name who performed the action.
+  userId: number | null;
+  actorUsername: string | null;
+  actorName: string | null;
   action: string;
   actionType: AuditActionType;
   targetType?: string;
   targetId?: number;
   metadata?: Record<string, unknown>;
   createdAt: string;
-  user: { id: number; username: string; fullName: string };
+  user: { id: number; username: string; fullName: string } | null;
 }
 
 export interface PaginatedResponse<T> {

@@ -385,10 +385,10 @@ export async function deleteRciEnrolment(req: Request, res: Response): Promise<v
 // It replaces the old hand-keyed key + lookupAgreement verify, which could not tell staff
 // that an agreement was already enrolled.
 //
-// It lives HERE, under /rci-enrolments + RESORTS_SETUP view, rather than reusing
+// It lives HERE, under /rci-enrolments + RESORT_BOOKING view, rather than reusing
 // /api/agreements: that route needs the AGREEMENTS permission, which the departments who
 // maintain RCI do not necessarily hold. Same reason Member Enquiry has its own
-// /api/members/enquiry. See "Cross-Module API Permissions" in CLAUDE.md.
+// /api/members/enquiry. See "Cross-module API permissions" in CLAUDE.md.
 const SEARCH_MIN = 2;
 
 export async function searchAgreements(req: Request, res: Response): Promise<void> {

@@ -161,7 +161,12 @@ export function AuditLog() {
                   <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">
                     {format(new Date(log.createdAt), 'dd/MM/yy HH:mm')}
                   </td>
-                  <td className="px-4 py-2.5 font-medium">{log.user.username}</td>
+                  <td className="px-4 py-2.5 font-medium">
+                    {log.user?.username ?? log.actorUsername ?? '—'}
+                    {!log.user && (
+                      <span className="ml-1.5 text-xs font-normal text-gray-400">(deleted)</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-gray-700 max-w-xs truncate">{log.action}</td>
                   <td className="px-4 py-2.5">
                     <Badge color={actionColor[log.actionType] ?? 'gray'}>{log.actionType}</Badge>

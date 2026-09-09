@@ -85,15 +85,20 @@ export function Sidebar() {
   const pbsItems: NavItem[] = [];
   if (canView('PBS_SCHEME')) pbsItems.push({ to: '/pbs', label: 'Payback Scheme', icon: <Award className="h-4 w-4" /> });
 
+  // canView('RESORTS_SETUP') already resolves to the per-user RESORTS_SETUP_ACCESS grant -- the
+  // department-matrix row for it is inert. See the note in AuthContext.
   const resortItems: NavItem[] = [];
-  if (canView('RESORTS_SETUP')) resortItems.push({ to: '/resorts', label: 'Resorts Setup', icon: <Palmtree className="h-4 w-4" /> });
-  // RCI (Resort Condominiums International) sits alongside Resorts Setup and is gated by
-  // the same RESORTS_SETUP permission -- no new AppModule enum value (see the enum-variant
-  // deploy footgun in CLAUDE.md).
-  if (canView('RESORTS_SETUP')) resortItems.push({ to: '/rci', label: 'RCI', icon: <Globe className="h-4 w-4" /> });
+  if (canView('RESORTS_SETUP'))
+    resortItems.push({ to: '/resorts', label: 'Resorts Setup', icon: <Palmtree className="h-4 w-4" /> });
 
-  const comingSoon: NavItem[] = [];
-  if (canView('RESORT_BOOKING')) comingSoon.push({ to: '/resort-booking', label: 'Resort Booking', icon: <Hotel className="h-4 w-4" />, soon: true });
+  // RCI (Resort Condominiums International) runs on RESORT_BOOKING, a pre-existing AppModule value
+  // that no route used before -- still no new enum variant (see the deploy footgun in CLAUDE.md).
+  // It is grouped with the coming Resort Booking module because they share that permission.
+  const bookingItems: NavItem[] = [];
+  if (canView('RESORT_BOOKING')) {
+    bookingItems.push({ to: '/rci', label: 'RCI', icon: <Globe className="h-4 w-4" /> });
+    bookingItems.push({ to: '/resort-booking', label: 'Resort Booking', icon: <Hotel className="h-4 w-4" />, soon: true });
+  }
 
   return (
     <aside className="flex h-screen w-60 flex-col bg-slate-900 text-white">
@@ -110,8 +115,8 @@ export function Sidebar() {
         {amcItems.length > 0      && <NavGroup title="AMC Billing"  items={amcItems} />}
         {pbsItems.length > 0      && <NavGroup title="Zurich PBS"    items={pbsItems} />}
         {resortItems.length > 0   && <NavGroup title="Resorts"      items={resortItems} />}
+        {bookingItems.length > 0  && <NavGroup title="Booking"      items={bookingItems} />}
         {reportItems.length > 0   && <NavGroup title="Reports"      items={reportItems} />}
-        {comingSoon.length > 0    && <NavGroup title="Coming Soon"  items={comingSoon} />}
       </nav>
 
       {/* User footer */}

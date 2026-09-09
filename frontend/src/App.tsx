@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { RequireEdit } from './components/RequirePermission';
+import { RequireEdit, RequireAccess } from './components/RequirePermission';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { ChangePassword } from './pages/ChangePassword';
@@ -95,26 +95,35 @@ export default function App() {
               <Route path="pbs/claim-report"     element={<PbsClaimReport />} />
               <Route path="pbs/not-in-pbs"       element={<PbsNotInPbsReport />} />
               <Route path="pbs/pay-by-month"     element={<PbsPayByMonthReport />} />
-              <Route path="resorts"             element={<ResortsSetup />} />
-              <Route path="resorts/products"    element={<Products />} />
-              <Route path="resorts/setup"       element={<ResortMaster />} />
-              <Route path="resorts/setup/:id"   element={<ResortDetail />} />
-              <Route path="resorts/apartment-types" element={<ApartmentTypes />} />
-              <Route path="resorts/units"       element={<ResortUnits />} />
-              <Route path="resorts/availability" element={<UnitsAvailability />} />
-              <Route path="resorts/maintenance" element={<ResortsMaintenance />} />
-              <Route path="resorts/holidays"    element={<Holidays />} />
-              {/* School holidays merged into the tabbed Holidays page — keep old bookmarks working */}
-              <Route path="resorts/school-holidays" element={<Navigate to="/resorts/holidays?tab=school" replace />} />
-              <Route path="resorts/seasons"     element={<CpSeasons />} />
-              <Route path="resorts/season-points" element={<SeasonPoints />} />
-              <Route path="resorts/lvc-codes"   element={<LvcCodes />} />
-              {/* Non-home points merged into the tabbed Season Points page — keep old bookmarks working */}
-              <Route path="resorts/lvc-season-points" element={<Navigate to="/resorts/season-points?type=away" replace />} />
-              <Route path="rci"                 element={<Rci />} />
-              <Route path="rci/enrolment"       element={<RciEnrolment />} />
-              <Route path="rci/weekly-interval" element={<RciWeeklyInterval />} />
-              <Route path="rci/bulk-bank"       element={<RciBulkBank />} />
+              {/* Resorts Setup fns 1-10: the RESORTS_SETUP matrix AND the per-user RESORTS_SETUP_ACCESS
+                  grant. Gated once here rather than per page, so the two landing pages need no
+                  checks of their own. The legacy redirects stay inside, so an ungated user bounces
+                  straight to / instead of landing on a page that 403s. */}
+              <Route element={<RequireAccess module="RESORTS_SETUP" reportKey="RESORTS_SETUP_ACCESS" />}>
+                <Route path="resorts"             element={<ResortsSetup />} />
+                <Route path="resorts/products"    element={<Products />} />
+                <Route path="resorts/setup"       element={<ResortMaster />} />
+                <Route path="resorts/setup/:id"   element={<ResortDetail />} />
+                <Route path="resorts/apartment-types" element={<ApartmentTypes />} />
+                <Route path="resorts/units"       element={<ResortUnits />} />
+                <Route path="resorts/availability" element={<UnitsAvailability />} />
+                <Route path="resorts/maintenance" element={<ResortsMaintenance />} />
+                <Route path="resorts/holidays"    element={<Holidays />} />
+                {/* School holidays merged into the tabbed Holidays page — keep old bookmarks working */}
+                <Route path="resorts/school-holidays" element={<Navigate to="/resorts/holidays?tab=school" replace />} />
+                <Route path="resorts/seasons"     element={<CpSeasons />} />
+                <Route path="resorts/season-points" element={<SeasonPoints />} />
+                <Route path="resorts/lvc-codes"   element={<LvcCodes />} />
+                {/* Non-home points merged into the tabbed Season Points page — keep old bookmarks working */}
+                <Route path="resorts/lvc-season-points" element={<Navigate to="/resorts/season-points?type=away" replace />} />
+              </Route>
+              {/* RCI fns 1-3 run on RESORT_BOOKING, not RESORTS_SETUP -- different audience. */}
+              <Route element={<RequireAccess module="RESORT_BOOKING" />}>
+                <Route path="rci"                 element={<Rci />} />
+                <Route path="rci/enrolment"       element={<RciEnrolment />} />
+                <Route path="rci/weekly-interval" element={<RciWeeklyInterval />} />
+                <Route path="rci/bulk-bank"       element={<RciBulkBank />} />
+              </Route>
               <Route path="amc/schedules"       element={<Schedules />} />
               <Route path="amc/invoices"        element={<Invoices />} />
               <Route path="amc/invoices/:id"    element={<InvoiceDetail />} />

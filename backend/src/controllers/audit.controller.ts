@@ -8,7 +8,12 @@ export async function listAuditLogs(req: Request, res: Response): Promise<void> 
 
   const where: Record<string, unknown> = {};
   if (userId)     where.userId     = parseInt(userId, 10);
-  if (username)   where.user       = { username: { contains: username, mode: 'insensitive' } };
+  // Match the actor snapshot as well as the live relation, so rows belonging to a
+  // deleted user (userId set null) are still reachable by username.
+  if (username)   where.OR = [
+    { actorUsername: { contains: username, mode: 'insensitive' } },
+    { user: { username: { contains: username, mode: 'insensitive' } } },
+  ];
   if (actionType) where.actionType = actionType;
   if (action)     where.action     = { contains: action, mode: 'insensitive' };
   if (targetType) where.targetType = { contains: targetType, mode: 'insensitive' };

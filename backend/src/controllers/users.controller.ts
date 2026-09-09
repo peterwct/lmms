@@ -112,6 +112,90 @@ export async function toggleSuspend(req: Request, res: Response): Promise<void> 
   res.json({ data: user });
 }
 
+export async function deleteUser(req: Request, res: Response): Promise<void> {
+  const id = parseInt(req.params.id, 10);
+  if (id === req.user.id) { res.status(400).json({ error: 'Cannot delete your own account' }); return; }
+
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      username: true, fullName: true, status: true, departmentId: true,
+      department: { select: { name: true, isLocked: true } },
+      _count: { select: { auditLogs: true, reportAccess: true, grantedReports: true } },
+    },
+  });
+  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+  // Lockout guard: an IT (isLocked) department must keep at least one active account,
+  // otherwise nobody can administer the system afterwards.
+  if (user.department.isLocked && user.status === 'ACTIVE') {
+    const remaining = await prisma.user.count({
+      where: { departmentId: user.departmentId, status: 'ACTIVE', id: { not: id } },
+    });
+    if (remaining === 0) {
+      res.status(409).json({
+        error: `${user.username} is the last active ${user.department.name} account. `
+             + 'Create or reactivate another one before deleting this user.',
+      });
+      return;
+    }
+  }
+
+  // The account goes; its history does not. AuditLog.userId is ON DELETE SET NULL and each
+  // row carries an actorUsername/actorName snapshot, so past actions still name this user.
+  // The user's own report grants cascade away; grants they ISSUED to others are kept, with
+  // grantedById set null (ON DELETE SET NULL).
+  //
+  // Both statements are ONE transaction: without it a failing audit write would leave the
+  // account deleted with no record of who deleted it.
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.delete({ where: { id } });
+      await writeAudit({
+        userId: req.user.id,
+        action: `Deleted user: ${user.username} (${user.fullName})`,
+        actionType: 'DELETE',
+        targetType: 'User',
+        targetId: id,
+        metadata: {
+          username: user.username,
+          fullName: user.fullName,
+          department: user.department.name,
+          auditLogsPreserved: user._count.auditLogs,
+          reportGrantsRemoved: user._count.reportAccess,
+          grantsIssuedToOthersKept: user._count.grantedReports,
+        },
+        tx,
+      });
+    });
+  } catch (e: unknown) {
+    const code = (e as { code?: string }).code;
+    // P2003 means some table still references this user with a RESTRICT foreign key. With the
+    // schema as designed nothing does, so in practice this fires when migration
+    // 20260909100000_user_delete_preserve_audit has not been applied to the database -- report
+    // that rather than a bare 500, which is what made the first failure hard to read.
+    if (code === 'P2003') {
+      res.status(409).json({
+        error: `Cannot delete ${user.username} — other records still reference this account. `
+             + 'If the User Delete migration has not been applied to this database, apply it and retry.',
+      });
+      return;
+    }
+    if (code === 'P2025') { res.status(404).json({ error: 'User not found' }); return; }
+    throw e;
+  }
+
+  res.json({
+    message: `User ${user.username} deleted`,
+    data: {
+      username: user.username,
+      fullName: user.fullName,
+      auditLogsPreserved: user._count.auditLogs,
+      reportGrantsRemoved: user._count.reportAccess,
+    },
+  });
+}
+
 export async function resetPassword(req: Request, res: Response): Promise<void> {
   const id = parseInt(req.params.id, 10);
   const user = await prisma.user.findUnique({ where: { id }, select: { username: true } });

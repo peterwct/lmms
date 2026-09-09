@@ -207,7 +207,7 @@ export function RciBulkBank() {
   // doesn't reach this year, scaffolds an all-blank grid whose save would be a no-op.
   const canSave = dirtyCount > 0 || (isNewYear && bankedCount > 0);
   // The save reconciles creates, updates and deletes in one call, so it needs all three
-  const mayWrite = canCreate('RESORTS_SETUP') && canEdit('RESORTS_SETUP') && canDelete('RESORTS_SETUP');
+  const mayWrite = canCreate('RESORT_BOOKING') && canEdit('RESORT_BOOKING') && canDelete('RESORT_BOOKING');
 
   // What is actually on the server, as opposed to what the grid is showing - the year
   // delete only makes sense when there is something stored to remove.
@@ -299,7 +299,7 @@ export function RciBulkBank() {
               {weekYears?.map(y => <option key={y} value={y}>{y}</option>)}
             </Select>
           </div>
-          {canDelete('RESORTS_SETUP') && ready && storedCount > 0 && (
+          {canDelete('RESORT_BOOKING') && ready && storedCount > 0 && (
             <Button size="sm" variant="secondary" className="ml-auto"
               onClick={() => { setDelErr(''); setDeleteOpen(true); }}>
               <Trash2 className="h-4 w-4" /> Delete year

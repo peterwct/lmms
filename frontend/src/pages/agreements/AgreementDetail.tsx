@@ -415,7 +415,7 @@ export function AgreementDetail() {
       <Card>
         <CardHeader className="flex items-center justify-between">
           <p className="font-semibold text-gray-700">RCI Information</p>
-          {canView('RESORTS_SETUP') && (
+          {canView('RESORT_BOOKING') && (
             <Link
               to={`/rci/enrolment?q=${encodeURIComponent(agmt.agreementNo)}`}
               className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"

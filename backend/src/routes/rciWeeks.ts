@@ -7,9 +7,9 @@ const router = Router();
 router.use(authenticate, requirePasswordChanged);
 
 // No 'edit' route exists: a week cannot be modified, only a whole year added or removed.
-router.get('/',        requirePermission('RESORTS_SETUP', 'view'),   ctrl.listRciWeeks);
-router.get('/years',   requirePermission('RESORTS_SETUP', 'view'),   ctrl.listRciWeekYears);
-router.post('/year',   requirePermission('RESORTS_SETUP', 'create'), ctrl.createRciWeekYear);
-router.delete('/year', requirePermission('RESORTS_SETUP', 'delete'), ctrl.deleteRciWeekYear);
+router.get('/',        requirePermission('RESORT_BOOKING', 'view'),   ctrl.listRciWeeks);
+router.get('/years',   requirePermission('RESORT_BOOKING', 'view'),   ctrl.listRciWeekYears);
+router.post('/year',   requirePermission('RESORT_BOOKING', 'create'), ctrl.createRciWeekYear);
+router.delete('/year', requirePermission('RESORT_BOOKING', 'delete'), ctrl.deleteRciWeekYear);
 
 export default router;

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Lock, Unlock, KeyRound, Copy } from 'lucide-react';
+import { Plus, Search, Lock, Unlock, KeyRound, Copy, Trash2 } from 'lucide-react';
 import { usersApi } from '../../api/users';
 import { departmentsApi } from '../../api/departments';
 import { apiError } from '../../api/client';
@@ -13,12 +13,14 @@ import { Badge } from '../../components/ui/Badge';
 import { Card } from '../../components/ui/Card';
 import { Pagination } from '../../components/ui/Pagination';
 import { Modal } from '../../components/ui/Modal';
+import { ConfirmDeleteModal } from '../../components/ui/ConfirmDeleteModal';
+import { ResultDialog } from '../../components/ui/ResultDialog';
 import { PageSpinner } from '../../components/ui/Spinner';
 import type { User } from '../../types';
 import { format } from 'date-fns';
 
 export function Users() {
-  const { canCreate, canEdit, isIT } = useAuth();
+  const { canCreate, canEdit, canDelete, isIT, user: me } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
 
@@ -28,6 +30,9 @@ export function Users() {
   const [page, setPage]         = useState(1);
   const [resetModal, setResetModal] = useState<User | null>(null);
   const [tempPwd, setTempPwd]   = useState('');
+  const [delTarget, setDelTarget] = useState<User | null>(null);
+  const [delErr, setDelErr]     = useState('');
+  const [result, setResult]     = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['users', search, deptId, status, page],
@@ -47,6 +52,21 @@ export function Users() {
   const resetMut = useMutation({
     mutationFn: (id: number) => usersApi.resetPassword(id),
     onSuccess: (res) => { setTempPwd(res.data.tempPassword); qc.invalidateQueries({ queryKey: ['users'] }); },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => usersApi.remove(id),
+    onSuccess: (res) => {
+      const d = res.data.data;
+      setDelTarget(null);
+      setResult(
+        `User deleted - ${d.fullName} (@${d.username}). `
+        + `${d.auditLogsPreserved} audit log ${d.auditLogsPreserved === 1 ? 'entry is' : 'entries are'} kept `
+        + `under the same username; ${d.reportGrantsRemoved} report ${d.reportGrantsRemoved === 1 ? 'grant was' : 'grants were'} removed.`,
+      );
+      qc.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (err) => setDelErr(apiError(err)),
   });
 
   return (
@@ -130,6 +150,15 @@ export function Users() {
                             </button>
                           </>
                         )}
+                        {canDelete('ADMIN') && u.id !== me?.id && (
+                          <button
+                            title="Delete user"
+                            onClick={() => { setDelErr(''); setDelTarget(u); }}
+                            className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -154,6 +183,30 @@ export function Users() {
         </div>
         <p className="mt-3 text-xs text-gray-500">Share this securely. The user will be required to change it on next login.</p>
       </Modal>
+
+      <ConfirmDeleteModal
+        open={!!delTarget}
+        title="Delete User"
+        description={
+          'This permanently removes the user ID and its report access. The account cannot log in again '
+          + 'and the username becomes available for reuse. Their audit log history is kept. '
+          + 'To bar access without removing the ID, suspend the account instead.'
+        }
+        rows={delTarget ? [
+          { label: 'Name',       value: delTarget.fullName },
+          { label: 'Username',   value: delTarget.username },
+          { label: 'Department', value: delTarget.department.name },
+          { label: 'Status',     value: delTarget.status },
+          { label: 'Last login', value: delTarget.lastLoginAt ? format(new Date(delTarget.lastLoginAt), 'dd/MM/yyyy HH:mm') : 'Never' },
+        ] : []}
+        error={delErr}
+        loading={deleteMut.isPending}
+        confirmLabel="Delete user"
+        onConfirm={() => delTarget && deleteMut.mutate(delTarget.id)}
+        onClose={() => { setDelTarget(null); setDelErr(''); }}
+      />
+
+      <ResultDialog message={result} onClose={() => setResult(null)} />
     </div>
   );
 }

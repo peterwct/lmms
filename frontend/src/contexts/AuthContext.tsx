@@ -52,11 +52,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isIT = user?.department.isLocked ?? false;
 
-  const canView   = (m: AppModule) => isIT || (getPerm(user, m)?.canView   ?? false);
-  const canCreate = (m: AppModule) => isIT || (getPerm(user, m)?.canCreate ?? false);
-  const canEdit   = (m: AppModule) => isIT || (getPerm(user, m)?.canEdit   ?? false);
-  const canDelete = (m: AppModule) => isIT || (getPerm(user, m)?.canDelete ?? false);
   const hasReport = (key: ReportKey) => isIT || (user?.reportAccess?.includes(key) ?? false);
+
+  // RESORTS_SETUP is NOT department-driven: it is granted per user via RESORTS_SETUP_ACCESS, its
+  // department-matrix row is inert, and the Departments screen hides it. The grant is
+  // all-or-nothing, so all four helpers collapse to the same answer for that module. Handled here
+  // rather than at the ~40 can*('RESORTS_SETUP') call sites, which keep reading naturally.
+  // Mirrors requireResortsSetupAccess on the backend -- change both together.
+  const grantedModule = (m: AppModule) =>
+    m === 'RESORTS_SETUP' ? hasReport('RESORTS_SETUP_ACCESS') : null;
+
+  const perm = (m: AppModule, field: 'canView' | 'canCreate' | 'canEdit' | 'canDelete') =>
+    isIT || (grantedModule(m) ?? (getPerm(user, m)?.[field] ?? false));
+
+  const canView   = (m: AppModule) => perm(m, 'canView');
+  const canCreate = (m: AppModule) => perm(m, 'canCreate');
+  const canEdit   = (m: AppModule) => perm(m, 'canEdit');
+  const canDelete = (m: AppModule) => perm(m, 'canDelete');
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout, refresh, canView, canCreate, canEdit, canDelete, hasReport, isIT }}>

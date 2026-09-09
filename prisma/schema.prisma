@@ -206,15 +206,17 @@ model AmcSchedule {
 }
 
 model AuditLog {
-  id         Int             @id @default(autoincrement())
-  userId     Int
-  action     String
-  actionType AuditActionType
-  targetType String?
-  targetId   Int?
-  metadata   Json?
-  createdAt  DateTime        @default(now()) @db.Timestamptz(3)
-  user       User            @relation(fields: [userId], references: [id])
+  id            Int             @id @default(autoincrement())
+  userId        Int?
+  actorUsername String?
+  actorName     String?
+  action        String
+  actionType    AuditActionType
+  targetType    String?
+  targetId      Int?
+  metadata      Json?
+  createdAt     DateTime        @default(now()) @db.Timestamptz(3)
+  user          User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model CancellationReason {
@@ -832,11 +834,11 @@ model UserReportAccess {
   id          Int       @id @default(autoincrement())
   userId      Int
   reportKey   ReportKey
-  grantedById Int
+  grantedById Int?
   grantedAt   DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime  @db.Timestamptz(3)
-  user        User      @relation("userReports", fields: [userId], references: [id])
-  grantedBy   User      @relation("grantedReports", fields: [grantedById], references: [id])
+  user        User      @relation("userReports", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy   User?     @relation("grantedReports", fields: [grantedById], references: [id], onDelete: SetNull)
 
   @@unique([userId, reportKey])
 }
@@ -894,6 +896,7 @@ enum ReportKey {
   PBS_NOT_IN_PBS_REPORT
   PBS_VARIANCE_REPORT
   PBS_AUTO_TRANSFER
+  RESORTS_SETUP_ACCESS
 }
 
 enum BillingStatus {

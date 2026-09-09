@@ -3,7 +3,7 @@ import { ReportKey } from '@prisma/client';
 import { prisma } from '../../utils/prisma';
 import { writeAudit } from '../../utils/audit';
 
-const ALL_REPORT_KEYS: ReportKey[] = ['MEMBER_REPORT', 'AGREEMENT_REPORT', 'EXPIRY_REPORT', 'EXPIRING_MEMBER_REPORT', 'REMAINING_VALUE_REPORT', 'EXPIRY_SUMMARY_REPORT', 'PBS_PAY_BY_MONTH_REPORT', 'PBS_CLAIM_REPORT', 'PBS_NOT_IN_PBS_REPORT', 'PBS_VARIANCE_REPORT', 'PBS_AUTO_TRANSFER'];
+const ALL_REPORT_KEYS: ReportKey[] = ['MEMBER_REPORT', 'AGREEMENT_REPORT', 'EXPIRY_REPORT', 'EXPIRING_MEMBER_REPORT', 'REMAINING_VALUE_REPORT', 'EXPIRY_SUMMARY_REPORT', 'PBS_PAY_BY_MONTH_REPORT', 'PBS_CLAIM_REPORT', 'PBS_NOT_IN_PBS_REPORT', 'PBS_VARIANCE_REPORT', 'PBS_AUTO_TRANSFER', 'RESORTS_SETUP_ACCESS'];
 
 const REPORT_LABELS: Record<ReportKey, string> = {
   MEMBER_REPORT:           'Member Report',
@@ -17,7 +17,20 @@ const REPORT_LABELS: Record<ReportKey, string> = {
   PBS_NOT_IN_PBS_REPORT:   'Not In PBS Report',
   PBS_VARIANCE_REPORT:     'PBS Variance Report',
   PBS_AUTO_TRANSFER:       'PBS Auto Transfer to Claim',
+  // Gates a whole MODULE rather than a report -- it is the sole gate for Resorts Setup, the
+  // department-matrix row being inert. The label is also the audit text, hence the wording:
+  // "Granted Resorts Setup (module) access to <name>".
+  RESORTS_SETUP_ACCESS:    'Resorts Setup (module)',
 };
+
+// Not every key is a report. These grant a FUNCTION: PBS_AUTO_TRANSFER runs the Auto Transfer to
+// Claim maintenance process, RESORTS_SETUP_ACCESS is the sole gate for the Resorts Setup module.
+// The distinction is served as `kind` so the User Detail card can tab them apart -- classify new
+// keys HERE rather than in the frontend, or the two will drift.
+const FUNCTION_KEYS = new Set<ReportKey>(['PBS_AUTO_TRANSFER', 'RESORTS_SETUP_ACCESS']);
+
+export type AccessKind = 'REPORT' | 'FUNCTION';
+const kindOf = (key: ReportKey): AccessKind => (FUNCTION_KEYS.has(key) ? 'FUNCTION' : 'REPORT');
 
 export async function getReportAccess(req: Request, res: Response): Promise<void> {
   const userId = Number(req.params.userId);
@@ -41,6 +54,7 @@ export async function getReportAccess(req: Request, res: Response): Promise<void
     return {
       reportKey,
       label: REPORT_LABELS[reportKey],
+      kind: kindOf(reportKey),
       granted: targetUser.department.isLocked ? true : !!grant,
       grantedAt: grant?.grantedAt ?? null,
       grantedBy: grant?.grantedBy ?? null,

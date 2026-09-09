@@ -16,6 +16,9 @@ export const usersApi = {
   toggleSuspend: (id: number) =>
     api.patch<{ data: User }>(`/users/${id}/suspend`),
 
+  remove: (id: number) =>
+    api.delete<{ message: string; data: { username: string; fullName: string; auditLogsPreserved: number; reportGrantsRemoved: number } }>(`/users/${id}`),
+
   resetPassword: (id: number) =>
     api.patch<{ tempPassword: string }>(`/users/${id}/reset-password`),
 

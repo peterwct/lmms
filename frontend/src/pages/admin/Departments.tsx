@@ -6,15 +6,21 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
+import { Info } from 'lucide-react';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { PageSpinner } from '../../components/ui/Spinner';
 import type { AppModule, Permission, Department } from '../../types';
 
-const MODULES: AppModule[] = ['ADMIN', 'MEMBERS', 'AGREEMENTS', 'AMC_BILLING', 'RESORT_BOOKING', 'ENTITLEMENTS', 'PBS_SCHEME', 'RESORTS_SETUP'];
+// RESORTS_SETUP is deliberately ABSENT: it is granted per user via RESORTS_SETUP_ACCESS, so its
+// department-matrix row has no effect and showing four dead checkboxes was misleading. The modal
+// carries a note pointing at the user profile instead. Do not add it back without also changing
+// requireResortsSetupAccess (backend) and the AuthContext note that mirrors it.
+const MODULES: AppModule[] = ['ADMIN', 'MEMBERS', 'AGREEMENTS', 'AMC_BILLING', 'RESORT_BOOKING', 'ENTITLEMENTS', 'PBS_SCHEME'];
 const MODULE_LABELS: Record<AppModule, string> = {
   ADMIN: 'Admin', MEMBERS: 'Members', AGREEMENTS: 'Agreements',
-  AMC_BILLING: 'AMC Billing', RESORT_BOOKING: 'Resort Booking', ENTITLEMENTS: 'Entitlements',
+  // Resort Booking also gates the RCI module (fns 1-3), which is why the label names both.
+  AMC_BILLING: 'AMC Billing', RESORT_BOOKING: 'Resort Booking / RCI', ENTITLEMENTS: 'Entitlements',
   PBS_SCHEME: 'Zurich PBS', RESORTS_SETUP: 'Resorts Setup',
 };
 
@@ -135,6 +141,18 @@ export function Departments() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 flex gap-2.5">
+              <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+              <p className="text-xs text-amber-900">
+                <strong>Resorts Setup is not set here.</strong> It is granted to individual users, not to a
+                whole department — open <strong>Admin &rarr; Users &rarr;</strong> the user, and grant
+                &ldquo;Resorts Setup (module)&rdquo; under <strong>Report &amp; Function Access</strong>.
+                A granted user gets full access to all 10 Resorts Setup functions; IT always has it.
+                <br />
+                RCI (Enrolment, Weekly Interval, Bulk Bank) is separate and <em>is</em> set here — it
+                follows <strong>Resort Booking / RCI</strong> above.
+              </p>
             </div>
             <div className="flex gap-3">
               <Button onClick={() => savePermsMut.mutate()} loading={savePermsMut.isPending}>Save permissions</Button>
