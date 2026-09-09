@@ -1745,6 +1745,30 @@ them at import would make a re-import disagree with Informix.
 > the caps was offered and declined — they mirror Informix `char(10)`/`char(20)`, though the
 > Postgres columns are `text` and the caps live only in the zod schema and the form.
 >
+> ### An RCI NUMBER belongs to ONE membership (business rule 2026-09-09)
+>
+> The same `rciNo` may be reused freely across **one membership's own agreements** -- 34 numbers
+> legitimately are (`1704-02762` sits on 7 rows of a single membership) -- but it must **not**
+> appear under a **different** membership. `createRciEnrolment` and `updateRciEnrolment` refuse
+> **409** naming the membership, agreement and serial that already own it
+> (`rciNoOwnedByAnotherMembership()`).
+>
+> **`PENDING` is EXEMPT.** It is the sanctioned placeholder for "enrolled, number not yet
+> issued" and sits on **3,335 rows across 3,255 memberships**, so treating it as a real number
+> would block almost every new enrolment. Matched case-insensitively, via `RCI_NO_EXEMPT`.
+>
+> **A SAVE-TIME rule, and deliberately not a DB unique index** -- the same reasoning as the
+> one-enrolment-per-agreement guard: **58 migrated numbers already span more than one
+> membership** (52 across 2, 6 across 3), mostly legacy keying errors -- one stores a backtick
+> where a 1 belongs (`` `704-00853 ``) -- plus the `0000-00000` placeholder, and a constraint would make
+> the Informix data unloadable.
+>
+> **On update the check runs ONLY when `rciNo` is actually changing.** Re-running it on every
+> edit would block an unrelated correction -- a date, a status -- to one of those 58 rows that
+> nobody broke. Changing a number *to* one owned elsewhere is still refused. `updateRciEnrolment`
+> therefore loads the row first: the payload carries no `membershipNo` (the agreement key is
+> immutable) and the check needs it.
+
 > **A second enrolment on an agreement that already has one is refused 409** at the full natural
 > key, naming the existing RCI no and serial. This is a **controller lookup, not a constraint,
 > and it cannot become one**: the key is deliberately non-unique (90 migrated groups hold 2-4
@@ -2392,8 +2416,8 @@ DELETE /api/season-points/version?type=&resortCode=&effectiveDate=  Delete a who
 GET  /api/rci-enrolments?q=&coCode=&rciStatus=&page=&pageSize=  RCI enrolment list, paginated (q = membership/agreement/RCI no/name/co-owner/resort code; RESORTS_SETUP view). Each row also carries memberId + agreementId, resolved per page by natural key and NOT stored, so the list can link back to Member/Agreement detail. Either may be null when the row's natural key resolves to nothing, which on the 2026-08-27 data was 4 rows (no member) and 6 (no agreement) - all six Informix source defects (a branch-code typo, a coCode typo, a `00000-` placeholder duplicate, a wrong membership, a junk `ABC`/`123` row and a legacy coCode 12), **rectified at source on 2026-09-03, so a refresh after that date should make this zero**
 GET  /api/rci-enrolments/agreement-search?q=&coCode=&limit=  Agreement picker for the add form: search by membership no, member name or agreement no (the same three columns listAgreements searches). Top-N, NOT paginated - limit default 20 / cap 50, with `total` returned so the form can say "refine your search"; a `q` under 2 chars is an EMPTY 200, not a 400, since the form fetches as the user types. Each row carries memberName, memberType, nominee1Name, `suggestedName1` (the member's fullName for an INDIVIDUAL, nominee 1's for a CORPORATE - resolved server-side and pre-truncated to name1's 40 chars) and `enrolled`/`enrolmentSerialNo`, computed for the whole page in ONE batched groupBy on the full natural key. Already-enrolled agreements are returned FLAGGED, never filtered out - hiding them would read as "no such agreement". Lives here rather than on /api/agreements because that route needs the AGREEMENTS permission (RESORTS_SETUP view). **Replaced `GET /lookup`, which is gone** (RESORTS_SETUP view)
 GET  /api/rci-enrolments/:id                Enrolment + memberName/acctClassify resolved by natural key (RESORTS_SETUP view)
-POST /api/rci-enrolments                    Create enrolment; serialNo allocated as max+1 (RESORTS_SETUP create; 400 if the agreement key names no agreement)
-PUT  /api/rci-enrolments/:id                Update enrolment; coCode/membershipNo/agreementNo are immutable (RESORTS_SETUP edit)
+POST /api/rci-enrolments                    Create enrolment; serialNo allocated as max+1 (RESORTS_SETUP create; 400 if the agreement key names no agreement; 409 if the agreement is already enrolled, or if the rciNo already belongs to a DIFFERENT membership - PENDING exempt, see the RCI-number rule under "### RciEnrolment")
+PUT  /api/rci-enrolments/:id                Update enrolment; coCode/membershipNo/agreementNo are immutable (RESORTS_SETUP edit; 409 if rciNo is CHANGED to one owned by another membership - an edit that leaves rciNo alone is never blocked, so the 58 legacy shared numbers stay correctable)
 DELETE /api/rci-enrolments/:id              Delete enrolment (RESORTS_SETUP delete; no usage guard)
 GET  /api/rci-weeks?year=                    One year's RCI weeks, unpaginated, ordered weekNo asc; year REQUIRED (400 otherwise). Returns { data, year, weeks } (RESORTS_SETUP view)
 GET  /api/rci-weeks/years                   Distinct years set up, newest first — feeds the year dropdown (RESORTS_SETUP view)

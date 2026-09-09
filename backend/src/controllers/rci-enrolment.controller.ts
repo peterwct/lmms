@@ -99,6 +99,39 @@ async function findAgreement(coCode: string, membershipNo: string, agreementNo: 
   });
 }
 
+// An RCI number belongs to ONE membership (business rule 2026-09-09). The same rciNo may be
+// reused freely across that membership's own agreements - 34 numbers legitimately are, e.g.
+// 1704-02762 on 7 rows of one membership - but it must not appear under a different one.
+//
+// PENDING is EXEMPT: it is the sanctioned placeholder for "enrolled, number not yet issued"
+// and sits on 3,335 rows across 3,255 memberships, so treating it as a real number would
+// block almost every new enrolment. Matched case-insensitively so 'pending' cannot slip past.
+//
+// SAVE-TIME rule, deliberately not a DB constraint: 58 migrated numbers already span more
+// than one membership (52 across 2, 6 across 3 - including legacy typos like `704-00853 and
+// the 0000-00000 placeholder), and a unique index would make the Informix data unloadable.
+// Those rows stay readable and editable; see updateRciEnrolment for why an edit that leaves
+// rciNo alone is never blocked.
+const RCI_NO_EXEMPT = new Set(['PENDING']);
+
+async function rciNoOwnedByAnotherMembership(
+  rciNo: string | null | undefined,
+  membershipNo: string,
+  excludeId?: string,
+) {
+  const v = (rciNo ?? '').trim();
+  if (!v || RCI_NO_EXEMPT.has(v.toUpperCase())) return null;
+  return prisma.rciEnrolment.findFirst({
+    where: {
+      rciNo: v,
+      membershipNo: { not: membershipNo },
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    orderBy: { serialNo: 'asc' },
+    select: { membershipNo: true, agreementNo: true, serialNo: true },
+  });
+}
+
 // The CURRENT enrolment for an agreement, plus how many it has in total.
 //
 // An agreement can hold several rows - typically a lapsed 1704-* enrolment alongside a
@@ -245,6 +278,17 @@ export async function createRciEnrolment(req: Request, res: Response): Promise<v
     return;
   }
 
+  // An RCI number belongs to one membership - see rciNoOwnedByAnotherMembership().
+  const rciClash = await rciNoOwnedByAnotherMembership(d.rciNo, d.membershipNo);
+  if (rciClash) {
+    res.status(409).json({
+      error: `RCI no ${(d.rciNo ?? '').trim()} already belongs to membership ${rciClash.membershipNo} `
+           + `(agreement ${rciClash.agreementNo}, serial ${rciClash.serialNo}). `
+           + `The same RCI no may only be reused across one membership's own agreements.`,
+    });
+    return;
+  }
+
   try {
     // serialNo continues the Informix `serial` sequence. Allocated inside the
     // transaction; the unique index is the backstop if two creates ever race.
@@ -276,6 +320,31 @@ export async function updateRciEnrolment(req: Request, res: Response): Promise<v
     .partial()
     .safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() }); return; }
+
+  // The row is loaded first because the payload carries no membershipNo (the agreement key is
+  // immutable) and the RCI-number check needs it.
+  const current = await prisma.rciEnrolment.findUnique({
+    where: { id: req.params.id },
+    select: { membershipNo: true, rciNo: true },
+  });
+  if (!current) { res.status(404).json({ error: 'RCI enrolment not found' }); return; }
+
+  // Only checked when rciNo is actually CHANGING. 58 migrated numbers already span more than
+  // one membership, and re-running the guard on every edit would block an unrelated correction
+  // (a date, a status) to a row nobody broke. Changing the number TO one owned elsewhere is
+  // still refused.
+  const nextRciNo = parsed.data.rciNo;
+  if (nextRciNo !== undefined && (nextRciNo ?? '').trim() !== (current.rciNo ?? '').trim()) {
+    const clash = await rciNoOwnedByAnotherMembership(nextRciNo, current.membershipNo, req.params.id);
+    if (clash) {
+      res.status(409).json({
+        error: `RCI no ${(nextRciNo ?? '').trim()} already belongs to membership ${clash.membershipNo} `
+             + `(agreement ${clash.agreementNo}, serial ${clash.serialNo}). `
+             + `The same RCI no may only be reused across one membership's own agreements.`,
+      });
+      return;
+    }
+  }
 
   try {
     const row = await prisma.rciEnrolment.update({
