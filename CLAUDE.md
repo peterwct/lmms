@@ -121,7 +121,7 @@ npm run prisma:studio        # browse database
 **Required env vars** (`.env` at project root):
 ```
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/lhb_mms
-NODE_TLS_REJECT_UNAUTHORIZED=0   # corporate proxy — required for Prisma binary downloads
+NODE_TLS_REJECT_UNAUTHORIZED=0   # TLS interception — required for Prisma binary downloads
 JWT_SECRET=lhb-mms-jwt-secret-key-change-this-in-production-2026
 JWT_EXPIRES_IN=8h                # session duration (cookie maxAge auto-matches)
 PORT=3001
@@ -135,11 +135,48 @@ BCRYPT_ROUNDS=12
 - Doesn't affect `refresh-test-db.ps1` / `migrate-table.ps1` — those run as separate `ts-node` processes and intentionally use `$env:DATABASE_URL`.
 - Doesn't affect the test server — PM2 gets env from `ecosystem.config.js` `env_production` and no root `.env` is deployed there, so `dotenv.config` silently no-ops (missing file = nothing loaded/overridden).
 
-## Corporate proxy quirks
+## TLS interception quirks (dev machine)
+
+Outbound HTTPS on the dev machine is **intercepted and re-signed**, so anything that validates a
+certificate chain against its own trust store fails until it is told about the interceptor's root CA.
+Two separate interceptors have caused this — a corporate proxy and, since around Sept 2026, **Avast
+antivirus' Web/Mail Shield** — so treat "unable to get local issuer certificate" as an environment
+problem, not a broken remote.
 
 - `NODE_TLS_REJECT_UNAUTHORIZED=0` must be set before running `prisma migrate dev` or `prisma generate`
 - `bcryptjs` is used instead of `bcrypt` (native build blocked by proxy SSL)
 - `@prisma/client` is in root `package.json`, not `backend/package.json` — backend resolves it from root `node_modules/`
+- **Node already trusts Avast** via `NODE_EXTRA_CA_CERTS=C:\ProgramData\Avast Software\Avast\wscert.pem`
+  (a machine env var, not set by this project) — which is why npm/Prisma kept working while **git did not**.
+
+### git push/fetch: `SSL certificate problem: unable to get local issuer certificate`
+
+**Git does not read `NODE_EXTRA_CA_CERTS`.** Git for Windows uses the OpenSSL backend with its own
+bundle (`C:/Program Files/Git/mingw64/ssl/certs/ca-bundle.crt`, 127 CAs), which has no reason to
+contain Avast's self-signed root — so every `push`/`fetch`/`ls-remote` to GitHub fails once Avast's
+HTTPS scanning is on. It surfaced on 2026-09-09; the previous push (2026-09-03) had worked, so
+scanning was enabled or the cert regenerated in between.
+
+**Fixed by giving git a combined bundle**, applied globally on 2026-09-09:
+
+```bash
+mkdir -p ~/.gitcerts
+cat "/c/Program Files/Git/mingw64/ssl/certs/ca-bundle.crt" \
+    "/c/ProgramData/Avast Software/Avast/wscert.pem" > ~/.gitcerts/ca-bundle-avast.crt
+git config --global http.sslCAInfo "C:/Users/peter/.gitcerts/ca-bundle-avast.crt"   # 128 certs
+```
+
+- **Do NOT use `http.sslVerify=false`.** It pushes blind over a connection that is genuinely being
+  intercepted. The combined bundle keeps verification on and is barely more work.
+- Use a **Windows-style path** (`C:/Users/...`) in the config value — Git for Windows does not
+  reliably resolve an MSYS `/c/Users/...` path there.
+- Set at **`--global`** scope, so it covers every repo on the machine (Avast intercepts everything),
+  and it overrides the system-level `http.sslcainfo` in `C:/Program Files/Git/etc/gitconfig`, which
+  is left untouched.
+- **Avast regenerates `wscert.pem` on some updates.** If pushes start failing again with the same
+  message, re-run the `cat` line only — the config path stays valid.
+- One-shot equivalent, if you would rather not change global config:
+  `git -c http.sslCAInfo=<bundle> push origin <branch>`.
 
 ## Prisma 5.22.0 quirks
 
