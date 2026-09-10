@@ -14,7 +14,8 @@
  *  [1]  re_cocode         -> coCode (any Product coCode, not just 03/15/02)
  *  [2]  re_short_name     -> shortName
  *  [3]  re_resort_name    -> resortName
- *  [4]  re_exc_reg        -> (skipped — per business decision)
+ *  [4]  re_exc_reg        -> (skipped — per business decision. NOTE `mar` is NOT this
+ *                            column — it is a Y/N flag set from MAR_YES below.)
  *  [5]  re_rci_aff        -> rciAffiliate (Y/N — indicator for RCI affiliation)
  *  [6]  re_rci_code       -> rciCode
  *  [7]  re_rci_release    -> (skipped — per business decision)
@@ -44,6 +45,9 @@
  * checkInTime / checkOutTime are NOT in the Informix source — they were supplied
  * by the business (2026-07-23) and are applied from CHECK_TIMES below so a
  * re-import does not wipe them.
+ *
+ * mar is the same kind of thing — business-supplied, no Informix source — and is set
+ * from MAR_YES below. See the comment there for why it is insert-only.
  *
  * Run: npx ts-node --transpile-only prisma/migrate-resorts.ts
  */
@@ -81,6 +85,20 @@ const CHECK_TIMES: Record<string, { checkIn: string; checkOut: string }> = {
   'L-101':   { checkIn: '2PM-5PM',    checkOut: '10AM' },
   'L-103A':  { checkIn: '3.00PM',     checkOut: '12.00PM' },
 };
+
+// MAR (Make Available Resorts) — business-supplied 2026-09-10, and NOT from re_exc_reg,
+// which stays skipped: that column is char(3) free text (Y/N/APR/'10') and its Y set is not
+// the intended one — V-AWT3 is an active partner resort and is excluded here, while L-10016
+// carries 'Y' there and is not wanted.
+//
+// INSERT-ONLY, deliberately unlike the reconciling ACTIVE_CODES (migrate-products.ts) and
+// RCI_RESERVED (migrate-resort-units.ts), which also sweep existing rows. `mar` has no
+// Informix source, so it is pure app data on a table that -Table Resort and
+// refresh-test-db.ps1 both TRUNCATE — stamping it on insert is enough to reproduce this
+// baseline after a refresh, while an additive re-run leaves existing rows and staff edits
+// alone. To change the MAR set, edit this const (a flag keyed in fn 2 does not survive the
+// next truncating refresh unless it is listed here).
+const MAR_YES = new Set(['V-CLC1', 'V-CLC2', 'V-LDBR', 'V-SGH', 'V-SGI1', 'V-SGI5']);
 
 async function* readLines(filename: string): AsyncGenerator<string[]> {
   const fp = path.join(MIGRATE_DIR, filename);
@@ -135,6 +153,8 @@ async function main() {
       shortName:        t(c[2]),
       resortName:       t(c[3]) ?? '(no name)',
       // c[4] re_exc_reg and c[7] re_rci_release intentionally skipped
+      // mar is NOT c[4] -- see MAR_YES above
+      mar:              MAR_YES.has(resortCode) ? 'Y' : 'N',
       rciAffiliate:     t(c[5]),
       rciCode:          t(c[6]),
       lockOnOff:        t(c[8]),

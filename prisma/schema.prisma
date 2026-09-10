@@ -582,6 +582,7 @@ model Resort {
   checkOutTime     String?
   status           String              @default("A")
   paymt            String?
+  mar              String              @default("N")
   lockStatus       String?
   legacyCreateUser String?
   legacyCreateDate DateTime?

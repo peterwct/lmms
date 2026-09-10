@@ -31,6 +31,12 @@ const aptBlockSchema = z.object({
 // LVC exchange programme. They allocate N interchangeable units of a sleep type for a period
 // rather than naming real apartments, and the legacy data already numbers them "N-occupancy"
 // (V-CLC1 SLEEP4 = 1-4 .. 15-4). One batch keys the count instead of the units.
+//
+// A MAR resort is one flagged `Resort.mar = 'Y'` in fn 2 (2026-09-10). It used to be inferred as
+// "any resort not on one of our own coCodes", which over-reached: a partner resort is not
+// automatically made available to our members. Both the picker and createAptBlockBatch key off
+// the flag now; OWN_CO_CODES still gates the own-product half, since those resorts have real
+// numbered apartments and must never take a generated "N-occupancy" batch.
 const MAR_MAX_UNITS = 200;               // sanity cap; V-LDBR is the largest today at 78
 const OWN_CO_CODES = ['03', '15', '02']; // our own products — NOT MAR, they use createAptBlock
 
@@ -385,6 +391,16 @@ export async function createAptBlockBatch(req: Request, res: Response): Promise<
   if (OWN_CO_CODES.includes(resort.coCode)) {
     res.status(400).json({
       error: `${resortCode} belongs to one of our own products (03/15/02). Use Add availability to set up its units individually.`,
+    });
+    return;
+  }
+
+  // MAR is an explicit flag (fn 2), not an inference from coCode: a partner resort is not
+  // automatically made available to our members. Kept in step with the picker, which lists
+  // mar='Y' resorts only.
+  if (resort.mar !== 'Y') {
+    res.status(400).json({
+      error: `${resortCode} is not flagged as a MAR resort. Tick MAR on it in Resorts Master Maintenance and Setup (fn 2) first.`,
     });
     return;
   }

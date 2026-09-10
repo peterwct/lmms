@@ -126,7 +126,7 @@ export function ResortMaster() {
                   <th className="px-4 py-3 text-left">Short</th>
                   <th className="px-4 py-3 text-left">Resort Name</th>
                   <th className="px-4 py-3 text-left">RCI Affiliation</th>
-                  <th className="px-4 py-3 text-left">RCI Code</th>
+                  <th className="px-4 py-3 text-left">MAR</th>
                   <th className="px-4 py-3 text-left">Status</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -143,7 +143,11 @@ export function ResortMaster() {
                         {r.rciAffiliate === 'Y' ? 'Yes' : 'No'}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 font-mono">{r.rciCode ?? '—'}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.mar === 'Y' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {r.mar === 'Y' ? 'Yes' : 'No'}
+                      </span>
+                    </td>
                     <td className="px-4 py-2.5">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.status === 'A' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                         {r.status === 'A' ? 'Active' : 'Inactive'}

@@ -25,9 +25,12 @@ const PAGE_SIZE = 50;
 const EMPTY_FORM = { resortCode: '', apartmentType: '', unitNo: '', startDate: '', endDate: '' };
 
 // Our own products. Their resorts have real, individually-numbered apartments, so they are set up
-// one unit at a time through Add availability. Everything else is MAR (Make Available Resorts) —
-// partner/exchange resorts that allocate N interchangeable units of a sleep type for a period,
-// numbered "N-occupancy" — and goes through the batch form. The server enforces the same split.
+// one unit at a time through Add availability. MAR (Make Available Resorts) resorts allocate N
+// interchangeable units of a sleep type for a period, numbered "N-occupancy", and go through the
+// batch form instead. The server enforces the same split.
+//
+// MAR is identified by `Resort.mar === 'Y'` (the fn 2 flag), NOT by "not one of our coCodes" —
+// see marResorts below. OWN_CO_CODES still gates the own-product half.
 const OWN_CO_CODES = ['03', '15', '02'];
 
 const MAR_MAX_UNITS = 200;
@@ -444,7 +447,17 @@ export function UnitsAvailability() {
   // list; the filter above deliberately keeps the whole of it so MAR records stay viewable.
   const { resorts } = useActiveResorts();
   const ownResorts = useMemo(() => resorts.filter(r => OWN_CO_CODES.includes(r.coCode)), [resorts]);
-  const marResorts = useMemo(() => resorts.filter(r => !OWN_CO_CODES.includes(r.coCode)), [resorts]);
+  // MAR is now an explicit flag on the resort (fn 2), not "everything that isn't ours" —
+  // being a partner resort no longer implies it is made available to our members.
+  //
+  // Own products are excluded even when flagged MAR: their resorts have real, individually
+  // numbered apartments (A1, 3227/3228), so a generated "N-occupancy" batch is meaningless for
+  // them and createAptBlockBatch rejects it 400. Without this the picker would offer a choice
+  // that always fails — V-ABC1 (coCode 03) is flagged MAR today and would do exactly that.
+  const marResorts = useMemo(
+    () => resorts.filter(r => r.mar === 'Y' && !OWN_CO_CODES.includes(r.coCode)),
+    [resorts],
+  );
 
   const { data: apartmentTypes } = useQuery({
     queryKey: ['apartment-types', ''],

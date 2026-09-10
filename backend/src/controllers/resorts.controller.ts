@@ -42,6 +42,9 @@ const resortSchema = z.object({
   checkInTime:   z.string().trim().max(20).nullish(),
   checkOutTime:  z.string().trim().max(20).nullish(),
   paymt:         z.enum(['Y', 'N']).nullish(),
+  // MAR (Make Available Resorts). Not .nullish() like the three flags above -- the column
+  // is NOT NULL, and the checkbox always sends Y or N, so null must be rejected not stored.
+  mar:           z.enum(['Y', 'N']).default('N'),
 });
 
 // empty string -> null so cleared form fields null out the column

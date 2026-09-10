@@ -1,0 +1,24 @@
+-- Resort gains `mar`, the exchange-register / MAR indicator for Resorts Setup fn 2.
+--
+-- It comes from Informix resort_mast.re_exc_reg, which migrate-resorts.ts had always
+-- skipped "per business decision" -- it is now wanted as a staff-editable field on the
+-- Resorts Master screen (form, list and detail).
+--
+-- NOT a Y/N flag: the source is char(3) and holds Y (253 rows), N (36), blank (18),
+-- APR (16, all inactive coCode 03 resorts) and 10 (1, the '%' ALL RESORTS pseudo-row).
+-- So the column is 3 chars of free text, capped in the zod schema like every other
+-- Resort field (there are no @db.VarChar widths anywhere in this model).
+--
+-- NULLABLE with a DEFAULT, matching paymt / rciAffiliate / lockOnOff: both clean() in
+-- resorts.controller.ts and the form's payload mapper turn '' into null, so a NOT NULL
+-- column would 400 the moment someone clears the box -- and the 18 blank source rows
+-- make "unset" a real state anyway.
+--
+-- Every existing row backfills to 'N' via the DEFAULT (metadata-only in PG). The real
+-- values are then seeded from resort_mast.txt by:
+--   npx ts-node --transpile-only prisma/migrate-resorts.ts --backfill-mar
+-- migrate-resorts.ts also maps c[4] on insert now, so a future -Table Resort refresh
+-- reproduces the source values instead of silently resetting everything to 'N'.
+
+-- AlterTable
+ALTER TABLE "Resort" ADD COLUMN     "mar" TEXT DEFAULT 'N';

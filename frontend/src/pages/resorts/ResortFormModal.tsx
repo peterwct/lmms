@@ -11,7 +11,7 @@ import type { Resort } from '../../types';
 
 const EMPTY_FORM = {
   resortCode: '', coCode: '03', shortName: '', resortName: '',
-  rciCode: '', rciAffiliate: 'N', lockOnOff: 'N', paymt: 'N',
+  rciCode: '', rciAffiliate: 'N', mar: 'N', lockOnOff: 'N', paymt: 'N',
   resortMgmt: '', contactPerson: '',
   add1: '', add2: '', add3: '', city: '', state: '', country: '',
   telNo: '', faxNo: '',
@@ -45,6 +45,7 @@ export function ResortFormModal({ open, resort, onClose, onSaved }: Props) {
       resortName: resort.resortName,
       rciCode: resort.rciCode ?? '',
       rciAffiliate: resort.rciAffiliate ?? 'N',
+      mar: resort.mar ?? 'N',
       lockOnOff: resort.lockOnOff ?? 'N',
       paymt: resort.paymt ?? 'N',
       resortMgmt: resort.resortMgmt ?? '',
@@ -123,6 +124,10 @@ export function ResortFormModal({ open, resort, onClose, onSaved }: Props) {
           <label className="flex items-center gap-1.5 text-sm text-gray-700 whitespace-nowrap">
             <input type="checkbox" checked={form.rciAffiliate === 'Y'} onChange={setYN('rciAffiliate')} className="rounded border-gray-300" />
             RCI Affiliate
+          </label>
+          <label className="flex items-center gap-1.5 text-sm text-gray-700">
+            <input type="checkbox" checked={form.mar === 'Y'} onChange={setYN('mar')} className="rounded border-gray-300" />
+            MAR
           </label>
           <label className="flex items-center gap-1.5 text-sm text-gray-700">
             <input type="checkbox" checked={form.lockOnOff === 'Y'} onChange={setYN('lockOnOff')} className="rounded border-gray-300" />

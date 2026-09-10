@@ -146,6 +146,10 @@ export function ResortDetail() {
               <YesNo value={resort.rciAffiliate} />
             </div>
             <div>
+              <p className="text-xs text-gray-500 mb-0.5">MAR</p>
+              <YesNo value={resort.mar} />
+            </div>
+            <div>
               <p className="text-xs text-gray-500 mb-0.5">Lock-on / lock-off</p>
               <YesNo value={resort.lockOnOff} />
             </div>

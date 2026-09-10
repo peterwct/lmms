@@ -379,6 +379,7 @@ export interface Resort {
   checkOutTime: string | null;
   status: string;
   paymt: string | null;
+  mar: string;
   lockStatus: string | null;
   legacyCreateUser: string | null;
   legacyCreateDate: string | null;
