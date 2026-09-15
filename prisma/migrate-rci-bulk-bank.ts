@@ -199,7 +199,7 @@ async function main() {
       warn(`row ${total}: serial ${serialNo} - unit ${resortCode}/${unitNo} is not in ResortUnit - skipped`);
       continue;
     }
-    // The rciReserved='Y' rule is a SAVE-TIME rule (like fn 6's availability rule), so a
+    // The rciReserved='Y' rule is a SAVE-TIME rule (like fn 7's availability rule), so a
     // legacy row on a unit since un-flagged is imported verbatim with a warning.
     if (unit.rciReserved !== 'Y') {
       notRciReserved++;

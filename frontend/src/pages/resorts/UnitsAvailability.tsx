@@ -45,7 +45,7 @@ const describe = (b: AptBlock) =>
   `${dateOnly(b.startDate)} to ${dateOnly(b.endDate)}`;
 
 // Availability is ADD-ONLY (2026-08-14, business decision). A record cannot be edited —
-// correcting one means deleting it and adding it again, so the grid deltas and the fn 6
+// correcting one means deleting it and adding it again, so the grid deltas and the fn 7
 // maintenance guards only ever see whole records appear or disappear.
 interface ModalProps {
   open: boolean;
@@ -492,7 +492,7 @@ export function UnitsAvailability() {
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
         <div className="mt-1 flex items-center gap-8">
-          <h1 className="text-xl font-semibold text-gray-900">5. Resorts Unit Availability/Inventory Setup</h1>
+          <h1 className="text-xl font-semibold text-gray-900">6. Resorts Unit Availability/Inventory Setup</h1>
           <Button size="sm" onClick={() => setChartOpen(true)}>
             <CalendarRange className="h-4 w-4" /> Resorts Availability
           </Button>

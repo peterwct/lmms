@@ -40,9 +40,9 @@
  * swept over the whole table afterwards, so the set holds whether the caller truncated
  * first (migrate-table.ps1 -Table ResortUnit / -Table Resort, refresh-test-db.ps1) or the
  * script is re-run additively. A re-run therefore RESETS any rciReserved change made
- * through Apartments/Units Setup (fn 4) at those four resorts -- that is the intent.
+ * through Apartments/Units Setup (fn 5) at those four resorts -- that is the intent.
  *
- * To change the set, edit RCI_RESERVED and re-run -- do not tick the box in fn 4 and
+ * To change the set, edit RCI_RESERVED and re-run -- do not tick the box in fn 5 and
  * expect it to survive the next refresh.
  *
  * Existing RciBulkBank history is NOT affected: rciReserved='Y' is a SAVE-TIME rule, so
@@ -116,7 +116,7 @@ async function main() {
   // ACTIVE resorts only. The active-resort join belongs in apt_mast_unload.sql, but it
   // is easy to lose when the UNLOAD is hand-run: an export carrying the four-resort unit
   // whitelist but NOT the resort_mast join loads 12,047 rows over 316 resorts, 11,659 of
-  // them on retired resorts, which buries the fn 4 Units screen (it does not filter by
+  // them on retired resorts, which buries the fn 5 Units screen (it does not filter by
   // resort status). This is the backstop for that -- it costs nothing when the export is
   // already filtered, and the skip count in the summary makes a bad export obvious.
   // Resort.status is 'A'/'U' here; migrate-resorts.ts maps Informix 'I' -> 'U'.

@@ -4,11 +4,11 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../utils/prisma';
 import { writeAudit } from '../utils/audit';
 
-// Season Points (Resorts Setup fn 9) — ONE chart for the points deducted per night, by
+// Season Points (Resorts Setup fn 10) — ONE chart for the points deducted per night, by
 // resort x apartment type x season x day of week, discriminated by pointsType:
 //
 //   HOME — the member's own product's resort (coCode '02', CP-PBR today). CpSeasonDate
-//          (fn 8) grades the day G/S/D; this table turns that grade into a number.
+//          (fn 9) grades the day G/S/D; this table turns that grade into a number.
 //   AWAY — every other resort: our own LHC resorts and the partner/exchange V-* codes,
 //          reached through an LVC exchange programme. This is the counterpart of HOME
 //          and the reason pssa_lvcpts0..6 are zero in ps_seasonapt — the away points
@@ -109,15 +109,15 @@ async function productMissing(coCode: string): Promise<boolean> {
 }
 
 // A submitted apartment type is accepted when it is either set up for the resort in
-// Apartment Types Setup (fn 3), or already in use by a stored SeasonPoint row.
+// Apartment Types Setup (fn 4), or already in use by a stored SeasonPoint row.
 //
 // The grandfathering matters on AWAY: only 5 of the 412 (resort, type) pairs in the
 // Informix source exist in ApartmentType — partner apartment types like SLEEPA /
-// HOTEL UNIT are the partner's own nomenclature and were never registered in fn 3.
+// HOTEL UNIT are the partner's own nomenclature and were never registered in fn 4.
 // Without this, 22 of the 27 populated pickable away resorts would be permanently
 // read-only. It is applied to HOME too rather than keeping two rules: CP-PBR's
 // SLEEP2/SLEEP4/SLEEP6 are all registered, so HOME behaves exactly as before.
-// Genuinely NEW apartment types still have to go through fn 3.
+// Genuinely NEW apartment types still have to go through fn 4.
 async function allowedApartmentTypes(resortCode: string): Promise<Set<string>> {
   const [registered, inUse] = await Promise.all([
     prisma.apartmentType.findMany({ where: { resortCode }, select: { apartmentType: true } }),

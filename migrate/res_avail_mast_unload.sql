@@ -75,7 +75,7 @@ SELECT v.*
 -- Do NOT use  migrate-table.ps1 -Table ResAvailMast  for this: it runs
 -- TRUNCATE "ResAvailMast" first, which destroys the grid rows generated
 -- by the app's own Units Availability CRUD - rows that are in no export
--- and can only be rebuilt by re-keying the records through fn 5. As of
+-- and can only be rebuilt by re-keying the records through fn 6. As of
 -- 2026-08-26 that is 680 rows (V-CLC1 365 from a MAR batch, plus the
 -- L-00000 / V-ABC1 test resorts). Same additive-vs-truncating
 -- distinction as migrate-resorts.ts; see CLAUDE.md.

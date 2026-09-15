@@ -6,7 +6,7 @@
  * The original export was filtered to `re_resort_status = 'A' AND re_cocode IN ('03','15','02')`
  * (7 rows). It was re-extracted unfiltered on 2026-07-30 to 324 rows so the LVC exchange
  * resorts (the `V-*` codes, e.g. V-SGI1 / V-MAE1 / V-CLC1) exist for LVC Resorts Season
- * Point Setup (Resorts Setup fn 12) to reference. Breakdown: ours (03/15/02) 7 active +
+ * Point Setup (Resorts Setup fn 10, Non-Home tab) to reference. Breakdown: ours (03/15/02) 7 active +
  * 45 inactive; partner/LVC 42 active + 230 inactive.
  *
  * Column mapping (26 cols):
@@ -130,7 +130,7 @@ async function main() {
     const rawStatus = (t(c[19]) ?? 'A').toUpperCase();
 
     // The export is unfiltered since 2026-07-30 — every coCode and both statuses load,
-    // so the LVC 'V-*' exchange resorts are available to fn 12. Only structurally
+    // so the LVC 'V-*' exchange resorts are available to fn 10. Only structurally
     // unusable rows are skipped.
     if (!resortCode) { skipped++; continue; }
     if (!coCode) {

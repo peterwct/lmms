@@ -38,7 +38,7 @@ export const rciBulkBankApi = {
   // One unit's banked weeks for a year, unpaginated (52/53 rows at most)
   year: (params: { resortCode: string; unitNo: string; weekYear: number }) =>
     api.get<RciBulkBankYear>('/rci-bulk-bank', { params }),
-  // Units the grid may show at this resort, WITH their fn 5 availability, in one call.
+  // Units the grid may show at this resort, WITH their fn 6 availability, in one call.
   // splitTypes: the resort's lock-off half types, which are NOT bankable (null when the
   // resort has no lock-on/lock-off feature). The units[] are already filtered; this is only
   // so the form can say why they are missing.

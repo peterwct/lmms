@@ -119,10 +119,10 @@ function MaintenanceFormModal({ open, record, resorts, onClose, onSaved }: Modal
   });
   const unitOptions = units ?? [];
 
-  // The unit's availability records from fn 5. Maintenance withdraws availability, so the
+  // The unit's availability records from fn 6. Maintenance withdraws availability, so the
   // user picks the record to withdraw from and every range must sit inside it — a unit
   // with no record at all can't go under maintenance. Needed in EDIT mode too, hence no
-  // `!record`. The 'apt-blocks' key prefix means fn 5's own invalidate refreshes it.
+  // `!record`. The 'apt-blocks' key prefix means fn 6's own invalidate refreshes it.
   const { data: unitsWithAvailability } = useQuery({
     queryKey: ['apt-blocks', 'units', form.resortCode],
     queryFn: () => aptBlocksApi.units(form.resortCode).then(r => r.data.data),
@@ -531,7 +531,7 @@ export function ResortsMaintenance() {
     setSearchParams(p, { replace: true });
   };
 
-  // The page lands EMPTY, like fn 5 — 10,904 records is not a useful first screen and
+  // The page lands EMPTY, like fn 6 — 10,904 records is not a useful first screen and
   // staff work one resort at a time. Nothing is fetched until a resort is picked.
   const { data: list, isLoading } = useQuery({
     queryKey: ['resort-maintenance', q, resortCode, year, month, page],
@@ -582,7 +582,7 @@ export function ResortsMaintenance() {
           <ChevronLeft className="h-4 w-4" /> Resorts Setup
         </Link>
         <div className="mt-1 flex items-center gap-8">
-          <h1 className="text-xl font-semibold text-gray-900">6. Resorts Unit Under Maintenance</h1>
+          <h1 className="text-xl font-semibold text-gray-900">7. Resorts Unit Under Maintenance</h1>
           <Button size="sm" onClick={() => setChartOpen(true)}>
             <CalendarRange className="h-4 w-4" /> Resorts Availability
           </Button>

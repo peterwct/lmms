@@ -16,23 +16,26 @@ interface ResortsMenuItem {
 // else keys off. Functions 11 and 12 were swapped on 2026-07-30 so the two CP points
 // charts (home / non-home) sit next to each other. On 2026-07-31 two merges landed:
 // the separate Public (7) and School (8) holiday functions became one tabbed page at 7,
-// and the Home (9) / Non-Home (10) points charts became one tabbed page at 9. Nothing
-// downstream changed — no route moved in either merge.
+// and the Home (9) / Non-Home (10) points charts became one tabbed page at 9. On
+// 2026-09-15 LVC Code moved from 10 up to 3 (it is reference data set up alongside the
+// company and resort masters), pushing the old 3-9 down one to 4-10. Nothing downstream
+// changed in any of these — no route moved. Each page's <h1> repeats its number, so a
+// renumbering means editing those too.
 const SETUP_ITEMS: ResortsMenuItem[] = [
   { num: 1, label: 'Company Master - New Company/Product Code', to: '/resorts/products',     icon: <Package className="h-4 w-4" />, enabled: true },
   { num: 2, label: 'Resorts Master Maintenance and Setup',   to: '/resorts/setup',        icon: <Hotel className="h-4 w-4" />, enabled: true },
-  { num: 3, label: 'Apartment Sleep Types Maintenance and Setup', to: '/resorts/apartment-types', icon: <BedDouble className="h-4 w-4" />, enabled: true },
-  { num: 4, label: "Apartment's Unit No. Maintenance and Setup",  to: '/resorts/units',   icon: <DoorOpen className="h-4 w-4" />, enabled: true },
-  { num: 5, label: 'Resorts Unit Availability/Inventory Setup', to: '/resorts/availability', icon: <CalendarRange className="h-4 w-4" />, enabled: true },
-  { num: 6, label: 'Resorts Unit Under Maintenance',         to: '/resorts/maintenance',  icon: <Wrench className="h-4 w-4" />, enabled: true },
+  { num: 3, label: 'Leisure Vacation Club (LVC) Code Maintenance and Setup', to: '/resorts/lvc-codes', icon: <ArrowLeftRight className="h-4 w-4" />, enabled: true },
+  { num: 4, label: 'Apartment Sleep Types Maintenance and Setup', to: '/resorts/apartment-types', icon: <BedDouble className="h-4 w-4" />, enabled: true },
+  { num: 5, label: "Apartment's Unit No. Maintenance and Setup",  to: '/resorts/units',   icon: <DoorOpen className="h-4 w-4" />, enabled: true },
+  { num: 6, label: 'Resorts Unit Availability/Inventory Setup', to: '/resorts/availability', icon: <CalendarRange className="h-4 w-4" />, enabled: true },
+  { num: 7, label: 'Resorts Unit Under Maintenance',         to: '/resorts/maintenance',  icon: <Wrench className="h-4 w-4" />, enabled: true },
   // Public and school holidays share one table and one tabbed page.
-  { num: 7, label: 'Public & School Holidays Maintenance and Setup', to: '/resorts/holidays', icon: <CalendarDays className="h-4 w-4" />, enabled: true },
-  { num: 8, label: "CP's Seasons Maintenance and Setup",     to: '/resorts/seasons',      icon: <Sun className="h-4 w-4" />, enabled: true },
+  { num: 8, label: 'Public & School Holidays Maintenance and Setup', to: '/resorts/holidays', icon: <CalendarDays className="h-4 w-4" />, enabled: true },
+  { num: 9, label: "CP's Seasons Maintenance and Setup",     to: '/resorts/seasons',      icon: <Sun className="h-4 w-4" />, enabled: true },
   // Home and non-home points share one table and one tabbed page. Home = a coCode '02'
   // resort (CP-PBR today); non-home = every other resort — our own LHC resorts and the
   // partner/exchange V-* codes — reached through an LVC exchange programme. SeasonPoint.
-  { num: 9, label: 'CP Points Deduction - Maintenance and Setup', to: '/resorts/season-points', icon: <Coins className="h-4 w-4" />, enabled: true },
-  { num: 10, label: 'Leisure Vacation Club (LVC) Code Maintenance and Setup', to: '/resorts/lvc-codes', icon: <ArrowLeftRight className="h-4 w-4" />, enabled: true },
+  { num: 10, label: 'CP Points Deduction - Maintenance and Setup', to: '/resorts/season-points', icon: <Coins className="h-4 w-4" />, enabled: true },
 ];
 
 function MenuSection({ title, items }: { title: string; items: ResortsMenuItem[] }) {

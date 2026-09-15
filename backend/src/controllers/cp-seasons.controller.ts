@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../utils/prisma';
 import { writeAudit } from '../utils/audit';
 
-// CP Season calendar (Resorts Setup fn 8) — one row per calendar day graded
+// CP Season calendar (Resorts Setup fn 9) — one row per calendar day graded
 // G=Gold / S=Silver / D=Diamond, driving CP points pricing per night.
 //
 // PRODUCT SCOPE: this is the only holiday/peak calendar CP booking reads.

@@ -6,12 +6,12 @@ import { prisma } from '../utils/prisma';
 import { writeAudit } from '../utils/audit';
 import { apartmentTypeExists } from './resort-units.controller';
 
-// Resorts Unit Availability/Inventory Setup (fn 5). A block = one row per (resort, unit, date range).
+// Resorts Unit Availability/Inventory Setup (fn 6). A block = one row per (resort, unit, date range).
 // Each save expands into per-day ResAvailMast rows (act/bal +1 per day; -1 on delete),
 // keyed by (resortCode, apartmentType, date). Overlapping ranges for the same unit are rejected.
 //
 // ADD-ONLY (2026-08-14, business decision): there is no update path. A record is created or
-// deleted, never edited, so the grid deltas and the fn 6 maintenance guard only ever see a
+// deleted, never edited, so the grid deltas and the fn 7 maintenance guard only ever see a
 // whole record appear or disappear. Correcting a record = delete + re-add.
 
 const MAX_RANGE_DAYS = 3660; // ~10 years — sanity cap on a single block's day expansion
@@ -128,7 +128,7 @@ async function hasOverlap(resortCode: string, unitNo: string, start: Date, end: 
   return !!clash;
 }
 
-// Maintenance (fn 6) records this unit has inside [start,end]. A maintenance range must
+// Maintenance (fn 7) records this unit has inside [start,end]. A maintenance range must
 // always sit inside one availability record, so a block cannot be removed — or shrunk —
 // out from under one: applyMaintDelta already deducted those days from balNight, and
 // applyDelta would then clamp at 0 and leave the grid inconsistent. Staff clear the
@@ -192,7 +192,7 @@ export async function listAptBlocks(req: Request, res: Response): Promise<void> 
 // availability at all, which is what greys them out in that unit picker.
 // Index-only: resortCode is the leftmost prefix of the [resortCode, unitNo, startDate,
 // endDate] unique, and nothing is included, so even V-LDBR's 2,139 blocks stay a small
-// single payload. startDate desc matches the fn 5 list order, putting the current record
+// single payload. startDate desc matches the fn 6 list order, putting the current record
 // at the top of the picker.
 export async function listUnitsWithAvailability(req: Request, res: Response): Promise<void> {
   const resortCode = typeof req.query.resortCode === 'string' ? req.query.resortCode.trim() : '';

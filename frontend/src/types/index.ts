@@ -313,11 +313,11 @@ export interface RciBulkBankYear {
   weekYear: number;
 }
 
-// Units at one resort the grid may show, with their fn 5 availability.
+// Units at one resort the grid may show, with their fn 6 availability.
 // `bankable` (rciReserved='Y' and not a lock-off half) means new weeks can be banked;
 // a non-bankable unit is listed only when it already holds banked weeks, so that history
 // stays visible and removable. A unit with an empty blocks[] has no availability and
-// cannot be banked - the picker lists it disabled, the same treatment fn 6 gives.
+// cannot be banked - the picker lists it disabled, the same treatment fn 7 gives.
 export interface RciBulkBankUnit {
   unitNo: string;
   apartmentType: string;
@@ -456,7 +456,7 @@ export interface AptBlock {
   };
 }
 
-// Result of one MAR batch save (fn 5): N units of a sleep type set up at a partner/exchange
+// Result of one MAR batch save (fn 6): N units of a sleep type set up at a partner/exchange
 // resort over one shared date range. Units already registered are reused rather than recreated,
 // so the created/reused split is what the result dialog reports.
 export interface MarBatchResult {
@@ -479,7 +479,7 @@ export interface AptBlockList {
   pageSize: number;
 }
 
-// One unit's availability records (fn 5 AptBlock), newest first. Resorts Maintenance
+// One unit's availability records (fn 6 AptBlock), newest first. Resorts Maintenance
 // makes the user pick one before keying date ranges inside it; a unit missing from the
 // list has no availability at all and cannot go under maintenance.
 export interface UnitAvailability {
@@ -531,7 +531,7 @@ export interface AptBlockAvailability {
 // Same shape as AptBlockAvailability — the per-day grid for a maintenance record's range
 export type ResortMaintenanceAvailability = AptBlockAvailability;
 
-// Holidays (Resorts Setup fn 7) — one global calendar, no resort/state scope, covering
+// Holidays (Resorts Setup fn 8) — one global calendar, no resort/state scope, covering
 // both public holidays (single dates) and school breaks (date ranges).
 export type HolidayType = 'PUBLIC' | 'SCHOOL';
 
@@ -552,7 +552,7 @@ export interface HolidayCloneResult {
   created: number;
 }
 
-// CP Season calendar (Resorts Setup fn 8) — one row per calendar day, graded G/S/D.
+// CP Season calendar (Resorts Setup fn 9) — one row per calendar day, graded G/S/D.
 // Read by CP booking only; the Holiday calendar (public + school) is LHC-only.
 export type CpSeason = 'G' | 'S' | 'D';
 
@@ -590,7 +590,7 @@ export interface CpSeasonMonthDeleteResult {
 // Same shape as the holiday clone result
 export type CpSeasonCloneResult = HolidayCloneResult;
 
-// Season Points (Resorts Setup fn 9) — ONE chart for the points deducted per night by
+// Season Points (Resorts Setup fn 10) — ONE chart for the points deducted per night by
 // resort x apartment type x season x day of week, discriminated by pointsType:
 //   HOME — the member's own product's resort (coCode '02'). CpSeasonDate grades the day;
 //          this turns the grade into a number.
@@ -624,7 +624,7 @@ export interface SeasonPoint {
 // apartment type x season grid from `apartmentTypes` and leaves the gaps blank.
 // `apartmentTypes` is the union of the resort's registered types (Apartment Types Setup)
 // and the types already stored here — partner resorts have none registered, so
-// scaffolding from fn 3 alone would render an empty grid.
+// scaffolding from fn 4 alone would render an empty grid.
 export interface SeasonPointVersion {
   resortCode: string;
   effectiveDate: string | null;   // null when the resort has no version yet

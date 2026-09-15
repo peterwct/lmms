@@ -2,7 +2,7 @@
  * LHB MMS — Apartment Sleep Type Migration
  * Source: migrate/apt_category.txt — pipe-delimited Informix UNLOAD (partial export)
  *
- * Resorts Setup fn 3 (Apartment Sleep Types Maintenance and Setup).
+ * Resorts Setup fn 4 (Apartment Sleep Types Maintenance and Setup).
  *
  * The Informix apt_category table has 11 columns; the export deliberately carries
  * only 4 (business decision — the per-type check-in/out times and the audit/lock

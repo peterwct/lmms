@@ -35,30 +35,30 @@ Note anything that did not work in the **Remarks** column, and sign at the botto
 |---|---|:--:|:--:|:--:|:--:|:--:|---|
 | 1 | Company Master — New Company/Product Code | ☐ | ☐ | ☐ | ☐ | ☐ | |
 | 2 | Resorts Master Maintenance and Setup | ☐ | ☐ | ☐ | ☐ | ☐ | |
-| 3 | Apartment Sleep Types Maintenance and Setup | ☐ | ☐ | ☐ | ☐ | ☐ | |
-| 4 | Apartment Unit No. Maintenance and Setup | ☐ | ☐ | ☐ | ☐ | ☐ | |
-| 5 | Resorts Unit Availability/Inventory Setup | ☐ | ☐ | ☐ | n/a | ☐ | |
-| 6 | Resorts Unit Under Maintenance | ☐ | ☐ | ☐ | ☐ | ☐ | |
-| 7 | Public & School Holidays Maintenance and Setup | ☐ | ☐ | ☐ | ☐ | ☐ | |
-| 8 | CP Seasons Maintenance and Setup | n/a | ☐ | ☐ | ☐ | ☐ | |
-| 9 | CP Points Deduction — Maintenance and Setup | n/a | ☐ | ☐ | ☐ | ☐ | |
-| 10 | Leisure Vacation Club (LVC) Code Maintenance and Setup | ☐ | ☐ | ☐ | ☐ | ☐ | |
+| 3 | Leisure Vacation Club (LVC) Code Maintenance and Setup | ☐ | ☐ | ☐ | ☐ | ☐ | |
+| 4 | Apartment Sleep Types Maintenance and Setup | ☐ | ☐ | ☐ | ☐ | ☐ | |
+| 5 | Apartment Unit No. Maintenance and Setup | ☐ | ☐ | ☐ | ☐ | ☐ | |
+| 6 | Resorts Unit Availability/Inventory Setup | ☐ | ☐ | ☐ | n/a | ☐ | |
+| 7 | Resorts Unit Under Maintenance | ☐ | ☐ | ☐ | ☐ | ☐ | |
+| 8 | Public & School Holidays Maintenance and Setup | ☐ | ☐ | ☐ | ☐ | ☐ | |
+| 9 | CP Seasons Maintenance and Setup | n/a | ☐ | ☐ | ☐ | ☐ | |
+| 10 | CP Points Deduction — Maintenance and Setup | n/a | ☐ | ☐ | ☐ | ☐ | |
 
 **Where an action reads n/a:**
-- **Fn 5** has no Edit by design — a record is corrected by deleting it and adding it again.
-- **Fn 8** is worked one month at a time and **fn 9** one resort and rate at a time, chosen from dropdowns, so there is no search box.
+- **Fn 6** has no Edit by design — a record is corrected by deleting it and adding it again.
+- **Fn 9** is worked one month at a time and **fn 10** one resort and rate at a time, chosen from dropdowns, so there is no search box.
 
 ## 2b. Additional Actions
 
 | # | Additional action | Confirmed | Remarks |
 |---|---|:--:|---|
-| 1, 2, 10 | Activate / deactivate a record (status toggle) | ☐ | |
+| 1, 2, 3 | Activate / deactivate a record (status toggle) | ☐ | |
 | 2 | Resort information — the 4 tabs on Resort Detail | ☐ | |
-| 5 | **Add MAR availability** — batch set-up for partner / exchange resorts | ☐ | |
-| 5, 6 | **Resorts Availability** chart shows correct balance nights | ☐ | |
-| 6 | Up to 3 date ranges keyed in one Add | ☐ | |
-| 7, 8 | **Clone to next year** | ☐ | |
-| 9 | **New Rate** opens pre-filled from the rate currently in force | ☐ | |
+| 6 | **Add MAR availability** — batch set-up for partner / exchange resorts | ☐ | |
+| 6, 7 | **Resorts Availability** chart shows correct balance nights | ☐ | |
+| 7 | Up to 3 date ranges keyed in one Add | ☐ | |
+| 8, 9 | **Clone to next year** | ☐ | |
+| 10 | **New Rate** opens pre-filled from the rate currently in force | ☐ | |
 
 ---
 
@@ -76,14 +76,14 @@ For each function, check the records **you rely on** and confirm they came acros
 |---|---|:--:|:--:|---|
 | 3.1 | Company Master — products and companies | ☐ | ☐ | |
 | 3.2 | Resorts Master — resort details and the 4 information tabs | ☐ | ☐ | |
-| 3.3 | Apartment Sleep Types | ☐ | ☐ | |
-| 3.4 | Apartment Unit No. — the unit register | ☐ | ☐ | |
-| 3.5 | Resorts Unit Availability — records and the availability figures | ☐ | ☐ | |
-| 3.6 | Resorts Unit Under Maintenance | ☐ | ☐ | |
-| 3.7 | Public & School Holidays | ☐ | ☐ | |
-| 3.8 | CP Seasons — the day-by-day grading | ☐ | ☐ | |
-| 3.9 | CP Points Deduction — Home and Non-Home charts | ☐ | ☐ | |
-| 3.10 | Leisure Vacation Club (LVC) Codes | ☐ | ☐ | |
+| 3.3 | Leisure Vacation Club (LVC) Codes | ☐ | ☐ | |
+| 3.4 | Apartment Sleep Types | ☐ | ☐ | |
+| 3.5 | Apartment Unit No. — the unit register | ☐ | ☐ | |
+| 3.6 | Resorts Unit Availability — records and the availability figures | ☐ | ☐ | |
+| 3.7 | Resorts Unit Under Maintenance | ☐ | ☐ | |
+| 3.8 | Public & School Holidays | ☐ | ☐ | |
+| 3.9 | CP Seasons — the day-by-day grading | ☐ | ☐ | |
+| 3.10 | CP Points Deduction — Home and Non-Home charts | ☐ | ☐ | |
 
 When checking, please look particularly for:
 - **Dates shifted by a day** anywhere on screen.
@@ -102,7 +102,7 @@ These are **intentional** differences between SIS and LMMS, agreed during the bu
 | 3.12 | **Units, availability records and the availability grid cover ACTIVE resorts only.** Retired resorts keep their master record (fn 2) but carry no units or availability. | ☐ |
 | 3.13 | **Only live units were carried over at four resorts**, per the lists supplied by the business: L-10024 `A1`–`A34` (34, was 61), L-10025 `B1`–`B22` (22, was 42), L-10026 floors 4 and 5 (14, was 49), CP-PBR the `32xx` family (48, was 283). Decades of retired unit numbers were left behind. L-10016 (30) and L-101 (10) were taken in full. | ☐ |
 | 3.14 | **Maintenance was taken in full**, including records on retired resorts. Those rows therefore show no apartment type. All are historic. | ☐ |
-| 3.15 | **Only the rate currently in force was kept for each resort in fn 9.** SIS held the same chart re-keyed year after year (4,766 rows over 1,062 resort-years, but only 303 genuinely different charts — five resorts had re-keyed an identical chart 24 years running). Prior years' charts were not migrated; history builds up from go-live. | ☐ |
+| 3.15 | **Only the rate currently in force was kept for each resort in fn 10.** SIS held the same chart re-keyed year after year (4,766 rows over 1,062 resort-years, but only 303 genuinely different charts — five resorts had re-keyed an identical chart 24 years running). Prior years' charts were not migrated; history builds up from go-live. | ☐ |
 | 3.16 | **Product status does not exist in SIS.** LMMS sets 6 products Active (02, 03, 15, 24, 25, 26) and the other 23 Inactive, per the business's current list of products and trading exchange partners. | ☐ |
 | 3.17 | **The RCI Reserved flag in SIS is out of date and was not used.** LMMS applies the business-supplied list instead: L-10024 `A6`/`A7`, L-10026 `504`/`506`, CP-PBR `3201/3202` and `3203/3204` — **6 RCI-qualified units**, where SIS marked 136. | ☐ |
 | 3.18 | **Status values are re-coded**: resort status `I` (Inactive) in SIS is shown as `U` in LMMS; LVC code status `C` (Cancelled) in SIS is shown as `U` (Inactive). | ☐ |
@@ -115,8 +115,8 @@ These are **intentional** differences between SIS and LMMS, agreed during the bu
 
 ## Notes for testers
 
-- Functions **5**, **6** and **RCI Bulk Bank** all write to the same availability figures. After testing them, please confirm the **Resorts Availability** chart still shows sensible balance nights.
-- Functions **7** (LHC holidays) and **8** (CP seasons) are **separate calendars for separate products** — they are not expected to agree with one another.
+- Functions **6**, **7** and **RCI Bulk Bank** all write to the same availability figures. After testing them, please confirm the **Resorts Availability** chart still shows sensible balance nights.
+- Functions **8** (LHC holidays) and **9** (CP seasons) are **separate calendars for separate products** — they are not expected to agree with one another.
 - **Data errors in migrated records belong in section 3, not as functional failures.**
 
 ---

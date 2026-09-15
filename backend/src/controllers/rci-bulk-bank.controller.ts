@@ -10,7 +10,7 @@ import { writeAudit } from '../utils/audit';
 // colour by RCI (R=Red / B=Blue / W=White).
 //
 // THE SCREEN IS A WHOLE-YEAR GRID, not a record list (2026-08-28). Staff pick resort +
-// unit + year and see weeks 1..52/53 with an editable season beside each, mirroring fn 8's
+// unit + year and see weeks 1..52/53 with an editable season beside each, mirroring fn 9's
 // month grid; there is ONE write endpoint, saveRciBulkBankYear, which reconciles the year:
 // blank -> season creates, season -> season updates, season -> blank deletes. That shape
 // follows the data - each (resort, unit, year) is banked for essentially the whole year
@@ -202,17 +202,17 @@ export async function listRciBulkBank(req: Request, res: Response): Promise<void
   res.json({ data: records, resortCode, unitNo, weekYear });
 }
 
-// Units at one resort that the grid may show, each with its fn 5 availability ranges.
+// Units at one resort that the grid may show, each with its fn 6 availability ranges.
 //
 // Two kinds are returned. `bankable` units (rciReserved='Y' and not a lock-off half) can
 // have weeks banked. Units that are NOT bankable but already hold banked weeks are returned
-// too, flagged, so their history stays visible and removable - fn 4's RCI_RESERVED
+// too, flagged, so their history stays visible and removable - fn 5's RCI_RESERVED
 // whitelist un-flagged three units that between them still hold 205 records (CP-PBR
 // 3205/3206 and 3227/3228, L-10024 A8), and hiding them would strand those rows with no way
 // to reach them from the app. Everything else is omitted.
 //
 // A unit with an empty blocks[] has no availability and cannot be banked - the picker lists
-// it disabled, the same treatment fn 6 gives.
+// it disabled, the same treatment fn 7 gives.
 export async function listBulkBankUnits(req: Request, res: Response): Promise<void> {
   const resortCode = typeof req.query.resortCode === 'string' ? req.query.resortCode.trim() : '';
   if (!resortCode) { res.status(400).json({ error: 'resortCode is required' }); return; }
@@ -363,7 +363,7 @@ export async function saveRciBulkBankYear(req: Request, res: Response): Promise<
       if (unit.rciReserved !== 'Y') {
         res.status(400).json({
           error: `Unit ${unitNo} is not RCI-qualified (RCI Reserved = N), so no new weeks can be banked. `
-               + "Tick RCI Reserved in Apartment's Unit No. Maintenance and Setup (fn 4) first. "
+               + "Tick RCI Reserved in Apartment's Unit No. Maintenance and Setup (fn 5) first. "
                + 'Weeks already banked can still be cleared.',
         });
         return;
@@ -390,10 +390,10 @@ export async function saveRciBulkBankYear(req: Request, res: Response): Promise<
           where: { resortCode, unitNo, checkIn: { lte: spanEnd }, checkOut: { gte: spanStart } },
           select: { id: true, serialNo: true, checkIn: true, checkOut: true },
         }),
-        // Availability is by the UNION of the unit's fn 5 blocks, not one chosen block: fn 5
+        // Availability is by the UNION of the unit's fn 6 blocks, not one chosen block: fn 6
         // keys availability as a chain of yearly blocks, so a week crossing a year boundary
         // (2027 wk53 runs 31-12-2027 -> 06-01-2028) sits legitimately across two consecutive
-        // records. That is also why there is no aptBlockId in the payload, unlike fn 6.
+        // records. That is also why there is no aptBlockId in the payload, unlike fn 7.
         prisma.aptBlock.findMany({
           where: { resortCode, unitNo, startDate: { lte: spanEnd }, endDate: { gte: spanStart } },
           select: { startDate: true, endDate: true },
@@ -406,7 +406,7 @@ export async function saveRciBulkBankYear(req: Request, res: Response): Promise<
           select: { startDate: true, endDate: true },
         }),
         // Days where the apartment type is already fully committed. Business decision
-        // 2026-08-26: REFUSE rather than clamp. Unlike fn 6 maintenance - an internal call
+        // 2026-08-26: REFUSE rather than clamp. Unlike fn 7 maintenance - an internal call
         // that is sometimes a legitimate emergency override - banking is an external
         // commercial promise to RCI, and it must not be possible to make one the estate
         // cannot honour. Refusing also avoids the delete asymmetry: a clamped day would give
@@ -436,7 +436,7 @@ export async function saveRciBulkBankYear(req: Request, res: Response): Promise<
         if (blocks.length === 0) {
           failures.push({
             weekNo: c.weekNo, status: 400,
-            reason: `no availability set up for unit ${unitNo} - add it in Resorts Unit Availability/Inventory Setup (fn 5)`,
+            reason: `no availability set up for unit ${unitNo} - add it in Resorts Unit Availability/Inventory Setup (fn 6)`,
           });
           continue;
         }
@@ -444,7 +444,7 @@ export async function saveRciBulkBankYear(req: Request, res: Response): Promise<
         if (uncovered.length) {
           failures.push({
             weekNo: c.weekNo, status: 400,
-            reason: `availability does not cover ${uncovered.map(ymd).join(', ')} (fn 5)`,
+            reason: `availability does not cover ${uncovered.map(ymd).join(', ')} (fn 6)`,
           });
           continue;
         }
@@ -453,7 +453,7 @@ export async function saveRciBulkBankYear(req: Request, res: Response): Promise<
         if (maint.length) {
           failures.push({
             weekNo: c.weekNo, status: 409,
-            reason: `unit is under maintenance that week (${maint.length} record(s)) - clear it in Resorts Unit Under Maintenance (fn 6)`,
+            reason: `unit is under maintenance that week (${maint.length} record(s)) - clear it in Resorts Unit Under Maintenance (fn 7)`,
           });
           continue;
         }
@@ -470,7 +470,7 @@ export async function saveRciBulkBankYear(req: Request, res: Response): Promise<
     }
 
     // All-or-nothing: one bad week means nothing is written, so a half-applied year can
-    // never be left behind (the fn 6 maintenance batch and the fn 5 MAR batch both work
+    // never be left behind (the fn 7 maintenance batch and the fn 6 MAR batch both work
     // this way).
     if (failures.length) {
       const status = failures.some(f => f.status === 400) ? 400 : 409;
@@ -585,7 +585,7 @@ export async function deleteRciBulkBankYear(req: Request, res: Response): Promis
   // This guard belongs HERE, before the transaction, and should name the booked weeks the
   // way the save's failures do. It is not written yet because the booking module does not
   // exist - there is no table to count. The sibling placeholder is `maintenanceWithin()`
-  // in apt-blocks.controller.ts, which carries the same note for fn 5's delete.
+  // in apt-blocks.controller.ts, which carries the same note for fn 6's delete.
   //
   // The per-week bin and the year save need the same guard once bookings exist: today a
   // booked week could equally be cleared one cell at a time. Add it to the year save's

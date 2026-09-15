@@ -70,7 +70,7 @@ async function main() {
 
   // ACTIVE resorts only -- the same backstop as migrate-resort-units.ts and
   // migrate-apt-block.ts, and it must stay in step with them: the grid is meaningless for
-  // a resort that has no units and no blocks, and nothing can ever reach it (the fn 5
+  // a resort that has no units and no blocks, and nothing can ever reach it (the fn 6
   // availability chart lists active resorts only). A full-table export is 616,538 rows of
   // which 482,550 sit on retired resorts.
   const resorts = await prisma.resort.findMany({ select: { id: true, resortCode: true, status: true } });

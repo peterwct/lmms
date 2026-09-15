@@ -15,7 +15,7 @@ import { PageSpinner } from '../../components/ui/Spinner';
 
 // RCI Bulk Bank - RCI fn 3. LHB inventory deposited into the RCI exchange network.
 //
-// The screen is a WHOLE-YEAR GRID in the shape of fn 8's month grid (CpSeasons.tsx, which
+// The screen is a WHOLE-YEAR GRID in the shape of fn 9's month grid (CpSeasons.tsx, which
 // is the reference implementation for the table, the dirty tracking and the save row):
 // pick resort + unit + year, and every RCI week of that year is a row with an editable
 // season beside it. That follows the data - each unit is banked for essentially the whole
@@ -44,11 +44,11 @@ const NONE = '';
 const NONE_LABEL = '-';
 // A unit/year with nothing banked yet is the grid's "add" state, so every bankable week is
 // prefilled with the dominant season (495 of the 774 existing records are Red) and one Save
-// banks the year. Exactly how fn 8 prefills an ungraded month with Silver. A year that
+// banks the year. Exactly how fn 9 prefills an ungraded month with Silver. A year that
 // already holds weeks is never prefilled - there, blank keeps meaning "not banked".
 const DEFAULT_SEASON = 'R';
 
-// Season/Date pairs per row, filled left to right (fn 8 uses 3; a week needs both its
+// Season/Date pairs per row, filled left to right (fn 9 uses 3; a week needs both its
 // dates, so 2 keeps the table inside a normal window at 27 rows for a 53-week year).
 const COLS = 2;
 
@@ -95,7 +95,7 @@ export function RciBulkBank() {
     setSearchParams(p, { replace: true });
   };
 
-  // Units the grid may show at this resort, each with its fn 5 availability ranges
+  // Units the grid may show at this resort, each with its fn 6 availability ranges
   const { data: unitsResp } = useQuery({
     queryKey: ['rci-bulk-bank', 'units', resortCode],
     queryFn: () => rciBulkBankApi.units(resortCode).then(r => r.data),
@@ -168,7 +168,7 @@ export function RciBulkBank() {
           // legitimately straddle two consecutive yearly availability records.
           const covered = days.every(d =>
             selectedUnit.blocks.some(b => dateOnly(b.startDate) <= d && dateOnly(b.endDate) >= d));
-          if (!covered) blocked = 'no availability (fn 5)';
+          if (!covered) blocked = 'no availability (fn 6)';
         }
       }
 
@@ -310,7 +310,7 @@ export function RciBulkBank() {
         {!!resortCode && units && units.length === 0 && (
           <p className="px-4 pt-3 text-xs text-amber-600">
             No bankable RCI-qualified units at this resort. Tick RCI Reserved in Apartment&apos;s
-            Unit No. Maintenance and Setup (fn 4) first.
+            Unit No. Maintenance and Setup (fn 5) first.
           </p>
         )}
 
@@ -359,7 +359,7 @@ export function RciBulkBank() {
               <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700">
                 Unit {unitNo} is no longer RCI-qualified, so no new weeks can be banked. Its{' '}
                 {selectedUnit.bankedCount} existing record(s) stay editable and can be cleared —
-                to bank again, tick RCI Reserved in Apartment&apos;s Unit No. Maintenance and Setup (fn 4).
+                to bank again, tick RCI Reserved in Apartment&apos;s Unit No. Maintenance and Setup (fn 5).
               </p>
             )}
 

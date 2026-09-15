@@ -28,7 +28,7 @@
  * files held only 303 chronologically distinct charts, and its effectiveDate was really a
  * per-apartment-type "rate set on" stamp, constant across years in 226 of 265 resorts.
  *
- * PRODUCT SCOPE: CP only. Season grades come from CpSeasonDate (fn 8); the
+ * PRODUCT SCOPE: CP only. Season grades come from CpSeasonDate (fn 9); the
  * The Holiday calendar (public + school) is LHC-only and unrelated.
  *
  * Does NOT truncate — the caller does (migrate-table.ps1 -Table CpSeasonPoint,

@@ -118,7 +118,7 @@ export async function deleteResortUnit(req: Request, res: Response): Promise<voi
 
   // AptBlock, ResortMaintenance and RciBulkBank carry the unit as a denormalized
   // resortCode + unitNo pair and cascade off Resort, not ResortUnit, so this count is the
-  // only thing stopping a delete from orphaning fn 5 availability, fn 6 maintenance and
+  // only thing stopping a delete from orphaning fn 6 availability, fn 7 maintenance and
   // RCI fn 3 bulk bank records. Rows of ANY date count: staff clear those first, and no
   // orphan is ever left behind.
   const where = { resortCode: unit.resortCode, unitNo: unit.unitNo };

@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../utils/prisma';
 import { writeAudit } from '../utils/audit';
 
-// Holidays (Resorts Setup fn 7) — one global, nationwide calendar covering BOTH public
+// Holidays (Resorts Setup fn 8) — one global, nationwide calendar covering BOTH public
 // holidays (single dates) and school breaks (date ranges), discriminated by holidayType.
 // No resort or state scope. Read by LHC booking only — CpSeasonDate is CP's own calendar
 // and the two are never joined or derived from one another.

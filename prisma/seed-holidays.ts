@@ -1,5 +1,5 @@
 /**
- * Seed the Holidays calendar (Resorts Setup fn 7) — public holidays AND school holidays,
+ * Seed the Holidays calendar (Resorts Setup fn 8) — public holidays AND school holidays,
  * which share one table discriminated by holidayType.
  *
  * There is no Informix UNLOAD file for either — the 2026 lists are business-supplied,

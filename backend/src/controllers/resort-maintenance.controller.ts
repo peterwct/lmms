@@ -26,7 +26,7 @@ const remarksField = z.string().trim().min(1, 'Reason / remarks is required').ma
 
 // Add takes 1..MAX_RANGES date ranges for one unit, all sharing a single reason. Each
 // range becomes its own record, and the whole set is written or none of it is.
-// Every range keyed must sit inside ONE availability record (fn 5 AptBlock) chosen by the
+// Every range keyed must sit inside ONE availability record (fn 6 AptBlock) chosen by the
 // user, so the id of that record is part of the payload. It is a validation input only -
 // nothing about the choice is stored on ResortMaintenance.
 const createSchema = z.object({
