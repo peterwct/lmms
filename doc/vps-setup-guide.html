@@ -1,0 +1,801 @@
+<title>LMMS VPS Setup Guide</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital@0;1&display=swap">
+<style>
+  :root{
+    --ground:#F4F6F8; --surface:#FFFFFF; --surface-2:#EDF1F4;
+    --ink:#14181D; --ink-2:#48535F; --ink-3:#6E7A87;
+    --rule:#DCE2E8; --rule-2:#C6D0D9;
+    --accent:#0B6E7F; --accent-soft:#E3F1F4;
+    --warn:#8F5406; --warn-soft:#FCF2E1; --warn-rule:#E8CFA3;
+    --danger:#A02318; --danger-soft:#FAEBE9; --danger-rule:#E7BDB7;
+    --ok:#1A6B3C; --ok-soft:#E6F4EB; --ok-rule:#A9D5BB;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+    --serif:"IBM Plex Serif",Georgia,serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0F1317; --surface:#171C22; --surface-2:#1E242B;
+      --ink:#E7ECF1; --ink-2:#A5B1BD; --ink-3:#7C8996;
+      --rule:#283038; --rule-2:#39434D;
+      --accent:#4FC9DC; --accent-soft:#123039;
+      --warn:#E2A65B; --warn-soft:#2E2311; --warn-rule:#5A431C;
+      --danger:#F0897C; --danger-soft:#331714; --danger-rule:#5E2B24;
+      --ok:#6FC791; --ok-soft:#12301F; --ok-rule:#2B5138;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0F1317; --surface:#171C22; --surface-2:#1E242B;
+    --ink:#E7ECF1; --ink-2:#A5B1BD; --ink-3:#7C8996;
+    --rule:#283038; --rule-2:#39434D;
+    --accent:#4FC9DC; --accent-soft:#123039;
+    --warn:#E2A65B; --warn-soft:#2E2311; --warn-rule:#5A431C;
+    --danger:#F0897C; --danger-soft:#331714; --danger-rule:#5E2B24;
+    --ok:#6FC791; --ok-soft:#12301F; --ok-rule:#2B5138;
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--ground); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:940px; margin:0 auto; padding:0 24px 96px}
+
+  .rail{position:sticky; top:0; z-index:20; background:var(--ground); border-bottom:1px solid var(--rule)}
+  .rail-in{max-width:940px; margin:0 auto; padding:10px 24px; display:flex; align-items:center; gap:14px}
+  .rail-label{font-family:var(--mono); font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); white-space:nowrap}
+  .bar{flex:1; height:5px; border-radius:99px; background:var(--surface-2); overflow:hidden}
+  .bar > i{display:block; height:100%; width:0%; background:var(--accent); transition:width .25s ease}
+  .rail-count{font-family:var(--mono); font-size:12.5px; font-variant-numeric:tabular-nums; color:var(--ink-2); white-space:nowrap}
+  .reset{font:inherit; font-size:12px; color:var(--ink-3); background:var(--surface); border:1px solid var(--rule); border-radius:6px; padding:3px 9px; cursor:pointer}
+  .reset:hover{color:var(--ink); border-color:var(--rule-2)}
+  .reset:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  header.top{padding:52px 0 32px; border-bottom:1px solid var(--rule); margin-bottom:36px}
+  .eyebrow{font-family:var(--mono); font-size:11.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0 0 14px}
+  h1{font-size:clamp(29px,4.4vw,40px); line-height:1.1; letter-spacing:-.021em; font-weight:600; margin:0 0 16px; text-wrap:balance}
+  .lede{font-family:var(--serif); font-size:17px; line-height:1.62; color:var(--ink-2); max-width:64ch; margin:0}
+  .meta{display:flex; flex-wrap:wrap; gap:8px 22px; margin-top:22px; font-family:var(--mono); font-size:12px; color:var(--ink-3)}
+  .meta b{font-weight:500; color:var(--ink-2)}
+
+  section.stage{margin:0 0 50px; scroll-margin-top:64px}
+  .stage-head{display:grid; grid-template-columns:54px 1fr; gap:16px; align-items:start; margin-bottom:14px}
+  .num{font-family:var(--mono); font-size:11.5px; font-weight:500; color:var(--accent); border:1px solid var(--rule-2); border-radius:7px; height:34px; display:flex; align-items:center; justify-content:center; background:var(--surface); letter-spacing:.02em}
+  .num.done{color:var(--ok); border-color:var(--ok-rule); background:var(--ok-soft)}
+  h2{font-size:21px; font-weight:600; letter-spacing:-.012em; margin:4px 0 0; line-height:1.28; text-wrap:balance}
+  .when{font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin:5px 0 0; letter-spacing:.02em}
+  .where{display:inline-block; font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; padding:2px 8px; border-radius:99px; border:1px solid currentColor; margin-top:7px}
+  .where.vps{color:var(--accent)}
+  .where.dev{color:var(--warn)}
+  .where.test{color:var(--danger)}
+  .why{font-family:var(--serif); font-style:italic; font-size:15.5px; color:var(--ink-2); margin:0 0 18px; padding-left:70px; max-width:70ch}
+  @media (max-width:620px){ .why{padding-left:0} .stage-head{grid-template-columns:44px 1fr; gap:12px} }
+
+  ol.steps{list-style:none; counter-reset:s; margin:0; padding:0; display:flex; flex-direction:column; gap:1px; background:var(--rule); border:1px solid var(--rule); border-radius:10px; overflow:hidden}
+  ol.steps > li{background:var(--surface); margin:0; padding:14px 18px}
+  ol.steps > li > .hdr{display:grid; grid-template-columns:auto auto 1fr; gap:11px; align-items:start}
+  ol.steps label.tick{display:contents; cursor:pointer}
+  ol.steps input{appearance:none; -webkit-appearance:none; width:17px; height:17px; margin:3px 0 0; border:1.5px solid var(--rule-2); border-radius:5px; background:var(--surface); cursor:pointer; position:relative}
+  ol.steps input:checked{background:var(--accent); border-color:var(--accent)}
+  ol.steps input:checked::after{content:""; position:absolute; left:5px; top:1px; width:4px; height:9px; border:solid var(--surface); border-width:0 2px 2px 0; transform:rotate(42deg)}
+  :root[data-theme="dark"] ol.steps input:checked::after{border-color:#0F1317}
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) ol.steps input:checked::after{border-color:#0F1317} }
+  ol.steps input:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .sn{counter-increment:s; font-family:var(--mono); font-size:12px; color:var(--ink-3); min-width:26px; padding-top:1px; font-variant-numeric:tabular-nums}
+  .sn::before{content:counter(s) "."}
+  .body{font-size:14.5px}
+  .body strong{font-weight:600}
+  ol.steps input:checked ~ .sn, ol.steps input:checked ~ .body{color:var(--ink-3)}
+  ol.steps input:checked ~ .body strong{color:var(--ink-3)}
+  .sub{display:block; color:var(--ink-2); font-size:13.5px; margin-top:4px}
+
+  code,kbd{font-family:var(--mono); font-size:.875em; background:var(--surface-2); border:1px solid var(--rule); border-radius:4px; padding:1px 5px; color:var(--ink); word-break:break-word}
+  pre{font-family:var(--mono); font-size:12.5px; line-height:1.62; background:var(--surface-2); border:1px solid var(--rule); border-radius:9px; padding:13px 15px; overflow-x:auto; margin:12px 0 0}
+  .fileblk{margin:12px 0 0; border:1px solid var(--warn-rule); border-radius:9px; overflow:hidden}
+  .fileblk > .fh{font-family:var(--mono); font-size:11px; letter-spacing:.05em; color:var(--warn); background:var(--warn-soft); padding:7px 14px; border-bottom:1px solid var(--warn-rule)}
+  .fileblk > .fh b{font-weight:600; text-transform:uppercase; letter-spacing:.07em}
+  .fileblk > pre{margin:0; border:0; border-radius:0}
+  pre code{background:none; border:0; padding:0; font-size:inherit}
+  .ph{color:var(--warn); font-weight:500}
+  a{color:var(--accent); text-decoration-thickness:1px; text-underline-offset:2px}
+
+  .note{border:1px solid var(--rule); border-left:3px solid var(--ink-3); background:var(--surface); border-radius:8px; padding:14px 18px; margin:16px 0; font-size:14px}
+  .note p{margin:0 0 9px} .note p:last-child{margin:0}
+  .note pre{margin-top:10px}
+  .note .tag{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; display:block; margin-bottom:7px; color:var(--ink-3)}
+  .note.warn{border-left-color:var(--warn); background:var(--warn-soft); border-color:var(--warn-rule)}
+  .note.warn .tag{color:var(--warn)}
+  .note.stop{border-left-color:var(--danger); background:var(--danger-soft); border-color:var(--danger-rule)}
+  .note.stop .tag{color:var(--danger)}
+  .note.good{border-left-color:var(--ok); background:var(--ok-soft); border-color:var(--ok-rule)}
+  .note.good .tag{color:var(--ok)}
+
+  .scroll{overflow-x:auto; border:1px solid var(--rule); border-radius:10px; margin:18px 0; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-size:13px; min-width:580px}
+  th{text-align:left; font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); font-weight:500; padding:10px 14px; border-bottom:1px solid var(--rule); white-space:nowrap; background:var(--surface-2)}
+  td{padding:10px 14px; border-bottom:1px solid var(--rule); vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  td.mono{font-family:var(--mono); font-size:12px}
+
+  footer.end{margin-top:52px; padding-top:22px; border-top:1px solid var(--rule); font-size:12.5px; color:var(--ink-3); font-family:var(--mono); line-height:1.8}
+
+  @media print{ .rail{display:none} body{background:#fff} section.stage{break-inside:avoid-page} }
+  @media (prefers-reduced-motion:reduce){ *{transition:none !important} }
+</style>
+
+<div class="rail">
+  <div class="rail-in">
+    <span class="rail-label">Setup progress</span>
+    <span class="bar"><i id="fill"></i></span>
+    <span class="rail-count" id="count">0 / 0</span>
+    <button class="reset" id="reset" type="button">Reset</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">LHB MMS &middot; Phase 1 &middot; Shinjiru VALUE VPS</p>
+  <h1>Setting up LMMS on the new VPS</h1>
+  <p class="lede">The order you actually type things in, from a freshly provisioned Windows box to staff
+  logging in. Each stage is tagged with <em>where</em> you run it &mdash; on the VPS, on your dev machine,
+  or on the existing test server &mdash; because this procedure moves between all three. Substitute the
+  four placeholders in the table below and the commands are copy-pasteable as written.</p>
+  <div class="meta">
+    <span><b>Date</b> 17 Sep 2026</span>
+    <span><b>Plan</b> VALUE &mdash; 2 vCPU / 2 GB / 50 GB</span>
+    <span><b>Companion</b> doc/vps-setup-runbook.html</span>
+    <span><b>Time</b> ~4 hours, plus the data copy</span>
+  </div>
+</header>
+
+<div class="note good">
+  <span class="tag">Two decisions that make this shorter than the runbook</span>
+  <p><strong>1. Do not run <code>deploy/setup-test-server.ps1</code> on this box.</strong> It hardcodes the
+  <code>E:</code> drive, it runs both builds on the server (the likeliest thing to exhaust 2 GB), it has a
+  credential-rewrite defect that silently leaves the old test-server password in place, and its
+  <code>migrate&nbsp;deploy</code> + <code>seed</code> steps are pointless when you are restoring a database
+  anyway. Stages 2&ndash;7 below do the same work by hand, in a form you can watch succeed one step at a
+  time.</p>
+  <p><strong>2. Copy the test server's database &mdash; do not re-import from Informix.</strong> This is
+  not just faster, it is the only <em>correct</em> option: months of staff CRUD edits exist nowhere else.
+  The resort active/inactive split is 12/312 because staff retired resorts through fn 2; a fresh
+  <code>resort_mast</code> load would hand you 49/275. The same is true of the LVC retirements, the MAR
+  flags, the RCI corrections and every department and report grant. Stage 5 does it with
+  <code>pg_dump</code>/<code>pg_restore</code>.</p>
+</div>
+
+<h2 style="margin:34px 0 0">Before you start: fill these in</h2>
+<div class="scroll">
+  <table>
+    <thead><tr><th>Placeholder</th><th>What it is</th><th>Where it comes from</th></tr></thead>
+    <tbody>
+      <tr><td class="mono ph">&lt;VPS_IP&gt;</td><td>The VPS public IPv4</td><td>Shinjiru's provisioning email</td></tr>
+      <tr><td class="mono ph">&lt;OFFICE_IP&gt;</td><td>Your office's public IP</td><td>Browse to whatismyip from the office</td></tr>
+      <tr><td class="mono ph">&lt;PG_PW&gt;</td><td><code>postgres</code> superuser &mdash; full control of the instance. <b>Yours, for admin work only; the app never sees it.</b> Used at 2a (installer), 2c, 5d, 5e, 5f, 8c (<code>-MigrateDb</code> prompts for it) and the 9d backup job.</td><td>Choose now, store in the password manager</td></tr>
+      <tr><td class="mono ph">&lt;APP_PW&gt;</td><td><code>lhb_app</code> &mdash; DML only, no <code>CREATE</code>, not the table owner. <b>Used only by the running backend.</b> You type it three times &mdash; 2c to create the role, then <code>.env</code> (4b) and <code>ecosystem.config.js</code> (4c) &mdash; and never again.</td><td>Choose now &mdash; a NEW one, not <code>Lhb@8899</code></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note">
+  <span class="tag">Three unrelated layers of credential &mdash; don't let them blur</span>
+  <p><strong>1. Windows <code>Administrator</code></strong> gets you into the machine over RDP. Already
+  changed.</p>
+  <p><strong>2. PostgreSQL roles</strong> &mdash; <code>postgres</code> and <code>lhb_app</code> above. These
+  exist inside PostgreSQL and have no connection to any Windows account. Two of them rather than one is least
+  privilege: the backend is a long-running process facing the network, so if a bug or a leaked config file
+  exposes its credential, the damage is bounded by DML on one database instead of the whole instance. It also
+  mirrors the test server, which is what lets <code>deploy-test.ps1</code> work against this box unchanged
+  &mdash; it swaps in a <code>postgres</code> URL for <code>migrate deploy</code>, then re-grants
+  <code>lhb_app</code>.</p>
+  <p><strong>3. LMMS logins</strong> &mdash; your own username, <code>jennifer</code>, <code>admin</code> and
+  the rest. They live in the <code>User</code> table as bcrypt hashes and <strong>arrive with the database
+  restore in stage 5</strong>, so there is nothing to set up. <code>JWT_SECRET</code> is a fourth secret but
+  not a password: it is the key the backend signs session cookies with, which is why rotating it (9e) logs
+  everyone out and belongs before UAT starts rather than during.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section class="stage" id="s1">
+  <div class="stage-head">
+    <span class="num done">01</span>
+    <div><h2>Harden the box</h2><p class="when">30 min</p><span class="where vps">On the VPS, over RDP</span></div>
+  </div>
+  <p class="why">This machine is on the public internet, unlike 199.1.1.32. You have already done the first
+  and most important part &mdash; the rest takes twenty minutes and is much harder to retrofit once the app
+  is running.</p>
+
+  <div class="note">
+    <span class="tag">Connecting &mdash; set drive redirection before you log in</span>
+    <p><kbd>Win+R</kbd> &rarr; <code>mstsc</code>. Computer <span class="ph">&lt;VPS_IP&gt;</span>, username
+    <code><span class="ph">&lt;VPS_IP&gt;</span>\Administrator</code> &mdash; qualifying it matters on a
+    workgroup machine, the same reason <code>deploy-test.ps1</code> uses
+    <code>199.1.1.32\Administrator</code>. The certificate warning on first connect is expected on a fresh
+    box.</p>
+    <p><strong>In Show Options &rarr; Local Resources &rarr; More&hellip;, tick your local drive.</strong>
+    This cannot be turned on mid-session, and stages 3&ndash;5 depend on it &mdash; it is how the deploy zip
+    and the database dump reach the VPS, arriving under <code>\\tsclient\</code>. Then save the whole thing
+    as an <code>.rdp</code> file from the General tab.</p>
+    <p><strong>Connect from the office</strong> for this stage: step 1b whitelists wherever you happen to be
+    connected from, so doing it from home would lock the office out.</p>
+  </div>
+
+  <ol class="steps">
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="1a" checked><span class="sn"></span><span class="body"><strong>Change the Administrator password</strong> &mdash; already done.</span></span></label></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="1b"><span class="sn"></span><span class="body"><strong>Scope RDP to the office IP</strong><span class="sub">Until you do this, the box is collecting brute-force attempts on 3389. Run it in PowerShell <strong>as Administrator</strong>.</span></span></span></label>
+      <div class="note stop"><span class="tag">This is the one command that can lock you out</span>
+      <p>You are connected over RDP as you run it. A wrong address drops your session and you cannot
+      reconnect. <strong>Before you start, find the VNC / console option in the Shinjiru control panel</strong>
+      &mdash; that is your way back in. If Shinjiru offers a firewall in their own panel, do this there
+      instead: it sits in front of the VM, so a mistake never costs you OS access.</p>
+      <p><strong>Is your office IP static?</strong> Many business lines here are not. If the ISP rotates it
+      overnight you arrive locked out, so allow the surrounding range instead &mdash; looser, but it
+      survives rotation.</p></div>
+      <pre><code># 1. Ask the VPS what address YOUR session is coming from. More reliable than a
+#    what-is-my-IP site, and that site would report the VPS's own address anyway.
+Get-NetTCPConnection -LocalPort 3389 -State Established |
+  Select-Object RemoteAddress, CreationTime
+
+# 2. See what is in the group - there are usually several rules (TCP and UDP)
+Get-NetFirewallRule -DisplayGroup "Remote Desktop" |
+  Select-Object DisplayName, Enabled, Direction
+
+# 3. Apply. Takes a list too: @("1.2.3.4","5.6.7.8"), or a range: "1.2.3.0/24"
+Set-NetFirewallRule -DisplayGroup "Remote Desktop" -RemoteAddress <span class="ph">&lt;OFFICE_IP&gt;</span>
+
+# 4. Confirm it took
+Get-NetFirewallRule -DisplayGroup "Remote Desktop" | Get-NetFirewallAddressFilter</code></pre>
+      <div class="note warn"><p><strong>Keep this RDP session open</strong> and open a second one from the
+      office to prove it still works. If it does not, undo it from the session you still have:</p>
+      <pre><code>Set-NetFirewallRule -DisplayGroup "Remote Desktop" -RemoteAddress Any</code></pre></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="1c"><span class="sn"></span><span class="body"><strong>Set a fixed 6 GB pagefile, then reboot</strong><span class="sub">The single most important setting on a 2 GB box &mdash; it is what stands between you and the error-1455 commit-limit crash that took PostgreSQL down on the test server. That is a Windows commit failure, so no <code>postgresql.conf</code> tuning substitutes for it.</span></span></span></label>
+      <pre><code>$cs = Get-CimInstance Win32_ComputerSystem
+if ($cs.AutomaticManagedPagefile) {
+  Set-CimInstance $cs -Property @{ AutomaticManagedPagefile = $false }
+}
+if (-not (Get-CimInstance Win32_PageFileSetting -Filter "Name='C:\\pagefile.sys'")) {
+  New-CimInstance -ClassName Win32_PageFileSetting -Property @{ Name = 'C:\pagefile.sys' }
+}
+Set-CimInstance (Get-CimInstance Win32_PageFileSetting -Filter "Name='C:\\pagefile.sys'") `
+  -Property @{ InitialSize = 6144; MaximumSize = 6144 }
+Restart-Computer</code></pre>
+      <div class="note"><p>If the CIM route is awkward, <code>sysdm.cpl</code> &rarr; Advanced &rarr;
+      Performance Settings &rarr; Advanced &rarr; Virtual memory does the same thing. Confirm after the
+      reboot with <code>Get-CimInstance Win32_PageFileUsage</code>.</p></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="1d"><span class="sn"></span><span class="body"><strong>Set the timezone and run Windows Update</strong><span class="sub">The <code>Timestamptz(3)</code> convention expects audit timestamps to read as <code>+08</code>. Business date columns stay UTC-midnight regardless.</span></span></span></label>
+      <pre><code>tzutil /s "Singapore Standard Time"   # this is Windows' id for UTC+08 Kuala Lumpur
+tzutil /g</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="1e"><span class="sn"></span><span class="body"><strong>Check nothing already owns port 80</strong><span class="sub">Server images often ship IIS enabled. Remove it, or move nginx to 8080 and match <code>FRONTEND_URL</code>.</span></span></span></label>
+      <pre><code># No output from this one is the PASS - nothing is listening on 80.
+# (-ErrorAction SilentlyContinue is there because the cmdlet throws
+#  ObjectNotFound rather than returning an empty list when nothing matches.)
+Get-NetTCPConnection -LocalPort 80 -State Listen -ErrorAction SilentlyContinue
+
+# "Available" means NOT INSTALLED - that is the result you want, nothing to do.
+# Only "Installed" (shown as [X]) needs: Uninstall-WindowsFeature Web-Server -Restart
+Get-WindowsFeature Web-Server</code></pre>
+      <div class="note"><p>If the port check does print something, name the process holding it:</p>
+      <pre><code>Get-Process -Id (Get-NetTCPConnection -LocalPort 80 -State Listen).OwningProcess</code></pre></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="1f"><span class="sn"></span><span class="body"><strong>Confirm the drive layout, then create the folders</strong><span class="sub">If there is only a <code>C:</code> &mdash; the usual case &mdash; everything below is already written for it. If Shinjiru gave you an <code>E:</code>, use that instead and the paths match the test server exactly.</span></span></span></label>
+      <pre><code>Get-Volume | Where-Object DriveLetter
+New-Item -ItemType Directory -Force C:\Apps\lhb-mms\logs
+New-Item -ItemType Directory -Force C:\Apps\nginx
+New-Item -ItemType Directory -Force C:\backups</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="1g"><span class="sn"></span><span class="body"><strong>Add Defender exclusions and trim idle services</strong><span class="sub">Real-time scanning of the database directory costs both memory and a great deal of I/O, and is the usual reason npm feels glacial on a small Windows box.</span></span></span></label>
+      <pre><code>Add-MpPreference -ExclusionPath 'C:\PostgreSQL18','C:\Apps\lhb-mms','C:\Apps\nginx'
+Get-Service Spooler,WSearch | Set-Service -StartupType Disabled -PassThru | Stop-Service -Force</code></pre></li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section class="stage" id="s2">
+  <div class="stage-head">
+    <span class="num">02</span>
+    <div><h2>Install the stack</h2><p class="when">40 min, mostly downloads</p><span class="where vps">On the VPS</span></div>
+  </div>
+  <p class="why">Install PostgreSQL to <code>C:\PostgreSQL18</code> rather than accepting the installer's
+  <code>C:\Program Files\PostgreSQL\18</code>. It keeps every path in the repo's scripts one drive letter
+  away from correct instead of a different shape, and it keeps the space out of your command lines.</p>
+  <ol class="steps">
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="2a"><span class="sn"></span><span class="body"><strong>Install PostgreSQL 18</strong><span class="sub">Installation directory <code>C:\PostgreSQL18</code>, data directory <code>C:\PostgreSQL18\data</code>, port 5432, default locale. Set the <code>postgres</code> password to <span class="ph">&lt;PG_PW&gt;</span>. Untick Stack Builder at the end. <strong>The major version must be 18</strong> &mdash; stage 5 restores a dump taken from the test server's PostgreSQL 18, and a restore into an older major version will fail.</span></span></span></label></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="2b"><span class="sn"></span><span class="body"><strong>Apply the 2 GB settings to <code>C:\PostgreSQL18\data\postgresql.conf</code>, then restart</strong><span class="sub">The stock config is wrong for this machine in both directions &mdash; too little cache, too much room for per-connection growth.</span></span></span></label>
+      <p style="margin:12px 0 0; font-size:14px; color:var(--ink-2)">The settings go at the
+      <strong>end</strong> of <code>C:\PostgreSQL18\data\postgresql.conf</code>. The file uses the
+      <em>last</em> occurrence of any setting, so adding them at the bottom beats hunting for five values
+      that sit commented out higher up.</p>
+
+      <div class="note stop"><span class="tag">Type the settings into Notepad &mdash; never through a PowerShell command</span>
+      <p>Every scripted way of writing this file &mdash; a here-string piped to <code>Add-Content</code>, an
+      array passed to <code>-Value</code> &mdash; ends up pasted <em>into</em> the config instead of run, and
+      PostgreSQL then refuses to start with <code>syntax error &hellip; near token</code> naming
+      <code>"$"</code>, <code>"Copy-Item"</code>, <code>"@"</code>, or the quoted settings themselves. That
+      happened three times on this build. <strong>The commands below deliberately contain none of the
+      settings.</strong></p></div>
+
+      <p style="margin:14px 0 0; font-size:14px; color:var(--ink-2)"><b>1.</b> Back the file up and open it
+      &mdash; in PowerShell:</p>
+      <pre><code>Copy-Item 'C:\PostgreSQL18\data\postgresql.conf' 'C:\PostgreSQL18\data\postgresql.conf.bak' -Force
+notepad C:\PostgreSQL18\data\postgresql.conf</code></pre>
+
+      <p style="margin:14px 0 0; font-size:14px; color:var(--ink-2)"><b>2.</b> In the Notepad window: press
+      <kbd>Ctrl+End</kbd> &mdash; the cursor lands just after <code># Add settings for extensions here</code>
+      &mdash; press <kbd>Enter</kbd> once, then <strong>type</strong> these five lines and <kbd>Ctrl+S</kbd>.</p>
+      <div class="fileblk">
+        <div class="fh"><b>Type into Notepad.</b> The end of C:\PostgreSQL18\data\postgresql.conf</div>
+        <pre><code>shared_buffers = 256MB
+work_mem = 4MB
+max_connections = 25
+max_parallel_workers_per_gather = 0
+plan_cache_mode = force_custom_plan</code></pre>
+      </div>
+      <p style="margin:10px 0 0; font-size:14px; color:var(--ink-2)">Nothing else goes in &mdash; no
+      <code>$</code>, no quotes, no brackets, no <code>Add-Content</code>.</p>
+
+      <p style="margin:14px 0 0; font-size:14px; color:var(--ink-2)"><b>3.</b> Restart and verify &mdash; in
+      PowerShell. A config file is never "run"; PostgreSQL reads it at startup, so the restart is what
+      applies it.</p>
+      <pre><code>Restart-Service postgresql-x64-18
+Get-Service postgresql-x64-18
+
+& 'C:\PostgreSQL18\bin\psql.exe' -U postgres -c "SELECT name, setting, unit FROM pg_settings WHERE name IN ('shared_buffers','work_mem','max_connections','max_parallel_workers_per_gather','plan_cache_mode');"</code></pre>
+      <p style="margin:10px 0 0; font-size:14px; color:var(--ink-2)">Expect <code>shared_buffers</code>
+      <b>32768</b> (unit <code>8kB</code>, i.e. 256MB), <code>max_connections</code> <b>25</b>,
+      <code>plan_cache_mode</code> <b>force_custom_plan</b>. Finding the first two <em>also</em> set near
+      lines 65 and 132 is normal &mdash; those are the installer's, and the last occurrence wins.</p>
+
+      <div class="note warn"><span class="tag">If it will not start</span>
+      <p>PostgreSQL dies before its log collector starts, so the reason is in the <strong>Windows event
+      log</strong>, not <code>C:\PostgreSQL18\data\log\</code>. The message names the offending line number,
+      which is usually enough to see what strayed into the file:</p>
+      <pre><code>Get-WinEvent -LogName Application -MaxEvents 15 |
+  Where-Object { $_.ProviderName -match 'postgres' } |
+  Select-Object TimeCreated, Message | Format-List</code></pre>
+      <p>To get back to a known-good file, restore the step&nbsp;1 backup and begin again:</p>
+      <pre><code>Copy-Item 'C:\PostgreSQL18\data\postgresql.conf.bak' 'C:\PostgreSQL18\data\postgresql.conf' -Force
+Start-Service postgresql-x64-18</code></pre>
+      <p>If it says <code>could not map anonymous shared memory</code>, <code>shared_buffers</code> is more
+      than this box will reserve &mdash; edit that one line to <code>128MB</code> and leave the other four.</p></div>
+
+      <div class="note"><span class="tag">This whole step is optional &mdash; skip it if it fights you</span>
+      <p>The reason for <code>plan_cache_mode = force_custom_plan</code> was the <code>CachedPlan</code>
+      out-of-memory during the <strong>Informix migration scripts</strong> &mdash; and this box never runs
+      them. Stage 5 restores a <code>pg_dump</code>, which streams <code>COPY</code> and never touches that
+      code path. The stock config carries UAT perfectly well. Restore the backup, start the service, go on to
+      2c, and revisit the tuning later once you can see real memory behaviour on the box.</p></div>
+      <div class="note warn"><span class="tag">Why force_custom_plan</span><p>It is the targeted fix for
+      the <code>CachedPlan</code> out-of-memory. Under the default <code>auto</code>, the server switches to
+      a cached <em>generic</em> plan after about five executions of the same statement and accumulates
+      memory across the session &mdash; which is exactly why that failure struck partway through a refresh
+      rather than on the first batch. Forcing a custom plan each time costs a little planning CPU and
+      removes the accumulation.</p></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="2c"><span class="sn"></span><span class="body"><strong>Create the role and the empty database</strong><span class="sub">Note the database is left owned by <code>postgres</code>, and <code>lhb_app</code> gets DML grants only in stage 5. That deliberately reproduces the test server's permission model, so <code>deploy-test.ps1 -MigrateDb</code> &mdash; which runs <code>migrate deploy</code> as the superuser and then re-grants &mdash; works against this box unchanged.</span></span></span></label>
+      <pre><code>$psql = 'C:\PostgreSQL18\bin\psql.exe'
+& $psql -U postgres -c "CREATE USER lhb_app WITH PASSWORD '<span class="ph">&lt;APP_PW&gt;</span>';"
+& $psql -U postgres -c "CREATE DATABASE lhb_mms;"
+& $psql -U postgres -d lhb_mms -c "SELECT version();"</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="2d"><span class="sn"></span><span class="body"><strong>Leave <code>listen_addresses</code> at <code>localhost</code></strong><span class="sub">Nothing in this procedure needs 5432 reachable from outside the box. Do not open it.</span></span></span></label></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="2e"><span class="sn"></span><span class="body"><strong>Install Node.js LTS, NSSM and PM2</strong><span class="sub">No native modules are involved &mdash; the project uses <code>bcryptjs</code> precisely to avoid them &mdash; so any current LTS is fine. <strong>Git is not needed on this box</strong>: deployment is a zip in stage 3 and file copies thereafter, and no npm dependency is a git URL.</span></span></span></label>
+      <div class="note warn"><span class="tag">Expect winget to be missing</span>
+      <p>Windows Server images generally ship without the App Installer, so <code>winget</code> is not
+      recognised. Download the <strong>Node.js LTS MSI</strong> from nodejs.org and the <strong>NSSM
+      zip</strong> from nssm.cc by hand &mdash; that is the normal route here, not a workaround.</p></div>
+      <pre><code># nssm ships as a zip. Use the win64 copy, and put it on PATH -
+# step 6b calls it five times. Needs an elevated PowerShell.
+New-Item -ItemType Directory -Force C:\Apps\nssm | Out-Null
+Copy-Item '<span class="ph">&lt;extract path&gt;</span>\nssm-2.24\win64\nssm.exe' C:\Apps\nssm\ -Force
+
+$p = [Environment]::GetEnvironmentVariable('Path','Machine').TrimEnd(';')
+[Environment]::SetEnvironmentVariable('Path', "$p;C:\Apps\nssm", 'Machine')
+
+# ---- OPEN A NEW POWERSHELL WINDOW HERE ----
+# The Node MSI and the PATH edit above are both invisible to windows
+# that were already open.
+
+npm install -g pm2 pm2-windows-startup
+
+node --version                       # v20 or v22
+npm --version
+pm2 --version
+nssm version                         # prints the NSSM banner
+Test-Path C:\Apps\nginx\nginx.exe    # True, once 2f is done</code></pre>
+      <div class="note"><p>Unlike the dev machine, this box has no TLS interception, so
+      <code>npm install -g</code> needs no <code>NODE_EXTRA_CA_CERTS</code> and Prisma's engine downloads in
+      stage 4 will work unaided.</p></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="2f"><span class="sn"></span><span class="body"><strong>Extract nginx for Windows to <code>C:\Apps\nginx</code></strong><span class="sub">So that <code>C:\Apps\nginx\nginx.exe</code> exists. Take the current <b>Stable version</b> from nginx.org/en/download.html, under "nginx/Windows-x.xx.x", and put its version into the URL below.</span></span></span></label>
+      <pre><code># Download. -UseBasicParsing matters on Server: without it Invoke-WebRequest
+# leans on the IE engine, which Enhanced Security Configuration breaks.
+Invoke-WebRequest -Uri 'https://nginx.org/download/nginx-<span class="ph">1.28.0</span>.zip' `
+                  -OutFile 'C:\Users\Administrator\Downloads\nginx.zip' -UseBasicParsing
+
+# Extract via a temp folder, then flatten - see the warning below
+Expand-Archive -Path 'C:\Users\Administrator\Downloads\nginx.zip' `
+               -DestinationPath C:\Apps\nginx-tmp -Force
+
+$inner = (Get-ChildItem C:\Apps\nginx-tmp -Directory | Select-Object -First 1).FullName
+New-Item -ItemType Directory -Force C:\Apps\nginx | Out-Null
+Copy-Item "$inner\*" C:\Apps\nginx -Recurse -Force
+Remove-Item C:\Apps\nginx-tmp -Recurse -Force
+
+Test-Path C:\Apps\nginx\nginx.exe          # must be True
+Get-ChildItem C:\Apps\nginx | Select-Object Name
+# expect: conf, contrib, docs, html, logs, temp, nginx.exe</code></pre>
+      <div class="note warn"><span class="tag">Why the temp folder and the flatten</span>
+      <p>The zip contains a top-level <code>nginx-x.xx.x\</code> folder, so extracting straight into
+      <code>C:\Apps\nginx</code> leaves you with
+      <code>C:\Apps\nginx\nginx-1.28.0\nginx.exe</code> &mdash; one level too deep, and nothing downstream
+      finds it. Step 1f already created <code>C:\Apps\nginx</code> as an empty folder, which makes the
+      nesting easy to miss.</p></div>
+      <div class="note"><p><strong>Don't start it yet.</strong> It has no config and nothing to serve &mdash;
+      step 6a copies your <code>nginx.conf</code> in and 6b registers it as a service through NSSM.</p></div></li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section class="stage" id="s3">
+  <div class="stage-head">
+    <span class="num">03</span>
+    <div><h2>Build and package</h2><p class="when">15 min</p><span class="where dev">On your dev machine</span></div>
+  </div>
+  <p class="why">Both builds run here, never on the VPS. Vite and <code>tsc</code> are the most
+  memory-hungry things in this whole process and there is no reason for them to touch a 2 GB server.</p>
+  <ol class="steps">
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="3a"><span class="sn"></span><span class="body"><strong>Build both halves from a clean tree</strong></span></span></label>
+      <pre><code>cd E:\Websites\lmms
+git status                       # commit or stash anything outstanding first
+npm --prefix backend run build
+npm --prefix frontend run build
+Test-Path backend\dist\index.js, frontend\dist\index.html    # both must be True</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="3b"><span class="sn"></span><span class="body"><strong>Zip exactly these seven items</strong><span class="sub">No <code>node_modules</code> from either half &mdash; the VPS installs its own, and <code>frontend/node_modules</code> is never needed there once <code>dist</code> exists. No <code>migrate\*.txt</code> either: you are restoring a database, not importing exports.</span></span></span></label>
+      <pre><code>$stage = "$env:TEMP\lhb-mms-deploy"
+Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $stage | Out-Null
+
+Copy-Item backend\dist        "$stage\backend\dist"    -Recurse
+Copy-Item backend\package.json "$stage\backend\"
+Copy-Item backend\ecosystem.config.js "$stage\backend\"
+Copy-Item frontend\dist       "$stage\frontend\dist"   -Recurse
+Copy-Item prisma              "$stage\prisma"          -Recurse
+Copy-Item nginx\nginx.conf    "$stage\nginx\"          -Force
+Copy-Item package.json, package-lock.json "$stage\"
+
+Compress-Archive "$stage\*" "$env:USERPROFILE\Desktop\lhb-mms-deploy.zip" -Force</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="3c"><span class="sn"></span><span class="body"><strong>Generate a JWT secret and write it down</strong><span class="sub">You will paste this into the VPS's <code>.env</code> in stage 4. Generate it here so it never has to be typed twice.</span></span></span></label>
+      <pre><code>-join ((1..32) | ForEach-Object { '{0:X2}' -f (Get-Random -Max 256) })</code></pre></li>
+  </ol>
+  <div class="note">
+    <span class="tag">Note &mdash; no repository edits are needed</span>
+    <p>The runbook's retargeting table listed ten hardcoded paths. Most of them turn out not to matter on
+    this route: <code>setup-test-server.ps1</code> is not being run, <code>deploy-test.ps1</code> takes
+    <code>-RemoteHost</code> and <code>-RemotePath</code> as <strong>parameters</strong> so its defaults need
+    no editing, and the paths in <code>refresh-test-db.ps1</code> / <code>migrate-table.ps1</code> are
+    printed examples only.</p>
+    <p>That leaves <strong>two files</strong>, and both are edited <em>on the VPS after extraction</em>
+    (stage 4) rather than in the repo &mdash; which also keeps the real credentials out of git.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section class="stage" id="s4">
+  <div class="stage-head">
+    <span class="num">04</span>
+    <div><h2>Install the application</h2><p class="when">30 min</p><span class="where vps">On the VPS</span></div>
+  </div>
+  <p class="why">Copy the zip up through RDP drive redirection &mdash; in <code>mstsc</code>, Local
+  Resources &rarr; More &rarr; tick your drive, then it appears under <code>\\tsclient\</code> on the VPS.</p>
+  <ol class="steps">
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="4a"><span class="sn"></span><span class="body"><strong>Extract to <code>C:\Apps\lhb-mms</code></strong></span></span></label>
+      <pre><code>Expand-Archive -Path C:\Users\Administrator\Desktop\lhb-mms-deploy.zip `
+               -DestinationPath C:\Apps\lhb-mms -Force
+Get-ChildItem C:\Apps\lhb-mms</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="4b"><span class="sn"></span><span class="body"><strong>Create <code>C:\Apps\lhb-mms\.env</code></strong><span class="sub">This file is authoritative: <code>backend/src/index.ts</code> loads it with <code>override: true</code>, so it beats anything PM2 puts in the environment. It is also what the Prisma CLI reads.</span></span></span></label>
+      <div class="fileblk">
+        <div class="fh"><b>File contents &mdash; not commands.</b> C:\Apps\lhb-mms\.env</div>
+        <pre><code>DATABASE_URL=postgresql://lhb_app:<span class="ph">&lt;APP_PW&gt;</span>@127.0.0.1:5432/lhb_mms
+JWT_SECRET=<span class="ph">&lt;the 64-char string from step 3c&gt;</span>
+JWT_EXPIRES_IN=8h
+PORT=3001
+NODE_ENV=production
+BCRYPT_ROUNDS=12
+COOKIE_SECURE=false
+FRONTEND_URL=http://<span class="ph">&lt;VPS_IP&gt;</span></code></pre>
+      </div>
+      <p style="margin:12px 0 0; font-size:14px; color:var(--ink-2)">Write it with Notepad, or from
+      PowerShell &mdash; but <strong>not</strong> with <code>Out-File -Encoding utf8</code>, which prepends a
+      BOM that <code>dotenv</code> folds into the first key name, silently breaking
+      <code>DATABASE_URL</code>:</p>
+      <pre><code>notepad C:\Apps\lhb-mms\.env      # Save as type "All Files" so it does not become .env.txt</code></pre>
+      <div class="note warn"><p><code>COOKIE_SECURE=false</code> is correct <em>only</em> while the box is
+      HTTP-only &mdash; without it every login bounces straight back to the login page. Stage 9 flips it to
+      <code>true</code> the moment HTTPS is in place. <code>FRONTEND_URL</code> must match what users type,
+      with no trailing slash, or CORS rejects every request.</p></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="4c"><span class="sn"></span><span class="body"><strong>Edit <code>backend\ecosystem.config.js</code> &mdash; the first of the two files</strong><span class="sub">Five lines. The <code>.env</code> above overrides the environment block at runtime, but leaving the test server's values in a file on this machine is a trap for whoever next starts PM2 without one.</span></span></span></label>
+      <div class="scroll"><table>
+        <thead><tr><th>Line</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">14</td><td><code>cwd:</code> <code>'E:/Apps/lhb-mms'</code> &rarr; <code>'C:/Apps/lhb-mms'</code></td></tr>
+          <tr><td class="mono">30</td><td><code>DATABASE_URL:</code> replace <code>Lhb@8899</code> with <span class="ph">&lt;APP_PW&gt;</span></td></tr>
+          <tr><td class="mono">32</td><td><code>JWT_SECRET:</code> replace <code>CHANGE_ME_64_CHAR_RANDOM_STRING</code> with your secret</td></tr>
+          <tr><td class="mono">36</td><td><code>FRONTEND_URL:</code> <code>'http://199.1.1.32'</code> &rarr; <code>'http://<span class="ph">&lt;VPS_IP&gt;</span>'</code></td></tr>
+          <tr><td class="mono">43&ndash;44</td><td><code>out_file</code> / <code>error_file</code>: <code>E:/Apps/&hellip;</code> &rarr; <code>C:/Apps/&hellip;</code></td></tr>
+        </tbody>
+      </table></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="4d"><span class="sn"></span><span class="body"><strong>Edit <code>nginx\nginx.conf</code> &mdash; the second file</strong><span class="sub">One line. Forward slashes only; a backslash is a parse error there, and the file already warns about it. The log paths on lines 12&ndash;13 are already <code>C:/Apps/nginx/logs</code>, so they need nothing.</span></span></span></label>
+      <pre><code>line 31:   root   E:/Apps/lhb-mms/frontend/dist;
+became:    root   C:/Apps/lhb-mms/frontend/dist;</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="4e"><span class="sn"></span><span class="body"><strong>Install dependencies and generate the Prisma client</strong><span class="sub">The root install is deliberately <em>not</em> <code>--omit=dev</code>: the <code>prisma</code> CLI is a root devDependency and <code>prisma generate</code> needs it. The backend install can skip devDependencies, because PM2 runs compiled <code>dist</code> and never TypeScript.</span></span></span></label>
+      <pre><code>cd C:\Apps\lhb-mms
+npm install
+npm --prefix backend install --omit=dev
+npx prisma generate</code></pre></li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section class="stage" id="s5">
+  <div class="stage-head">
+    <span class="num">05</span>
+    <div><h2>Copy the database across</h2><p class="when">1&ndash;2 hours, mostly transfer</p><span class="where test">Test server, then the VPS</span></div>
+  </div>
+  <p class="why">This carries the schema, the migration history, all the Informix data <em>and</em> every
+  staff edit made in UAT &mdash; departments, users, report grants, resort statuses, MAR flags, LVC
+  retirements, RCI corrections. Re-importing from the exports would silently discard all of it.</p>
+
+  <div class="note stop">
+    <span class="tag">Run pg_dump ON the test server, not from your desk</span>
+    <p>Your dev machine has <strong>PostgreSQL 16</strong>; the test server runs <strong>18</strong>. A
+    version-16 <code>pg_dump</code> refuses to dump from a version-18 server outright, so pointing it at
+    <code>199.1.1.32</code> will simply fail. Take the dump over RDP with the test server's own binaries at
+    <code>E:\PostgreSQL18\bin\</code>, which is also why stage 2 insisted the VPS gets 18 as well.</p>
+  </div>
+
+  <ol class="steps">
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5a"><span class="sn"></span><span class="body"><strong>On the test server (RDP to 199.1.1.32): take the dump</strong><span class="sub">No need to stop PM2 &mdash; <code>pg_dump</code> takes a transactionally consistent snapshot, so UAT users can keep working through it. Expect a few hundred MB.</span></span></span></label>
+      <pre><code>& 'E:\PostgreSQL18\bin\pg_dump.exe' -U postgres -F c -Z 6 `
+     -f E:\lhb_mms_20260917.dump lhb_mms
+Get-Item E:\lhb_mms_20260917.dump | Select-Object Length, LastWriteTime</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5b"><span class="sn"></span><span class="body"><strong>Record the source row counts while you are there</strong><span class="sub">Run this on the test server and keep the output. It is what you will compare against after the restore &mdash; one query, every table, exact counts.</span></span></span></label>
+      <pre><code>& 'E:\PostgreSQL18\bin\psql.exe' -U postgres -d lhb_mms -A -F "," -o E:\counts_source.csv -c @"
+SELECT table_name,
+       (xpath('/row/c/text()',
+              query_to_xml(format('SELECT count(*) AS c FROM %I.%I','public',table_name),
+                           false, true, '')))[1]::text::bigint AS rows
+FROM information_schema.tables
+WHERE table_schema='public' AND table_type='BASE TABLE'
+ORDER BY table_name;
+"@</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5c"><span class="sn"></span><span class="body"><strong>Move the dump to the VPS</strong><span class="sub">Copy it down to your machine over RDP drive redirection, then up to the VPS the same way. Keep a copy locally &mdash; it doubles as your first off-site backup.</span></span></span></label></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5d"><span class="sn"></span><span class="body"><strong>On the VPS: restore</strong><span class="sub"><code>--no-owner</code> makes every object land owned by <code>postgres</code>, matching the test server. Expect a few "role does not exist" notices if the dump references roles this box lacks; those are harmless. A non-zero exit with real ERROR lines is not &mdash; read them before continuing.</span></span></span></label>
+      <pre><code>& 'C:\PostgreSQL18\bin\pg_restore.exe' -U postgres -d lhb_mms `
+     --no-owner --no-privileges --exit-on-error `
+     C:\Users\Administrator\Desktop\lhb_mms_20260917.dump</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5e"><span class="sn"></span><span class="body"><strong>Re-grant <code>lhb_app</code> &mdash; do not skip this</strong><span class="sub">A restore recreates every table, and grants do not come along with them. Without this the app connects and then fails on the first query.</span></span></span></label>
+      <pre><code>$psql = 'C:\PostgreSQL18\bin\psql.exe'
+& $psql -U postgres -d lhb_mms -c @"
+GRANT USAGE ON SCHEMA public TO lhb_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO lhb_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lhb_app;
+"@</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5f"><span class="sn"></span><span class="body"><strong>Verify: same query, then diff against the source</strong><span class="sub">Every table must match. A table that comes back short or zero means the restore did not complete, whatever its exit code said.</span></span></span></label>
+      <pre><code># on the VPS - same SQL as step 5b, writing C:\counts_target.csv
+# then, on your dev machine, with both CSVs side by side:
+Compare-Object (Get-Content counts_source.csv) (Get-Content counts_target.csv)
+# no output = identical</code></pre>
+      <div class="note"><p>As a sanity anchor, the headline figures on the current UAT data are roughly:
+      <code>Member</code> 32,387 &middot; <code>Agreement</code> 33,841 &middot;
+      <code>CpBookingEntitlement</code> 279,062 &middot; <code>BookingEntitlement</code> 177,164 &middot;
+      <code>ResAvailMast</code> 133,988 &middot; <code>RciEnrolment</code> 17,915 &middot;
+      <code>Resort</code> 324&ndash;325 &middot; <code>RciBulkBank</code> 774. The comparison above is the
+      real check; these are just to catch a restore that obviously went nowhere.</p></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5g"><span class="sn"></span><span class="body"><strong>Confirm Prisma agrees the schema is current</strong><span class="sub">The dump carries <code>_prisma_migrations</code>, so this should report nothing pending. If it wants to apply migrations, stop &mdash; something is out of step.</span></span></span></label>
+      <pre><code>cd C:\Apps\lhb-mms
+npx prisma migrate status</code></pre></li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section class="stage" id="s6">
+  <div class="stage-head">
+    <span class="num">06</span>
+    <div><h2>Start nginx and the backend</h2><p class="when">25 min</p><span class="where vps">On the VPS</span></div>
+  </div>
+  <p class="why">nginx serves the React build and proxies <code>/api</code>; PM2 runs the compiled backend.
+  Both must come back by themselves after a reboot, which stage 7 tests.</p>
+  <ol class="steps">
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="6a"><span class="sn"></span><span class="body"><strong>Install the nginx config and check it parses</strong></span></span></label>
+      <pre><code>New-Item -ItemType Directory -Force C:\Apps\nginx\logs | Out-Null
+Copy-Item C:\Apps\lhb-mms\nginx\nginx.conf C:\Apps\nginx\conf\nginx.conf -Force
+cd C:\Apps\nginx
+.\nginx.exe -t                      # must say "syntax is ok" / "test is successful"</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="6b"><span class="sn"></span><span class="body"><strong>Register nginx as a Windows service via NSSM</strong><span class="sub">nginx has no native service mode on Windows; NSSM is what makes it survive a reboot.</span></span></span></label>
+      <pre><code>nssm install nginx "C:\Apps\nginx\nginx.exe"
+nssm set nginx AppDirectory C:\Apps\nginx
+nssm set nginx AppStdout    C:\Apps\nginx\logs\service-out.log
+nssm set nginx AppStderr    C:\Apps\nginx\logs\service-err.log
+nssm set nginx Start SERVICE_AUTO_START
+nssm start nginx
+Get-Service nginx</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="6c"><span class="sn"></span><span class="body"><strong>Open port 80 inbound</strong></span></span></label>
+      <pre><code>New-NetFirewallRule -DisplayName "LHB MMS HTTP" -Direction Inbound `
+                    -Protocol TCP -LocalPort 80 -Action Allow</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="6d"><span class="sn"></span><span class="body"><strong>Start the backend under PM2 and register it for boot</strong></span></span></label>
+      <pre><code>cd C:\Apps\lhb-mms
+pm2 start backend\ecosystem.config.js --env production
+pm2 save
+pm2-startup install
+pm2 list</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="6e"><span class="sn"></span><span class="body"><strong>Read the logs before assuming it worked</strong><span class="sub">A backend that cannot reach the database restarts in a loop and <code>pm2 list</code> still shows it, just with a climbing restart count.</span></span></span></label>
+      <pre><code>pm2 logs lhb-mms-backend --lines 40 --nostream</code></pre></li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section class="stage" id="s7">
+  <div class="stage-head">
+    <span class="num">07</span>
+    <div><h2>Verify</h2><p class="when">30 min</p><span class="where vps">On the VPS, then a browser</span></div>
+  </div>
+  <p class="why">The first four checks prove the plumbing. The reboot proves it survives the one thing a
+  VPS does without warning, and it is the most valuable line on this page.</p>
+  <ol class="steps">
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="7a"><span class="sn"></span><span class="body"><strong>Four HTTP checks, all expecting 200</strong></span></span></label>
+      <pre><code>'http://127.0.0.1:3001/api/health',
+'http://127.0.0.1/api/health',
+'http://127.0.0.1/',
+'http://127.0.0.1/members' | ForEach-Object {
+  try { "{0,-36} {1}" -f $_, (Invoke-WebRequest $_ -UseBasicParsing -TimeoutSec 10).StatusCode }
+  catch { "{0,-36} FAIL - {1}" -f $_, $_.Exception.Message }
+}</code></pre>
+      <div class="note"><p><code>/members</code> is the SPA-routing check: without nginx's
+      <code>try_files</code> fallback it returns 404 and every page refresh in the app breaks.</p></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="7b"><span class="sn"></span><span class="body"><strong>Log in from a browser at <code>http://<span class="ph">&lt;VPS_IP&gt;</span></code></strong><span class="sub">Use your normal UAT account &mdash; the users came across in the dump, so the seeded <code>admin</code> / <code>LHB@Admin2026!</code> is not involved and its password is whatever it already was on the test server. If that account is still on its default password, change it now: this box is public.</span></span></span></label></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="7c"><span class="sn"></span><span class="body"><strong>Exercise one page per module</strong><span class="sub">A member enquiry with a phone search, an agreement detail with its entitlement card, an AMC invoice generate, a report download, and the RCI bulk-bank year grid. The report and day-end paths are the ones that depend on <code>proxy_buffering off</code>.</span></span></span></label></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="7d"><span class="sn"></span><span class="body"><strong>Reboot and walk away for five minutes</strong><span class="sub">nginx (NSSM) and the backend (PM2 resurrect) must both come back with no intervention. If PM2 does not, re-run <code>pm2 save</code> followed by <code>pm2-startup install</code>.</span></span></span></label>
+      <pre><code>Restart-Computer
+# after it returns:
+Get-Service nginx; pm2 list; Invoke-WebRequest http://127.0.0.1/api/health -UseBasicParsing</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="7e"><span class="sn"></span><span class="body"><strong>Record the memory baseline</strong><span class="sub">Watch <strong>Committed Bytes against Commit Limit</strong>, not free RAM &mdash; free RAM on Windows is meant to be near zero and tells you nothing. Sustained commit above ~85% of the limit is the error-1455 precursor: the box feels fine right up until PostgreSQL dies. This measurement is the evidence for the PRO upgrade if you need it.</span></span></span></label>
+      <pre><code>Get-Counter '\Memory\Committed Bytes','\Memory\Commit Limit' -SampleInterval 5 -MaxSamples 12</code></pre></li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section class="stage" id="s8">
+  <div class="stage-head">
+    <span class="num">08</span>
+    <div><h2>Point your deploy script at the new host</h2><p class="when">20 min</p><span class="where dev">Both machines</span></div>
+  </div>
+  <p class="why">WinRM over HTTP on 5985 is fine inside an office. Exposed to the internet it is an
+  authentication endpoint anyone can reach, so it gets the same treatment as RDP.</p>
+  <ol class="steps">
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="8a"><span class="sn"></span><span class="body"><strong>On the VPS: enable remoting, scoped to the office</strong><span class="sub">Note the <code>-RemoteAddress</code> &mdash; not the wide-open rule from the test-server instructions.</span></span></span></label>
+      <pre><code>Enable-PSRemoting -Force
+New-NetFirewallRule -DisplayName "WinRM HTTP" -Direction Inbound -Protocol TCP `
+                    -LocalPort 5985 -Action Allow -RemoteAddress <span class="ph">&lt;OFFICE_IP&gt;</span></code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="8b"><span class="sn"></span><span class="body"><strong>On your machine: trust the new host</strong><span class="sub">That order matters &mdash; <code>Set-Item WSMan:\</code> fails with a connection error if the service is not already running. This appends rather than replacing, so the test server stays reachable.</span></span></span></label>
+      <pre><code>winrm quickconfig -quiet
+$cur = (Get-Item WSMan:\localhost\Client\TrustedHosts).Value
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value "$cur,<span class="ph">&lt;VPS_IP&gt;</span>" -Force</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="8c"><span class="sn"></span><span class="body"><strong>Dry-run, then do one real round trip</strong><span class="sub">Pass the host and path as parameters &mdash; there is no need to edit the script's defaults, and leaving them alone keeps the test server one flag away.</span></span></span></label>
+      <pre><code>.\deploy-test.ps1 -RemoteHost <span class="ph">&lt;VPS_IP&gt;</span> -RemotePath "C:\Apps\lhb-mms" -SkipFrontend -DryRun
+.\deploy-test.ps1 -RemoteHost <span class="ph">&lt;VPS_IP&gt;</span> -RemotePath "C:\Apps\lhb-mms" -SkipFrontend</code></pre>
+      <div class="note warn"><p>Run this in <strong>your own PowerShell window</strong>, not through an
+      automated shell &mdash; it prompts for the Administrator credential through a Windows dialog and, with
+      <code>-MigrateDb</code>, for the <code>postgres</code> password through <code>Read-Host</code>.</p></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="8d"><span class="sn"></span><span class="body"><strong>If you ever use <code>-MigrateDb</code> against this box, fix line 293 first</strong><span class="sub">The GRANT step hardcodes <code>E:\PostgreSQL18\bin\psql.exe</code>. It is the one line in <code>deploy-test.ps1</code> that a parameter cannot cover, and it only runs on that flag &mdash; but when it does run silently against the wrong path, the grants never happen.</span></span></span></label></li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section class="stage" id="s9">
+  <div class="stage-head">
+    <span class="num">09</span>
+    <div><h2>Before UAT users touch it: HTTPS and backups</h2><p class="when">2 hours</p><span class="where vps">On the VPS</span></div>
+  </div>
+  <p class="why">32,387 members' personal data behind a session cookie over plain HTTP was acceptable on the
+  company LAN. On a public host it is not &mdash; and the approved proposal's own risk table committed you
+  to nightly off-site backups either way.</p>
+  <ol class="steps">
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9a"><span class="sn"></span><span class="body"><strong>Point a hostname at the VPS and issue a certificate</strong><span class="sub">Let's Encrypt via win-acme, which installs its own renewal task. A certificate cannot be issued to a bare IP, so the DNS name has to exist first &mdash; e.g. <code>mms.leisureholidays.com.my</code>.</span></span></span></label></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9b"><span class="sn"></span><span class="body"><strong>Add a 443 server block, redirect 80 &rarr; 443</strong><span class="sub">Keep the SPA fallback, the <code>no-cache</code> rule on <code>index.html</code>, and <code>proxy_buffering off</code> on <code>/api/</code> &mdash; that last one is what stops the day-end download returning partial responses.</span></span></span></label></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9c"><span class="sn"></span><span class="body"><strong>Flip the cookie and the URL, in both files</strong><span class="sub"><code>COOKIE_SECURE=true</code> and the https <code>FRONTEND_URL</code> in <em>both</em> <code>.env</code> and <code>ecosystem.config.js</code>, then restart. A mismatched <code>FRONTEND_URL</code> breaks CORS and logins.</span></span></span></label>
+      <pre><code>pm2 delete lhb-mms-backend
+pm2 start backend\ecosystem.config.js --env production
+pm2 save</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9d"><span class="sn"></span><span class="body"><strong>Schedule the nightly dump</strong><span class="sub">On a 50 GB disk already carrying a 6 GB pagefile, keep only the last 3 dumps locally and let the off-site copy hold the 14-daily / 8-weekly history.</span></span></span></label>
+      <pre><code>& 'C:\PostgreSQL18\bin\pg_dump.exe' -U postgres -F c -Z 6 `
+     -f "C:\backups\lhb_mms_$(Get-Date -f yyyyMMdd).dump" lhb_mms</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9e"><span class="sn"></span><span class="body"><strong>Copy each dump off the VPS automatically</strong><span class="sub">A backup that exists only on the box it protects is not a backup. Back up the configuration alongside the data &mdash; <code>.env</code>, <code>ecosystem.config.js</code> and <code>nginx.conf</code> &mdash; because the database dump alone will not rebuild this server.</span></span></span></label></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9f"><span class="sn"></span><span class="body"><strong>Restore one dump into a scratch database and open the app against it</strong><span class="sub">Before UAT starts. An untested backup is an assumption, not a control.</span></span></span></label></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9g"><span class="sn"></span><span class="body"><strong>Rotate the secrets you have now typed into several places</strong><span class="sub">And tidy the repository: <code>backend/ecosystem.config.js:30</code> is committed to git carrying the live test-server password <code>Lhb@8899</code>. Restore the <code>CHANGE_ME</code> placeholder there and keep real values only in the untracked <code>.env</code> &mdash; the <code>JWT_SECRET</code> on the line below is already the correct pattern.</span></span></span></label></li>
+  </ol>
+</section>
+
+<footer class="end">
+  Companion to doc/vps-setup-runbook.html (decisions and rationale) and doc/hosting-proposal.md (the approved plan).<br>
+  Built from: deploy/setup-test-server.ps1 &middot; deploy-test.ps1 &middot; backend/ecosystem.config.js &middot; nginx/nginx.conf &middot; CLAUDE.md &middot; project memory
+</footer>
+
+</div>
+
+<script>
+(function(){
+  var KEY = "lmms-vps-guide-v1";
+  var boxes = Array.prototype.slice.call(document.querySelectorAll("ol.steps input[type=checkbox]"));
+  var fill = document.getElementById("fill");
+  var count = document.getElementById("count");
+
+  function load(){
+    try { return JSON.parse(localStorage.getItem(KEY) || "null"); }
+    catch (e) { return null; }
+  }
+  function save(state){
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* blocked storage */ }
+  }
+  function paint(){
+    var done = 0;
+    for (var i = 0; i < boxes.length; i++) { if (boxes[i].checked) done++; }
+    fill.style.width = (boxes.length ? Math.round(done / boxes.length * 100) : 0) + "%";
+    count.textContent = done + " / " + boxes.length;
+  }
+
+  var state = load();
+  boxes.forEach(function(b){
+    if (state) { b.checked = !!state[b.dataset.k]; }
+    b.addEventListener("change", function(){
+      var s = load() || {};
+      if (b.checked) { s[b.dataset.k] = 1; } else { delete s[b.dataset.k]; }
+      save(s); paint();
+    });
+  });
+  if (!state) {
+    var seed = {};
+    boxes.forEach(function(b){ if (b.checked) seed[b.dataset.k] = 1; });
+    save(seed);
+  }
+
+  document.getElementById("reset").addEventListener("click", function(){
+    boxes.forEach(function(b){ b.checked = false; });
+    save({}); paint();
+  });
+
+  paint();
+})();
+</script>
