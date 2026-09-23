@@ -133,7 +133,15 @@ BCRYPT_ROUNDS=12
 
 **Root `.env` loading:** [backend/src/index.ts](backend/src/index.ts) loads the project-root `.env` explicitly via `dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true })` — **not** `import 'dotenv/config'`. This is deliberate: the backend starts with its cwd in `backend/` (`npm run backend:dev` → `npm --prefix backend run dev`, and the `cd backend && npx ts-node src/index.ts` alt), and plain `dotenv/config` only looks in the cwd — so the root `.env` was silently never read, and the backend instead used whatever stale `DATABASE_URL` sat in the launching terminal (e.g. a `$env:DATABASE_URL` set for a migrate/refresh script). `override: true` makes the file authoritative so a stale shell var can't hijack the backend. Editing the root `.env` and restarting the backend is now the single source of truth for which DB it hits.
 - Doesn't affect `refresh-test-db.ps1` / `migrate-table.ps1` — those run as separate `ts-node` processes and intentionally use `$env:DATABASE_URL`.
-- Doesn't affect the test server — PM2 gets env from `ecosystem.config.js` `env_production` and no root `.env` is deployed there, so `dotenv.config` silently no-ops (missing file = nothing loaded/overridden).
+- **On the deployed servers the root `.env` WINS over `ecosystem.config.js`.** `override: true` means PM2's `env_production` block is overwritten by any root `.env` that exists — so **both files must be changed together**, then `pm2 delete` + `pm2 start` (a plain `pm2 restart` reuses the old environment). Confirmed on both boxes:
+  - **Test server `199.1.1.32`** — `E:\Apps\lhb-mms\.env` **exists**. This entry previously claimed it did not and that `dotenv.config` no-opped there; that was wrong and took UAT down on 2026-09-23 after an `lhb_app` rotation. `ecosystem.config.js` was corrected, the stale `.env` silently overrode it, and every request 500'd with `PrismaClientInitializationError: Authentication failed ... for 'lhb_app'` while `psql` with the same password succeeded.
+  - **VPS `mms.leisureholidays.com.my`** — `C:\Apps\lhb-mms\.env` exists by design (written during setup); see `doc/vps-setup-guide.html`.
+- **`DATABASE_URL` is a URL, so percent-encode `@ # % / :` in the password** (`@` → `%40`). The legacy test-server password worked only by accident — it contained an `@`, giving the string two of them, and the parser takes the last as the separator. `psql` takes the password **raw**, so `psql -U lhb_app` succeeding while the app 500s is the diagnosis, not a contradiction; both log the same "password authentication failed".
+- To see what the app actually uses, test the stored string itself rather than retyping the password:
+  ```powershell
+  $u = node -e "console.log(require('E:/Apps/lhb-mms/backend/ecosystem.config.js').apps[0].env_production.DATABASE_URL)"
+  & 'E:\PostgreSQL18\bin\psql.exe' -d $u -c "SELECT current_user;"   # then check .env separately
+  ```
 
 ## TLS interception quirks (dev machine)
 
