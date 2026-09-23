@@ -271,9 +271,11 @@ plan_cache_mode = force_custom_plan</code></pre>
   <div class="note stop">
     <span class="tag">Known defect &mdash; verify this by hand afterwards</span>
     <p>Phase 3 of the script rewrites credentials into <code>ecosystem.config.js</code> using
-    <code>-replace 'postgresql://lhb_app:CHANGE_ME@'</code>. <strong>That placeholder is no longer in the file.</strong>
-    The committed value now reads <code>postgresql://lhb_app:Lhb@8899@127.0.0.1:5432/lhb_mms</code>, so the replace
-    matches nothing and silently leaves the old test-server password behind.</p>
+    <code>-replace 'postgresql://lhb_app:CHANGE_ME@'</code>. <strong>At the time this was written that
+    placeholder was no longer in the file</strong> &mdash; the committed value carried the old test-server
+    password instead, so the replace matched nothing and silently left that password behind.
+    <b>Fixed in commit a8f29c4</b>, which restored the placeholder and with it the literal the script looks
+    for.</p>
     <p>The backend still starts, because <code>index.ts</code> loads the root <code>.env</code> with
     <code>override: true</code> and that file <em>is</em> written correctly. But a wrong credential sitting in a
     committed file is a landmine for whoever next runs PM2 without a <code>.env</code> present &mdash; which is exactly
@@ -294,7 +296,7 @@ plan_cache_mode = force_custom_plan</code></pre>
   </div>
   <ul class="tasks">
     <li><label class="task"><input type="checkbox" data-k="5g"><span class="t"><strong>Comment out the frontend install and both build blocks first</strong><span class="sub">Per the note above. Keep the <code>Test-Path</code> checks.</span></span></label></li>
-    <li><label class="task"><input type="checkbox" data-k="5a"><span class="t"><strong>Run the script, supplying a fresh <code>lhb_app</code> password</strong><span class="sub">A different one from the test server's. Do not reuse <code>Lhb@8899</code>.</span></span></label></li>
+    <li><label class="task"><input type="checkbox" data-k="5a"><span class="t"><strong>Run the script, supplying a fresh <code>lhb_app</code> password</strong><span class="sub">A different one from the test server's, and <strong>percent-encode any <code>@ # % / :</code></strong> when it goes into <code>DATABASE_URL</code> &mdash; that is a URL.</span></span></label></li>
     <li><label class="task"><input type="checkbox" data-k="5b"><span class="t"><strong>Verify <code>.env</code> and <code>ecosystem.config.js</code> now agree</strong><span class="sub">Per the defect above. Both should carry the new password and a real 64-character JWT secret.</span></span></label></li>
     <li><label class="task"><input type="checkbox" data-k="5c"><span class="t"><strong>Confirm all four verification checks returned HTTP 200</strong><span class="sub">Backend direct, backend through the proxy, frontend root, and SPA routing on <code>/members</code>.</span></span></label></li>
     <li><label class="task"><input type="checkbox" data-k="5d"><span class="t"><strong>Log in and change the <code>admin</code> password immediately</strong><span class="sub">The seed ships <code>admin / LHB@Admin2026!</code> and the script prints it on screen. Acceptable on a LAN box, not here.</span></span></label></li>
@@ -391,9 +393,10 @@ pg_restore.exe -U postgres -d lhb_mms --no-owner lhb_mms_seed.dump</code></pre>
   </ul>
   <div class="note stop">
     <span class="tag">Repository hygiene &mdash; fix at the source</span>
-    <p><code>backend/ecosystem.config.js:30</code> is <strong>committed to git carrying a live database password</strong>
-    (<code>Lhb@8899</code>). The <code>JWT_SECRET</code> on the line below it is still a placeholder, which is the
-    correct pattern &mdash; the password should match it.</p>
+    <p><code>backend/ecosystem.config.js:30</code> <strong>was committed to git carrying a live database
+    password</strong>, where the <code>JWT_SECRET</code> on the line below it was correctly a placeholder.
+    <b>Fixed in commit a8f29c4</b> &mdash; but the string remains in git history and was pushed, so the test
+    server's <code>lhb_app</code> was rotated on 23 Sep rather than trusting the scrub.</p>
     <p>Restore the <code>CHANGE_ME</code> placeholder in the tracked file and keep real values only in the untracked
     <code>.env</code>. That fixes two things at once: the credential stops travelling with the repo and the deploy zip,
     and the setup script's <code>-replace</code> from phase 5 starts matching again. If this repository has ever been

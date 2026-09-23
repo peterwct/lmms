@@ -170,7 +170,7 @@
       <tr><td class="mono ph">&lt;VPS_IP&gt;</td><td>The VPS public IPv4</td><td>Shinjiru's provisioning email</td></tr>
       <tr><td class="mono ph">&lt;OFFICE_IP&gt;</td><td>Your office's public IP</td><td>Browse to whatismyip from the office</td></tr>
       <tr><td class="mono ph">&lt;PG_PW&gt;</td><td><code>postgres</code> superuser &mdash; full control of the instance. <b>Yours, for admin work only; the app never sees it.</b> Used at 2a (installer), 2c, 5d, 5e, 5f, 8c (<code>-MigrateDb</code> prompts for it) and the 9d backup job.</td><td>Choose now, store in the password manager</td></tr>
-      <tr><td class="mono ph">&lt;APP_PW&gt;</td><td><code>lhb_app</code> &mdash; DML only, no <code>CREATE</code>, not the table owner. <b>Used only by the running backend.</b> You type it three times &mdash; 2c to create the role, then <code>.env</code> (4b) and <code>ecosystem.config.js</code> (4c) &mdash; and never again.</td><td>Choose now &mdash; a NEW one, not <code>Lhb@8899</code></td></tr>
+      <tr><td class="mono ph">&lt;APP_PW&gt;</td><td><code>lhb_app</code> &mdash; DML only, no <code>CREATE</code>, not the table owner. <b>Used only by the running backend.</b> You type it three times &mdash; 2c to create the role, then <code>.env</code> (4b) and <code>ecosystem.config.js</code> (4c) &mdash; and never again.</td><td>Choose now &mdash; a NEW one, not the test server's</td></tr>
     </tbody>
   </table>
 </div>
@@ -535,7 +535,7 @@ FRONTEND_URL=http://<span class="ph">&lt;VPS_IP&gt;</span></code></pre>
         <thead><tr><th>Line</th><th>Change</th></tr></thead>
         <tbody>
           <tr><td class="mono">14</td><td><code>cwd:</code> <code>'E:/Apps/lhb-mms'</code> &rarr; <code>'C:/Apps/lhb-mms'</code></td></tr>
-          <tr><td class="mono">30</td><td><code>DATABASE_URL:</code> replace <code>Lhb@8899</code> with <span class="ph">&lt;APP_PW&gt;</span></td></tr>
+          <tr><td class="mono">30</td><td><code>DATABASE_URL:</code> replace <code>CHANGE_ME</code> with <span class="ph">&lt;APP_PW&gt;</span>, percent-encoding any <code>@ # % / :</code> in it</td></tr>
           <tr><td class="mono">32</td><td><code>JWT_SECRET:</code> replace <code>CHANGE_ME_64_CHAR_RANDOM_STRING</code> with your secret</td></tr>
           <tr><td class="mono">36</td><td><code>FRONTEND_URL:</code> <code>'http://199.1.1.32'</code> &rarr; <code>'http://<span class="ph">&lt;VPS_IP&gt;</span>'</code></td></tr>
           <tr><td class="mono">43&ndash;44</td><td><code>out_file</code> / <code>error_file</code>: <code>E:/Apps/&hellip;</code> &rarr; <code>C:/Apps/&hellip;</code></td></tr>
@@ -1190,7 +1190,27 @@ Remove-Item Env:\PGPASSWORD</code></pre>
       <p>A <code>pg_restore</code> that exits non-zero, or a table that comes back empty, means the dump is
       bad. Far better to learn that now than during an incident.</p></div></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9g"><span class="sn"></span><span class="body"><strong>Rotate the secrets you have now typed into several places</strong><span class="sub">And tidy the repository: <code>backend/ecosystem.config.js:30</code> is committed to git carrying the live test-server password <code>Lhb@8899</code>. Restore the <code>CHANGE_ME</code> placeholder there and keep real values only in the untracked <code>.env</code> &mdash; the <code>JWT_SECRET</code> on the line below is already the correct pattern.</span></span></span></label></li>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9g"><span class="sn"></span><span class="body"><strong>Rotate the secrets you have now typed into several places</strong><span class="sub">Anything that has been through a shell, a screenshot or this document. Read the credential map below first &mdash; each rotation breaks something specific, and two of them break it silently.</span></span></span></label>
+      <div class="note good"><span class="tag">The repository half is done &mdash; commit a8f29c4</span>
+      <p><code>backend/ecosystem.config.js:30</code> carried the old test-server <code>lhb_app</code>
+      password in git. It now reads
+      <code>postgresql://lhb_app:CHANGE_ME@127.0.0.1:5432/lhb_mms</code>, which also restores the exact
+      literal <code>deploy/setup-test-server.ps1</code> searches for &mdash; its Phase 3
+      <code>-replace</code> had been matching nothing, so every run silently kept the previous password
+      instead of writing the one it had just prompted for.</p>
+      <p><strong>Scrubbing the tip does not scrub the history.</strong> That string is still reachable
+      through <code>git log -p</code> and has been pushed, so treat it as spent: the test server's
+      <code>lhb_app</code> was rotated on 23 Sep. Rewriting history would break every existing clone for
+      no real gain &mdash; rotation is the remedy.</p></div>
+      <div class="note warn"><span class="tag">Percent-encode the new password into DATABASE_URL</span>
+      <p>It is a URL: <code>@</code> &rarr; <code>%40</code>, <code>#</code> &rarr; <code>%23</code>,
+      <code>%</code> &rarr; <code>%25</code>, <code>/</code> &rarr; <code>%2F</code>, <code>:</code> &rarr;
+      <code>%3A</code>. Skipping this took UAT down on 23 Sep with a 500 on every request.</p>
+      <p><strong>The symptom lies</strong>, because <code>psql</code> takes the password raw while the app
+      takes it encoded &mdash; so <code>psql -U lhb_app</code> succeeding while the app 500s <em>is</em> the
+      diagnosis. Both paths log the same <code>password authentication failed for user "lhb_app"</code>.</p>
+      <p>The old test-server password survived only by accident: it contained an <code>@</code>, giving the
+      URL two of them, and the parser takes the <em>last</em> as the separator.</p></div></li>
   </ol>
 </section>
 
