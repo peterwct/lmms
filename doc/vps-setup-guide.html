@@ -458,17 +458,26 @@ Test-Path backend\dist\index.js, frontend\dist\index.html    # both must be True
     <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="3b"><span class="sn"></span><span class="body"><strong>Zip exactly these seven items</strong><span class="sub">No <code>node_modules</code> from either half &mdash; the VPS installs its own, and <code>frontend/node_modules</code> is never needed there once <code>dist</code> exists. No <code>migrate\*.txt</code> either: you are restoring a database, not importing exports.</span></span></span></label>
       <pre><code>$stage = "$env:TEMP\lhb-mms-deploy"
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force $stage | Out-Null
 
-Copy-Item backend\dist        "$stage\backend\dist"    -Recurse
-Copy-Item backend\package.json "$stage\backend\"
+# Create every destination folder FIRST. Copy-Item with a trailing "\"
+# fails with "The directory name is invalid" if the folder is not there,
+# and only the -Recurse folder copies create their own.
+'', '\backend', '\frontend', '\nginx' |
+  ForEach-Object { New-Item -ItemType Directory -Force "$stage$_" | Out-Null }
+
+Copy-Item backend\dist                "$stage\backend\dist"  -Recurse
+Copy-Item backend\package.json        "$stage\backend\"
 Copy-Item backend\ecosystem.config.js "$stage\backend\"
-Copy-Item frontend\dist       "$stage\frontend\dist"   -Recurse
-Copy-Item prisma              "$stage\prisma"          -Recurse
-Copy-Item nginx\nginx.conf    "$stage\nginx\"          -Force
+Copy-Item frontend\dist               "$stage\frontend\dist" -Recurse
+Copy-Item prisma                      "$stage\prisma"        -Recurse
+Copy-Item nginx\nginx.conf            "$stage\nginx\"        -Force
 Copy-Item package.json, package-lock.json "$stage\"
 
-Compress-Archive "$stage\*" "$env:USERPROFILE\Desktop\lhb-mms-deploy.zip" -Force</code></pre></li>
+# Confirm the shape before zipping - no node_modules anywhere
+Get-ChildItem $stage -Recurse -Depth 1 | Select-Object FullName
+
+Compress-Archive "$stage\*" "$env:USERPROFILE\Desktop\lhb-mms-deploy.zip" -Force
+Get-Item "$env:USERPROFILE\Desktop\lhb-mms-deploy.zip" | Select-Object Length</code></pre></li>
 
     <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="3c"><span class="sn"></span><span class="body"><strong>Generate a JWT secret and write it down</strong><span class="sub">You will paste this into the VPS's <code>.env</code> in stage 4. Generate it here so it never has to be typed twice.</span></span></span></label>
       <pre><code>-join ((1..32) | ForEach-Object { '{0:X2}' -f (Get-Random -Max 256) })</code></pre></li>
@@ -600,12 +609,45 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lhb_app;
 # then, on your dev machine, with both CSVs side by side:
 Compare-Object (Get-Content counts_source.csv) (Get-Content counts_target.csv)
 # no output = identical</code></pre>
-      <div class="note"><p>As a sanity anchor, the headline figures on the current UAT data are roughly:
-      <code>Member</code> 32,387 &middot; <code>Agreement</code> 33,841 &middot;
-      <code>CpBookingEntitlement</code> 279,062 &middot; <code>BookingEntitlement</code> 177,164 &middot;
-      <code>ResAvailMast</code> 133,988 &middot; <code>RciEnrolment</code> 17,915 &middot;
-      <code>Resort</code> 324&ndash;325 &middot; <code>RciBulkBank</code> 774. The comparison above is the
-      real check; these are just to catch a restore that obviously went nowhere.</p></div></li>
+      <div class="note"><p><strong>The CSV comparison above is the real check</strong> &mdash; the figures
+      below are only a sanity anchor, to catch a restore that obviously went nowhere. They are as of the
+      <strong>18 Sep 2026 refresh</strong> and drift with every re-export, so re-measure rather than quoting
+      them later.</p></div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Table</th><th>Rows</th><th>Table</th><th>Rows</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">CpBookingEntitlement</td><td class="mono">279,062</td><td class="mono">ResortUnit</td><td class="mono">373</td></tr>
+            <tr><td class="mono">BookingEntitlement</td><td class="mono">201,805</td><td class="mono">Resort</td><td class="mono">324</td></tr>
+            <tr><td class="mono">ResAvailMast</td><td class="mono">139,440</td><td class="mono">PbsClaim</td><td class="mono">105</td></tr>
+            <tr><td class="mono">Nominee</td><td class="mono">40,467</td><td class="mono">RciWeek</td><td class="mono">105</td></tr>
+            <tr><td class="mono">Agreement</td><td class="mono">33,406</td><td class="mono">_prisma_migrations</td><td class="mono">67</td></tr>
+            <tr><td class="mono">AmcSchedule</td><td class="mono">32,570</td><td class="mono">UserReportAccess</td><td class="mono">57</td></tr>
+            <tr><td class="mono">Member</td><td class="mono">31,973</td><td class="mono">CancellationReason</td><td class="mono">46</td></tr>
+            <tr><td class="mono">RciEnrolment</td><td class="mono">17,904</td><td class="mono">DeptModulePermission</td><td class="mono">40</td></tr>
+            <tr><td class="mono">ResortMaintenance</td><td class="mono">10,904</td><td class="mono">State</td><td class="mono">39</td></tr>
+            <tr><td class="mono">AptBlock</td><td class="mono">5,337</td><td class="mono">Holiday</td><td class="mono">32</td></tr>
+            <tr><td class="mono">PbsScheme</td><td class="mono">5,009</td><td class="mono">Product</td><td class="mono">29</td></tr>
+            <tr><td class="mono">Salesperson</td><td class="mono">2,764</td><td class="mono">SuReason</td><td class="mono">28</td></tr>
+            <tr><td class="mono">AuditLog</td><td class="mono">1,596</td><td class="mono">LvcCode</td><td class="mono">22</td></tr>
+            <tr><td class="mono">ResortInfoLine</td><td class="mono">1,324</td><td class="mono">User</td><td class="mono">13</td></tr>
+            <tr><td class="mono">SeasonPoint</td><td class="mono">1,214</td><td class="mono">AmcPricePoints</td><td class="mono">8</td></tr>
+            <tr><td class="mono">RciBulkBank</td><td class="mono">771</td><td class="mono">Department</td><td class="mono">5</td></tr>
+            <tr><td class="mono">ApartmentType</td><td class="mono">487</td><td class="mono">AmcInvoiceCounter</td><td class="mono">3</td></tr>
+            <tr><td class="mono">CpSeasonDate</td><td class="mono">455</td><td class="mono">AmcPrice</td><td class="mono">2</td></tr>
+            <tr><td class="mono">AmcInvoice</td><td class="mono"><b>0</b> &mdash; expected</td><td class="mono">&nbsp;</td><td class="mono">&nbsp;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note good"><span class="tag">Two of these look wrong but are not</span>
+      <p><strong><code>AmcInvoice</code> = 0 is correct.</strong> <code>refresh-test-db.ps1</code> truncates
+      <code>Member</code> CASCADE, which clears invoices with it, and <code>AmcInvoiceCounter</code> is reset
+      to the Informix baseline (3 rows, one per coCode). Nothing has been billed on this data yet.</p>
+      <p><strong><code>User</code> 13, <code>Department</code> 5, <code>DeptModulePermission</code> 40 and
+      <code>UserReportAccess</code> 57 travelling with the dump is the whole point of stage 5</strong> &mdash;
+      logins, the permission matrix and every report and Resorts Setup grant arrive intact, and
+      <code>_prisma_migrations</code> 67 is what makes <code>prisma migrate status</code> report nothing
+      pending in 5g.</p></div></li>
 
     <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5g"><span class="sn"></span><span class="body"><strong>Confirm Prisma agrees the schema is current</strong><span class="sub">The dump carries <code>_prisma_migrations</code>, so this should report nothing pending. If it wants to apply migrations, stop &mdash; something is out of step.</span></span></span></label>
       <pre><code>cd C:\Apps\lhb-mms
@@ -727,25 +769,487 @@ Set-Item WSMan:\localhost\Client\TrustedHosts -Value "$cur,<span class="ph">&lt;
   company LAN. On a public host it is not &mdash; and the approved proposal's own risk table committed you
   to nightly off-site backups either way.</p>
   <ol class="steps">
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9a"><span class="sn"></span><span class="body"><strong>Point a hostname at the VPS and issue a certificate</strong><span class="sub">Let's Encrypt via win-acme, which installs its own renewal task. A certificate cannot be issued to a bare IP, so the DNS name has to exist first &mdash; e.g. <code>mms.leisureholidays.com.my</code>.</span></span></span></label></li>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9a"><span class="sn"></span><span class="body"><strong>Point a hostname at the VPS</strong><span class="sub">Nothing is <em>registered</em> &mdash; <code>leisureholidays.com.my</code> already exists, so this is one new A record on a domain the company owns. A certificate cannot be issued to a bare IP, which is why this comes first.</span></span></span></label>
+      <pre><code># Find who actually SERVES the DNS - registrar and DNS host are often
+# different companies, and it is the nameservers you need.
+Resolve-DnsName leisureholidays.com.my -Type NS | Select-Object NameHost</code></pre>
+      <div class="scroll"><table>
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Type</td><td><b>A</b> &mdash; not CNAME</td></tr>
+          <tr><td>Name / Host</td><td><code>mms</code></td></tr>
+          <tr><td>Value / Points to</td><td>the VPS public IP</td></tr>
+          <tr><td>TTL</td><td><code>300</code> for now; raise it after go-live</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note warn"><span class="tag">Two things that commonly go wrong</span>
+      <p><strong>The Name field.</strong> Most panels auto-append the domain, so you enter just
+      <code>mms</code>. Type the full <code>mms.leisureholidays.com.my</code> into one of those and you get
+      <code>mms.leisureholidays.com.my.leisureholidays.com.my</code>. If the panel lists existing records as
+      bare labels like <code>www</code>, use <code>mms</code>.</p>
+      <p><strong>If it is Cloudflare</strong>, set the record to <b>DNS only</b> (grey cloud), not proxied
+      &mdash; a proxied record complicates the HTTP-01 challenge in 9b. Turn proxying on later if you want it.</p>
+      <p>Adding <code>mms</code> touches nothing else. Leave the apex and <code>www</code> records for the
+      company website alone.</p></div>
+      <pre><code># Verify - query 8.8.8.8 explicitly, which proves the record is visible
+# from OUTSIDE your network, the way Let's Encrypt will see it
+Resolve-DnsName mms.leisureholidays.com.my -Type A
+nslookup mms.leisureholidays.com.my 8.8.8.8</code></pre>
+      <div class="note"><p>Then open <code>http://mms.leisureholidays.com.my</code>. It should serve LMMS
+      just as the IP does, but <strong>logins will fail</strong> until 9d &mdash; <code>FRONTEND_URL</code> is
+      still the IP, so CORS rejects the API calls. That is expected at this point, not a DNS problem.</p>
+      <p>Publishing the name advertises that the system exists, and the hostname appears in Certificate
+      Transparency logs once 9b issues the certificate. That is normal &mdash; the protection is
+      authentication and HTTPS, not obscurity.</p></div></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9b"><span class="sn"></span><span class="body"><strong>Add a 443 server block, redirect 80 &rarr; 443</strong><span class="sub">Keep the SPA fallback, the <code>no-cache</code> rule on <code>index.html</code>, and <code>proxy_buffering off</code> on <code>/api/</code> &mdash; that last one is what stops the day-end download returning partial responses.</span></span></span></label></li>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9acme"><span class="sn"></span><span class="body"><strong>Let nginx serve the ACME challenge, and prove it before involving Let's Encrypt</strong><span class="sub">The SPA fallback would answer the challenge URL with <code>index.html</code>, which fails validation. Let's Encrypt rate-limits failures, so test the path with a dummy file first.</span></span></span></label>
+      <pre><code>New-Item -ItemType Directory -Force 'C:\Apps\acme\.well-known\acme-challenge' | Out-Null
+New-Item -ItemType Directory -Force 'C:\Apps\certs' | Out-Null</code></pre>
+      <div class="fileblk">
+        <div class="fh"><b>Add inside the existing <code>server { listen 80; }</code> block.</b> C:\Apps\nginx\conf\nginx.conf</div>
+        <pre><code>        # ^~ stops the asset regex location below from ever matching first
+        location ^~ /.well-known/acme-challenge/ {
+            root C:/Apps/acme;
+            default_type text/plain;
+            try_files $uri =404;
+        }</code></pre>
+      </div>
+      <pre><code>cd C:\Apps\nginx
+.\nginx.exe -t                     # parses only, signals nothing - safe from any shell
+Restart-Service nginx              # NOT "nginx -s reload" - see the note below
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9c"><span class="sn"></span><span class="body"><strong>Flip the cookie and the URL, in both files</strong><span class="sub"><code>COOKIE_SECURE=true</code> and the https <code>FRONTEND_URL</code> in <em>both</em> <code>.env</code> and <code>ecosystem.config.js</code>, then restart. A mismatched <code>FRONTEND_URL</code> breaks CORS and logins.</span></span></span></label>
-      <pre><code>pm2 delete lhb-mms-backend
+'hello' | Set-Content 'C:\Apps\acme\.well-known\acme-challenge\test.txt' -Encoding ASCII
+# From ANY machine - it must return: hello
+curl.exe http://mms.leisureholidays.com.my/.well-known/acme-challenge/test.txt</code></pre>
+      <div class="note warn"><span class="tag">Use Restart-Service, not nginx -s reload</span>
+      <p>nginx runs as a Windows service under NSSM, so <code>-s reload</code> signals through a global event
+      object an interactive shell cannot open:
+      <code>OpenEvent("Global\ngx_reload_&lt;pid&gt;") failed (5: Access is denied)</code>.
+      <code>Restart-Service nginx</code> is the right instrument here. <code>nginx.exe -t</code> is
+      unaffected &mdash; it parses the config and signals nothing.</p>
+      <p>If a reload ever seems to target the wrong process, check for an orphan started by hand:
+      <code>Get-Process nginx | Select-Object Id, Path</code> should show one master and its worker, with
+      <code>Get-Service nginx</code> Running. Anything else &mdash; stop the service,
+      <code>Stop-Process -Name nginx -Force</code>, start it again.</p></div>
+      <div class="note warn"><p>If the <code>curl</code> above returns the LMMS HTML instead of
+      <code>hello</code>, the location block is not taking effect &mdash; fix that before going any further.
+      Every failed validation counts against Let's Encrypt's rate limit.</p></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9cert"><span class="sn"></span><span class="body"><strong>Issue the certificate with win-acme</strong><span class="sub">Free, 90-day, and it registers its own renewal task. Download <code>win-acme.v2.x.x.x64.pluggable.zip</code> from github.com/win-acme/win-acme/releases and extract to <code>C:\Apps\win-acme</code>.</span></span></span></label>
+      <pre><code>cd C:\Apps\win-acme
+.\wacs.exe                      # run as Administrator</code></pre>
+      <div class="scroll"><table>
+        <thead><tr><th>Wizard prompt</th><th>Choose</th></tr></thead>
+        <tbody>
+          <tr><td>Main menu</td><td><b>M</b> &mdash; Create certificate (full options)</td></tr>
+          <tr><td>Source</td><td><b>Manual input</b> &rarr; host <code>mms.leisureholidays.com.my</code></td></tr>
+          <tr><td>Validation</td><td><b>[http-01] Save file on (network) path</b> &rarr; <code>C:\Apps\acme</code></td></tr>
+          <tr><td>Copy default web.config</td><td><b>No</b> &mdash; that is an IIS thing</td></tr>
+          <tr><td>CSR</td><td>RSA</td></tr>
+          <tr><td>Store</td><td><b>PEM encoded files</b> &rarr; <code>C:\Apps\certs</code>, no password</td></tr>
+          <tr><td>Installation</td><td><b>Start external script</b> &rarr; script <code>C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe</code>, arguments <code>-NoProfile -Command "Restart-Service nginx"</code>. <b>Not</b> <code>nginx -s reload</code> &mdash; it fails under NSSM, silently, and would leave an expired certificate served months from now.</td></tr>
+        </tbody>
+      </table></div>
+      <pre><code>Get-ChildItem C:\Apps\certs        # note the ACTUAL filenames - you need them next</code></pre>
+      <div class="note"><p>Expect a <code>&hellip;-chain.pem</code> (certificate plus intermediates) and a
+      <code>&hellip;-key.pem</code>. Use whatever names appear &mdash; do not assume mine.</p></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9b"><span class="sn"></span><span class="body"><strong>Add a 443 server block, redirect 80 &rarr; 443</strong><span class="sub">Keep the SPA fallback, the <code>no-cache</code> rule on <code>index.html</code>, and <code>proxy_buffering off</code> on <code>/api/</code> &mdash; that last one is what stops the day-end download returning partial responses.</span></span></span></label>
+      <div class="fileblk">
+        <div class="fh"><b>Replaces the whole existing server block.</b> C:\Apps\nginx\conf\nginx.conf</div>
+        <pre><code>    # ── HTTP: challenge only, everything else redirected ─────────────
+    server {
+        listen       80;
+        server_name  mms.leisureholidays.com.my;
+
+        location ^~ /.well-known/acme-challenge/ {
+            root C:/Apps/acme;
+            default_type text/plain;
+            try_files $uri =404;
+        }
+
+        location / {
+            return 301 https://$host$request_uri;
+        }
+    }
+
+    # ── HTTPS ────────────────────────────────────────────────────────
+    server {
+        listen       443 ssl;
+        http2        on;
+        server_name  mms.leisureholidays.com.my;
+
+        ssl_certificate      C:/Apps/certs/mms.leisureholidays.com.my-chain.pem;
+        ssl_certificate_key  C:/Apps/certs/mms.leisureholidays.com.my-key.pem;
+
+        ssl_protocols        TLSv1.2 TLSv1.3;
+        ssl_session_cache    shared:SSL:10m;
+        ssl_session_timeout  1d;
+
+        root   C:/Apps/lhb-mms/frontend/dist;
+        index  index.html;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-cache, must-revalidate";
+        }
+
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            try_files $uri =404;
+        }
+
+        location /api/ {
+            proxy_pass         http://127.0.0.1:3001;
+            proxy_http_version 1.1;
+            proxy_set_header   Host              $host;
+            proxy_set_header   X-Real-IP         $remote_addr;
+            proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header   X-Forwarded-Proto $scheme;
+            proxy_buffering    off;
+            proxy_read_timeout 120s;
+        }
+    }</code></pre>
+      </div>
+      <pre><code>New-NetFirewallRule -DisplayName "LHB MMS HTTPS" -Direction Inbound `
+                    -Protocol TCP -LocalPort 443 -Action Allow
+
+cd C:\Apps\nginx
+.\nginx.exe -t
+Restart-Service nginx</code></pre>
+      <div class="note"><p>Substitute the real PEM filenames from the previous step.
+      <code>http2 on;</code> needs nginx 1.25.1 or newer &mdash; on anything older use
+      <code>listen 443 ssl http2;</code> and drop the separate line. Check
+      <code>https://mms.leisureholidays.com.my</code> loads before moving on; logins still will not work,
+      which is the next step.</p></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9c"><span class="sn"></span><span class="body"><strong>Flip the cookie and the URL, in both files</strong><span class="sub">Do this <em>after</em> HTTPS is confirmed working, never before &mdash; <code>COOKIE_SECURE=true</code> over plain HTTP means the browser silently drops the session cookie and every login bounces back to the login page.</span></span></span></label>
+      <div class="fileblk">
+        <div class="fh"><b>Two lines, in BOTH files.</b> C:\Apps\lhb-mms\.env and backend\ecosystem.config.js</div>
+        <pre><code>COOKIE_SECURE=true
+FRONTEND_URL=https://mms.leisureholidays.com.my</code></pre>
+      </div>
+      <pre><code>cd C:\Apps\lhb-mms
+pm2 delete lhb-mms-backend
 pm2 start backend\ecosystem.config.js --env production
-pm2 save</code></pre></li>
+pm2 save
+pm2 logs lhb-mms-backend --lines 20 --nostream</code></pre>
+      <div class="note warn"><p><code>pm2 delete</code> then <code>start</code>, not <code>pm2 restart</code>
+      &mdash; a restart reuses the old environment and your change appears to do nothing.
+      <code>FRONTEND_URL</code> must match what users type <strong>exactly</strong>, with no trailing slash,
+      or CORS rejects every API call. This is the step that makes logging in at the hostname work.</p></div></li>
 
     <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9d"><span class="sn"></span><span class="body"><strong>Schedule the nightly dump</strong><span class="sub">On a 50 GB disk already carrying a 6 GB pagefile, keep only the last 3 dumps locally and let the off-site copy hold the 14-daily / 8-weekly history.</span></span></span></label>
-      <pre><code>& 'C:\PostgreSQL18\bin\pg_dump.exe' -U postgres -F c -Z 6 `
-     -f "C:\backups\lhb_mms_$(Get-Date -f yyyyMMdd).dump" lhb_mms</code></pre></li>
+      <div class="fileblk">
+        <div class="fh"><b>File contents &mdash; not commands.</b> C:\Apps\backup-lhb-mms.ps1</div>
+        <pre><code>$ErrorActionPreference = 'Stop'
+$out = "C:\backups\lhb_mms_$(Get-Date -Format yyyyMMdd-HHmm).dump"
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9e"><span class="sn"></span><span class="body"><strong>Copy each dump off the VPS automatically</strong><span class="sub">A backup that exists only on the box it protects is not a backup. Back up the configuration alongside the data &mdash; <code>.env</code>, <code>ecosystem.config.js</code> and <code>nginx.conf</code> &mdash; because the database dump alone will not rebuild this server.</span></span></span></label></li>
+$env:PGPASSWORD = '<span class="ph">&lt;PG_PW&gt;</span>'
+&amp; 'C:\PostgreSQL18\bin\pg_dump.exe' -U postgres -F c -Z 6 -f $out lhb_mms
+$code = $LASTEXITCODE
+Remove-Item Env:\PGPASSWORD
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9f"><span class="sn"></span><span class="body"><strong>Restore one dump into a scratch database and open the app against it</strong><span class="sub">Before UAT starts. An untested backup is an assumption, not a control.</span></span></span></label></li>
+# ErrorActionPreference = 'Stop' does NOT apply to a native exe, so pg_dump
+# failing is silent. And pg_dump truncates the output file BEFORE it connects,
+# so a failure leaves a 0-byte dump that looks like a successful run.
+if ($code -ne 0) {
+    Remove-Item $out -Force -ErrorAction SilentlyContinue
+    throw "pg_dump exited $code - no dump written"
+}
+$size = (Get-Item $out).Length
+if ($size -lt 1MB) {
+    Remove-Item $out -Force
+    throw "Dump is only $size bytes - refusing to keep it"
+}
+
+# Prune only AFTER the guards, so a failed run can never delete good history
+Get-ChildItem C:\backups\lhb_mms_*.dump | Sort-Object LastWriteTime -Descending |
+  Select-Object -Skip 3 | Remove-Item -Force</code></pre>
+      </div>
+      <pre><code># The script holds PG_PW in clear text - lock it down
+icacls C:\Apps\backup-lhb-mms.ps1 /inheritance:r /grant:r "SYSTEM:(R)" "Administrators:(F)"
+
+$a = New-ScheduledTaskAction -Execute 'powershell.exe' `
+       -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\Apps\backup-lhb-mms.ps1'
+$t = New-ScheduledTaskTrigger -Daily -At 01:30
+$p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+Register-ScheduledTask -TaskName 'LHB MMS nightly backup' -Action $a -Trigger $t -Principal $p
+
+Start-ScheduledTask -TaskName 'LHB MMS nightly backup'   # run it now
+Get-ChildItem C:\backups</code></pre></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9e"><span class="sn"></span><span class="body"><strong>Pull each dump onto the test server</strong><span class="sub">A backup that exists only on the box it protects is not a backup. <strong>Pull, not push</strong> &mdash; a compromised internet-facing VPS then holds no credentials to the backup store and cannot reach back to delete history. <strong>The test server (199.1.1.32) does the pulling:</strong> it is always on, it sits at the office while the VPS is in Shinjiru's datacentre, and it uses the same WinRM mechanism as <code>deploy-test.ps1</code>. Destination <code>E:\Backup\lmms</code>.</span></span></span></label>
+      <div class="note warn"><span class="tag">Everything below runs ON THE TEST SERVER, over RDP</span>
+      <p>Not on your desktop. The DPAPI credential is bound to the user <em>and the machine</em> that created
+      it, so exporting it anywhere else is wasted effort.</p>
+      <p>The test server needs the VPS in <strong>its</strong> TrustedHosts, or
+      <code>New-PSSession</code> fails with <em>"the client computer is not joined to a domain, then HTTPS
+      transport must be used or the destination machine must be added to the TrustedHosts configuration
+      setting"</em>. <strong>Elevated</strong>, and append rather than overwrite in case anything is already
+      listed:</p>
+      <pre><code>winrm quickconfig -quiet          # Set-Item below fails if the service is not running
+$cur = (Get-Item WSMan:\localhost\Client\TrustedHosts).Value
+if ($cur -notmatch '<span class="ph">&lt;VPS_IP&gt;</span>') {
+    $new = if ($cur) { "$cur,<span class="ph">&lt;VPS_IP&gt;</span>" } else { '<span class="ph">&lt;VPS_IP&gt;</span>' }
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Value $new -Force
+}
+Test-WSMan -ComputerName <span class="ph">&lt;VPS_IP&gt;</span>       # wsmid back = the VPS side is healthy</code></pre>
+      <p>A <em>timeout</em> rather than this error is the other half: the VPS firewall rule from stage 8 is
+      scoped to the office public IP, so the pull must run from inside the office.</p></div>
+      <pre><code># ONE TIME, on the TEST SERVER, AS THE ACCOUNT THE TASK WILL RUN AS.
+# Export-Clixml encrypts with DPAPI: decryptable only by that user on
+# that machine, which is also why the task must run as the same account.
+New-Item -ItemType Directory -Force C:\Scripts | Out-Null
+Get-Credential -Message 'VPS Administrator' -UserName '<span class="ph">&lt;VPS_IP&gt;</span>\Administrator' |
+  Export-Clixml 'C:\Scripts\vps-cred.xml'
+# Brace the variables: "$env:USERNAME:(R)" expands to nothing, because the
+# parser reads the trailing colon as part of the variable name and resolves
+# "env:USERNAME:" - icacls then sees a bare (R) and rejects it.
+icacls C:\Scripts\vps-cred.xml /inheritance:r `
+       /grant:r "${env:USERDOMAIN}\${env:USERNAME}:(R)" "Administrators:(F)"
+icacls C:\Scripts\vps-cred.xml          # confirm: just you (R) and Administrators (F)</code></pre>
+      <div class="fileblk">
+        <div class="fh"><b>File contents &mdash; not commands.</b> C:\Scripts\pull-lmms-backup.ps1 &mdash; on the test server</div>
+        <pre><code>$ErrorActionPreference = 'Stop'
+$VpsHost = '<span class="ph">&lt;VPS_IP&gt;</span>'
+$Dest    = 'E:\Backup\lmms'
+$Log     = 'C:\Scripts\pull-lmms-backup.log'
+$stamp   = (Get-Date).ToString('yyyy-MM-dd, HH:mm:ss')   # when the run STARTED
+$name    = '(none)'
+
+function Write-Log($status) {
+    # 2026-09-22, 02:30:14 - 02:31:02  OK - lhb_mms_20260922-0130.dump
+    "{0} - {1}  {2}" -f $stamp, (Get-Date).ToString('HH:mm:ss'), $status |
+      Add-Content -Path $Log -Encoding ASCII
+}
+
+try {
+    $cred = Import-Clixml 'C:\Scripts\vps-cred.xml'
+    $s = New-PSSession -ComputerName $VpsHost -Credential $cred
+    try {
+        $latest = Invoke-Command -Session $s {
+            (Get-ChildItem C:\backups\lhb_mms_*.dump |
+             Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+        }
+        if (-not $latest) { throw "No dump found on the VPS" }
+
+        $name   = Split-Path $latest -Leaf
+        $target = Join-Path $Dest $name
+        if (-not (Test-Path $target)) {
+            Copy-Item -FromSession $s -Path $latest -Destination $target
+        }
+
+        # prove the transfer - a truncated file exists, looks plausible,
+        # and restores to nothing
+        $remote = Invoke-Command -Session $s -ArgumentList $latest `
+                    -ScriptBlock { param($p) (Get-FileHash $p -Algorithm SHA256).Hash }
+        $local  = (Get-FileHash $target -Algorithm SHA256).Hash
+        if ($remote -ne $local) { Remove-Item $target -Force; throw "Hash mismatch on $name" }
+
+        # Two EMPTY files hash identically, so the check above would pass a
+        # 0-byte dump straight through. Size is what catches that.
+        $size = (Get-Item $target).Length
+        if ($size -lt 1MB) {
+            Remove-Item $target -Force
+            throw "Pulled dump is only $size bytes - check the VPS backup job"
+        }
+
+        # config too - the dump alone will not rebuild this server
+        $cfg = Join-Path $Dest 'config'
+        New-Item -ItemType Directory -Force $cfg | Out-Null
+        foreach ($f in 'C:\Apps\lhb-mms\.env',
+                       'C:\Apps\lhb-mms\backend\ecosystem.config.js',
+                       'C:\Apps\nginx\conf\nginx.conf') {
+            Copy-Item -FromSession $s -Path $f -Destination $cfg -Force
+        }
+    }
+    finally { Remove-PSSession $s -ErrorAction SilentlyContinue }
+
+    # retention: every dump from the last 14, plus the newest of each of the last 8 weeks
+    $all  = Get-ChildItem $Dest -Filter 'lhb_mms_*.dump' | Sort-Object LastWriteTime -Descending
+    $keep = [System.Collections.Generic.HashSet[string]]::new()
+    $all | Select-Object -First 14 | ForEach-Object { [void]$keep.Add($_.FullName) }
+    $all | Group-Object { Get-Date $_.LastWriteTime -UFormat %Y-%V } |
+      Select-Object -First 8 | ForEach-Object {
+        [void]$keep.Add(($_.Group | Sort-Object LastWriteTime -Descending |
+                          Select-Object -First 1).FullName) }
+    $all | Where-Object { -not $keep.Contains($_.FullName) } | Remove-Item -Force
+
+    Write-Log "OK - $name"
+}
+catch {
+    # flatten the message - exception text is often multi-line
+    Write-Log ("FAIL - " + ($_.Exception.Message -replace '\s+', ' '))
+    throw    # re-throw so Task Scheduler's LastTaskResult is non-zero
+}</code></pre>
+      </div>
+      <pre><code>$a = New-ScheduledTaskAction -Execute 'powershell.exe' `
+       -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\Scripts\pull-lmms-backup.ps1'
+$t = New-ScheduledTaskTrigger -Daily -At 02:30
+Register-ScheduledTask -TaskName 'LMMS backup pull' -Action $a -Trigger $t -RunLevel Highest `
+  -User 'Administrator' -Password (Read-Host 'Test server Administrator password')
+
+Start-ScheduledTask -TaskName 'LMMS backup pull'
+Get-ScheduledTaskInfo -TaskName 'LMMS backup pull' |
+  Select-Object LastRunTime, LastTaskResult     # 0 = success
+Get-ChildItem E:\Backup\lmms</code></pre>
+      <div class="note warn"><span class="tag">02:30 on an always-on server, and what that costs</span>
+      <p>The VPS dumps at 01:30, so an 02:30 pull collects that night's file. A desktop would have forced a
+      daytime schedule just to be sure the machine was awake; the test server removes that compromise. The
+      price is that the task needs <b>Run whether user is logged on or not</b>, and therefore a stored
+      Windows password &mdash; so <strong>changing the test server's Administrator password breaks this
+      task, silently.</strong> Put it on whatever checklist covers password rotation. If
+      <code>Register-ScheduledTask</code> is awkward about the password, create the task in the Task
+      Scheduler GUI and tick that box; same result.</p>
+      <p><strong>Watch the disk &mdash; <code>E:</code> is shared with the test server's own data.</strong>
+      <code>E:\PostgreSQL18</code> and <code>E:\Apps\lhb-mms</code> sit on the same volume, so a backup folder
+      left to grow would take the UAT database down with it. The retention prune bounds it at roughly 22
+      files (14 daily plus 8 weekly), but check free space after the first fortnight, once you know the real
+      dump size rather than an estimate of it.</p>
+      <p><strong>Phase 2 may retire this machine.</strong> If the test server goes at go-live the backup
+      destination goes with it &mdash; name that in the decision rather than discovering it afterwards.</p>
+      <p>The script also pulls <code>.env</code>, which carries <span class="ph">&lt;APP_PW&gt;</span> and the
+      JWT secret. Keep <code>E:\Backup\lmms</code> off any file share.</p></div></li>
+
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9f"><span class="sn"></span><span class="body"><strong>Restore one dump into a scratch database</strong><span class="sub">Before UAT starts. An untested backup is an assumption, not a control. Run it against the file the scheduled task actually produced, not one you made by hand. <strong>Better still, run it on the test server</strong> against a <em>pulled</em> copy in <code>E:\Backup\lmms</code> &mdash; it runs PostgreSQL 18 too, and restoring on a different machine from the one that made the dump tests the transfer as well as the dump.</span></span></span></label>
+      <div class="note warn"><span class="tag">Runs on the TEST SERVER &mdash; mind three differences</span>
+      <p><strong>PostgreSQL is at <code>E:\PostgreSQL18</code> here</strong>, not <code>C:</code> as on the
+      VPS.</p>
+      <p><strong>Use the TEST SERVER's <code>postgres</code> password</strong>, not the VPS's
+      <span class="ph">&lt;PG_PW&gt;</span>. Two separate instances, two separate superusers &mdash; and the
+      failure if you mix them up is an unhelpful authentication error.</p>
+      <p><strong>Check free space first.</strong> <code>E:</code> now carries the test server's own
+      PostgreSQL data, its <code>E:\Apps\lhb-mms</code>, the pulled backups <em>and</em> this restore &mdash;
+      which is another full copy of the database. Filling that volume would take the UAT instance down.</p></div>
+      <pre><code>Get-Volume -DriveLetter E |
+  Select-Object @{n='FreeGB';e={[math]::Round($_.SizeRemaining/1GB,1)}}
+
+$psql = 'E:\PostgreSQL18\bin\psql.exe'
+$env:PGPASSWORD = '<span class="ph">&lt;test server postgres password&gt;</span>'
+
+# newest PULLED dump - restoring on a different machine from the one that
+# made it tests the transfer as well as the dump
+$dump = (Get-ChildItem E:\Backup\lmms\lhb_mms_*.dump |
+         Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+$dump
+
+&amp; $psql -U postgres -c "DROP DATABASE IF EXISTS lhb_restoretest;"
+&amp; $psql -U postgres -c "CREATE DATABASE lhb_restoretest;"
+&amp; 'E:\PostgreSQL18\bin\pg_restore.exe' -U postgres -d lhb_restoretest `
+     --no-owner --no-privileges --exit-on-error $dump
+
+# NOTE the PowerShell DOUBLE quotes and the absence of any double quote
+# inside the SQL - see the warning below. Table names go in as string
+# literals and format('%I') quotes them server-side.
+# "AS rows" must match step 5b's alias, or the CSV header line itself
+# shows up as a difference in the Compare-Object below
+$q = "SELECT table_name, (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I','public',table_name), false, true, '')))[1]::text::bigint AS rows FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name;"
+
+# Same flags as step 5b (no -t), so the two CSVs diff cleanly
+&amp; $psql -U postgres -d lhb_restoretest -A -F ',' -o E:\counts_source_vps.csv -c $q
+Get-Content E:\counts_source_vps.csv
+
+# E:\counts_source.csv is the 18 Sep baseline written in step 5b
+Compare-Object (Get-Content E:\counts_source.csv) (Get-Content E:\counts_source_vps.csv)
+
+# drop it - this is another full copy of the database
+&amp; $psql -U postgres -c "DROP DATABASE lhb_restoretest;"
+Remove-Item Env:\PGPASSWORD</code></pre>
+      <div class="note stop"><span class="tag">PowerShell eats double quotes bound for a native exe</span>
+      <p>LMMS table names are PascalCase, so SQL <em>requires</em> <code>"Member"</code> in double quotes
+      &mdash; and PowerShell 5.1 strips those when handing an argument to <code>psql.exe</code>. The query
+      arrives as bare <code>Member</code>, PostgreSQL folds it to lowercase, and you get
+      <code>ERROR: relation "member" does not exist</code>.</p>
+      <p>The query above sidesteps it entirely by containing no double quotes. When you do need them in a
+      one-off, escape each with a backslash &mdash; that is how PowerShell 5.1 passes a literal quote
+      through:</p>
+      <pre><code>&amp; $psql -U postgres -d lhb_restoretest -t -A -c 'SELECT count(*) FROM \"Member\";'</code></pre></div>
+      <div class="note warn"><span class="tag">Differences in that diff are expected, not failures</span>
+      <p><code>counts_source.csv</code> is the test server's own database as it stood on <b>18 September</b>
+      &mdash; the snapshot this build started from. <code>counts_source_vps.csv</code> is the VPS today,
+      several days of UAT later. So <code>Member</code>, <code>Agreement</code>, <code>AuditLog</code> and
+      <code>RciEnrolment</code> should read <em>equal or slightly higher</em>, and
+      <code>_prisma_migrations</code> identical at 67.</p>
+      <p>What actually indicates a bad restore: <b>any table at 0</b> that was not 0 in the baseline, <b>a
+      table that shrank</b> (nothing in UAT deletes wholesale), or <b>a table name missing entirely</b>.</p>
+      <p>For a true pass/fail rather than a drift check, run the same query against the VPS's <em>live</em>
+      <code>lhb_mms</code> and diff against that &mdash; identical counts mean the dump is a faithful copy.
+      Worth doing once; the drift comparison is enough as the routine check.</p></div>
+      <div class="note"><p>Or read the figures against the reference table in stage 5 &mdash;
+      <b>31,973 / 33,406 / 17,904 / 139,440</b> as of the 18 Sep refresh. They will have grown by whatever
+      UAT has done on the VPS since, which is expected; what you are looking for is the right order of
+      magnitude and nothing at zero.</p>
+      <p><strong>Do not compare against the test server's own <code>lhb_mms</code>.</strong> It is the
+      18 Sep snapshot this whole build started from and has been diverging from the VPS ever since, so a
+      difference there proves nothing either way.</p>
+      <p>A <code>pg_restore</code> that exits non-zero, or a table that comes back empty, means the dump is
+      bad. Far better to learn that now than during an incident.</p></div></li>
 
     <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9g"><span class="sn"></span><span class="body"><strong>Rotate the secrets you have now typed into several places</strong><span class="sub">And tidy the repository: <code>backend/ecosystem.config.js:30</code> is committed to git carrying the live test-server password <code>Lhb@8899</code>. Restore the <code>CHANGE_ME</code> placeholder there and keep real values only in the untracked <code>.env</code> &mdash; the <code>JWT_SECRET</code> on the line below is already the correct pattern.</span></span></span></label></li>
   </ol>
+</section>
+
+<section class="stage" id="cred">
+  <div class="stage-head">
+    <span class="num">REF</span>
+    <div><h2>Credential map</h2><p class="when">what is what, and what breaks when it changes</p></div>
+  </div>
+  <p class="why">Two machines each run their own PostgreSQL, and both instances have a role called
+  <code>postgres</code> and a role called <code>lhb_app</code>. <strong>Same names, different servers,
+  different passwords, no relationship whatsoever.</strong> That single fact is behind most of the confusion
+  here &mdash; a password that authenticates perfectly on one box is simply wrong on the other, and the error
+  it produces says only "password authentication failed", never "wrong server".</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Credential</th><th>Set where</th><th>Used for</th><th>What breaks if you change it</th></tr></thead>
+      <tbody>
+        <tr><td><b>VPS</b> &mdash; Windows <code>Administrator</code></td><td>step 1a</td><td>RDP into the VPS</td><td><code>C:\Scripts\vps-cred.xml</code> on the <em>test server</em> &mdash; re-export it or the nightly pull fails</td></tr>
+        <tr><td><b>VPS</b> &mdash; PostgreSQL <code>postgres</code></td><td>the installer, step 2a</td><td>Backups, restores, the <code>GRANT</code> block, <code>deploy-test.ps1 -MigrateDb</code></td><td><code>C:\Apps\backup-lhb-mms.ps1</code> line 4</td></tr>
+        <tr><td><b>VPS</b> &mdash; PostgreSQL <code>lhb_app</code></td><td>step 2c</td><td><b>The running app, and nothing else</b></td><td><code>.env</code> <em>and</em> <code>ecosystem.config.js</code>, then <code>pm2 delete</code> + <code>pm2 start</code></td></tr>
+        <tr><td><b>VPS</b> &mdash; <code>JWT_SECRET</code></td><td>step 3c</td><td>Signs session cookies. Not a password</td><td>Everyone is logged out. Same two files, same PM2 restart</td></tr>
+        <tr><td><b>Test server</b> &mdash; Windows <code>Administrator</code></td><td>pre-existing</td><td>RDP, <em>and stored inside</em> the "LMMS backup pull" task</td><td>The pull task fails silently &mdash; re-enter it in Task Scheduler</td></tr>
+        <tr><td><b>Test server</b> &mdash; PostgreSQL <code>postgres</code></td><td>pre-existing, <code>E:\PostgreSQL18</code></td><td>The restore test in step 8; test-server admin</td><td>Nothing automated</td></tr>
+        <tr><td><b>Test server</b> &mdash; PostgreSQL <code>lhb_app</code></td><td>pre-existing</td><td>The test server's own copy of the app</td><td>Its own <code>ecosystem.config.js</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note"><span class="tag">Files that hold a credential right now</span>
+  <p><b>On the VPS:</b> <code>C:\Apps\lhb-mms\.env</code> and
+  <code>C:\Apps\lhb-mms\backend\ecosystem.config.js</code> (both carry <code>lhb_app</code> +
+  <code>JWT_SECRET</code>), and <code>C:\Apps\backup-lhb-mms.ps1</code> (<code>postgres</code>, in clear
+  text &mdash; hence the <code>icacls</code> in step 6).</p>
+  <p><b>On the test server:</b> <code>C:\Scripts\vps-cred.xml</code> (the VPS's Windows Administrator,
+  DPAPI-encrypted &mdash; readable only by that user on that machine), the Task Scheduler entry for the pull,
+  and <strong><code>E:\Backup\lmms\config\.env</code></strong> &mdash; a pulled copy of the VPS's
+  <code>.env</code>. That last one is easy to forget: keep the backup folder off any file share.</p>
+  <p><b>In git:</b> <code>backend/ecosystem.config.js:30</code> still carries the old test-server
+  <code>lhb_app</code> password. That is step 9's outstanding item.</p></div>
+
+  <div class="note warn"><span class="tag">The mix-up to expect</span>
+  <p>Putting the <code>lhb_app</code> password where <code>postgres</code> belongs produces
+  <code>FATAL: password authentication failed for user "postgres"</code> &mdash; which reads like a broken
+  script rather than a transposed credential. The one-line test that settles it:</p>
+  <pre><code>$env:PGPASSWORD = '<span class="ph">&lt;the password you are unsure about&gt;</span>'
+&amp; 'C:\PostgreSQL18\bin\psql.exe' -U postgres -c "SELECT current_user;"
+&amp; 'C:\PostgreSQL18\bin\psql.exe' -U lhb_app -d lhb_mms -c "SELECT current_user;"
+Remove-Item Env:\PGPASSWORD</code></pre>
+  <p>Whichever prints a role name is the account that password belongs to. <strong>Clear
+  <code>PGPASSWORD</code> between tests</strong> &mdash; a stale value left in the shell makes the next
+  attempt fail for the previous reason, which is its own hour of confusion.</p></div>
+
+  <div class="note good"><span class="tag">Record them like this</span>
+  <p>Seven entries in the password manager, each labelled with <em>machine + role</em> rather than just the
+  role: <code>VPS / Windows Administrator</code>, <code>VPS / pg postgres</code>,
+  <code>VPS / pg lhb_app</code>, <code>VPS / JWT_SECRET</code>,
+  <code>Test 199.1.1.32 / Windows Administrator</code>, <code>Test / pg postgres</code>,
+  <code>Test / pg lhb_app</code>. The machine prefix is the part that prevents this happening again.</p></div>
 </section>
 
 <footer class="end">
