@@ -27,7 +27,7 @@ module.exports = {
         NODE_ENV:       'production',
         PORT:           '3001',
         // Replace CHANGE_ME with the actual lhb_app password set in PostgreSQL
-        DATABASE_URL:   'postgresql://lhb_app:Lhb@8899@127.0.0.1:5432/lhb_mms',
+        DATABASE_URL:   'postgresql://lhb_app:CHANGE_ME@127.0.0.1:5432/lhb_mms',
         // Generate with: -join ((1..64)|%{'{0:X2}'-f(Get-Random -Max 256)})
         JWT_SECRET:     'CHANGE_ME_64_CHAR_RANDOM_STRING',
         JWT_EXPIRES_IN: '8h',
