@@ -235,6 +235,17 @@ try {
                 Get-ChildItem (Join-Path $tmp 'lhb_mms_pre_*.dump') -ErrorAction SilentlyContinue |
                     Sort-Object LastWriteTime -Descending | Select-Object -Skip 2 |
                     Remove-Item -Force -ErrorAction SilentlyContinue
+
+                # Write-Host from a remote scriptblock relays to the local console
+                # and does NOT pollute the output stream, so $dstCounts stays clean.
+                # Without this the safety dump is invisible and there is no way to
+                # tell afterwards whether it was taken, skipped, or written elsewhere.
+                $kept = @(Get-ChildItem (Join-Path $tmp 'lhb_mms_pre_*.dump') -ErrorAction SilentlyContinue)
+                Write-Host ("    [OK] Safety dump: {0} ({1:N1} MB); {2} kept in {3}" -f `
+                    (Split-Path $safe -Leaf), ((Get-Item $safe).Length / 1MB), $kept.Count, $tmp) -ForegroundColor Green
+            }
+            else {
+                Write-Host "    [WARN] Safety dump SKIPPED (-SkipSafetyBackup) - there is nothing to roll back to" -ForegroundColor Yellow
             }
 
             # Stragglers (pgAdmin, a psql window) hold the DB open and DROP fails.
@@ -299,7 +310,7 @@ try {
         param($p) Remove-Item $p -Force -ErrorAction SilentlyContinue
     }
     Remove-Item $local -Force -ErrorAction SilentlyContinue
-    OK "Transit copies removed (the VPS safety dump is kept)"
+    OK "Transit copies removed; the VPS safety dump above is kept"
 
     Write-Host "`n======================================================" -ForegroundColor Cyan
     Write-Host "  Sync complete. Log in at https://mms.leisureholidays.com.my" -ForegroundColor Green
