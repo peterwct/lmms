@@ -227,6 +227,14 @@ try {
                 & (Join-Path $bin 'pg_dump.exe') -U postgres -F c -Z 6 -f $safe $db
                 if ($LASTEXITCODE -ne 0) { throw "VPS safety pg_dump exited $LASTEXITCODE - aborting before anything destructive" }
                 if ((Get-Item $safe).Length -lt 1MB) { throw "VPS safety dump implausibly small - aborting" }
+
+                # Keep the last 2 safety dumps. The nightly backup job prunes
+                # the parent folder with a NON-recursive glob, so it never
+                # reaches this subfolder and these would accumulate forever on a
+                # 50 GB disk. Prefix-scoped so the transit dump is never touched.
+                Get-ChildItem (Join-Path $tmp 'lhb_mms_pre_*.dump') -ErrorAction SilentlyContinue |
+                    Sort-Object LastWriteTime -Descending | Select-Object -Skip 2 |
+                    Remove-Item -Force -ErrorAction SilentlyContinue
             }
 
             # Stragglers (pgAdmin, a psql window) hold the DB open and DROP fails.
