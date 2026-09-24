@@ -211,6 +211,13 @@ try {
     $pmDown = $true
     OK "PM2 '$PmName' stopped"
 
+    # Evaluate the cast HERE, in expression mode. Written inline in the
+    # -ArgumentList below, PowerShell parses in ARGUMENT mode, where [bool] is a
+    # literal string token rather than a cast - so [bool]$SkipSafetyBackup became
+    # the STRING "[bool]False", which is non-empty and therefore truthy, and the
+    # safety dump was silently never taken. See the PowerShell quirks in CLAUDE.md.
+    $skipFlag = [bool]$SkipSafetyBackup
+
     $dstCounts = Invoke-Command -Session $vSess -ScriptBlock {
         param($bin, $db, $pw, $sql, $dump, $skipSafety, $tmp, $st)
         $psql = Join-Path $bin 'psql.exe'
@@ -266,7 +273,7 @@ try {
             Sql $db $sql
         }
         finally { Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue }
-    } -ArgumentList $VpsPgBin, $Database, $vPgPw, $countSql, $remote, [bool]$SkipSafetyBackup, $VpsTemp, $stamp
+    } -ArgumentList $VpsPgBin, $Database, $vPgPw, $countSql, $remote, $skipFlag, $VpsTemp, $stamp
     OK "Restored and lhb_app re-granted"
 
     # -- Phase 6: compare -----------------------------------------------------

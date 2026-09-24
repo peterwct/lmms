@@ -195,6 +195,21 @@ git config --global http.sslCAInfo "C:/Users/peter/.gitcerts/ca-bundle-avast.crt
 ## PowerShell quirks
 
 - PowerShell 5.1 `Out-File -Encoding utf8` writes a UTF-8 BOM, which causes PostgreSQL to reject the file with `syntax error at or near '﻿SELECT'`. Use `[System.IO.File]::WriteAllText($path, $content)` for BOM-free SQL temp files (as done in `refresh-test-db.ps1`).
+- **A type cast in ARGUMENT position is not a cast.** PowerShell parses command arguments in
+  *argument mode*, where `[bool]` is a bare string token, so
+  `Invoke-Command ... -ArgumentList $a, [bool]$Switch, $b` passes the **string `"[bool]False"`**,
+  not `$false`. A non-empty string is truthy, so a `-not $flag` test inside the scriptblock is then
+  always false - **silently, with no error and no warning**. That is how `sync-vps-db.ps1` skipped
+  its VPS safety dump on three consecutive runs while reporting success; the folder was simply
+  empty afterwards.
+  **Evaluate the cast in expression mode first and pass the variable:**
+  ```powershell
+  $skipFlag = [bool]$SkipSafetyBackup      # expression mode - a real cast
+  Invoke-Command ... -ArgumentList $a, $skipFlag, $b
+  ```
+  Beware when testing this: the *same text* inside an array assignment
+  (`$arr = 'a', [bool]$x, 'b'`) is expression mode and casts correctly, so a quick check written
+  that way will wrongly say the code is fine. Reproduce it through `-ArgumentList` itself.
 
 ## Database
 
