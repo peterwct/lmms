@@ -136,7 +136,7 @@
   <h1>Setting up LMMS on the new VPS</h1>
   <p class="lede">The order you actually type things in, from a freshly provisioned Windows box to staff
   logging in. Each stage is tagged with <em>where</em> you run it &mdash; on the VPS, on your dev machine,
-  or on the existing test server &mdash; because this procedure moves between all three. Substitute the
+  or on the existing staging server &mdash; because this procedure moves between all three. Substitute the
   four placeholders in the table below and the commands are copy-pasteable as written.</p>
   <div class="meta">
     <span><b>Date</b> 17 Sep 2026</span>
@@ -146,6 +146,23 @@
   </div>
 </header>
 
+<div class="note warn">
+  <span class="tag">Which box is which</span>
+  <p><strong>The VPS is the TEST server</strong> &mdash; <code>mms.leisureholidays.com.my</code>, where UAT
+  happens. <strong><code>199.1.1.32</code> is the STAGING server</strong>, on the office LAN. There is no
+  production server yet; Phase 2 decides that at go-live.</p>
+  <p>This document was written while <code>199.1.1.32</code> was still called "the test server", and was
+  renamed throughout on 24 Sep. <strong>Script and file names were deliberately left alone</strong> &mdash;
+  <code>deploy-test.ps1</code>, <code>refresh-test-db.ps1</code>, <code>setup-test-server.ps1</code> and the
+  <code>lhb_restoretest</code> scratch database all still say "test", and renaming those would break
+  working tooling for a wording change.</p>
+  <p><strong>Data flows staging &rarr; VPS.</strong> The Informix importers must never run on the 2 GB VPS,
+  so a refresh is loaded on staging, verified there, then shipped up with
+  <code>pg_dump</code>/<code>pg_restore</code> &mdash; stage 5 below, scripted as
+  <code>sync-vps-db.ps1</code>. The nightly VPS &rarr; staging pull (stage 9) runs the other way and is a
+  <em>backup</em>, not a refresh path.</p>
+</div>
+
 <div class="note good">
   <span class="tag">Two decisions that make this shorter than the runbook</span>
   <p><strong>1. Do not run <code>deploy/setup-test-server.ps1</code> on this box.</strong> It hardcodes the
@@ -154,7 +171,7 @@
   <code>migrate&nbsp;deploy</code> + <code>seed</code> steps are pointless when you are restoring a database
   anyway. Stages 2&ndash;7 below do the same work by hand, in a form you can watch succeed one step at a
   time.</p>
-  <p><strong>2. Copy the test server's database &mdash; do not re-import from Informix.</strong> This is
+  <p><strong>2. Copy the staging server's database &mdash; do not re-import from Informix.</strong> This is
   not just faster, it is the only <em>correct</em> option: months of staff CRUD edits exist nowhere else.
   The resort active/inactive split is 12/312 because staff retired resorts through fn 2; a fresh
   <code>resort_mast</code> load would hand you 49/275. The same is true of the LVC retirements, the MAR
@@ -170,7 +187,7 @@
       <tr><td class="mono ph">&lt;VPS_IP&gt;</td><td>The VPS public IPv4</td><td>Shinjiru's provisioning email</td></tr>
       <tr><td class="mono ph">&lt;OFFICE_IP&gt;</td><td>Your office's public IP</td><td>Browse to whatismyip from the office</td></tr>
       <tr><td class="mono ph">&lt;PG_PW&gt;</td><td><code>postgres</code> superuser &mdash; full control of the instance. <b>Yours, for admin work only; the app never sees it.</b> Used at 2a (installer), 2c, 5d, 5e, 5f, 8c (<code>-MigrateDb</code> prompts for it) and the 9d backup job.</td><td>Choose now, store in the password manager</td></tr>
-      <tr><td class="mono ph">&lt;APP_PW&gt;</td><td><code>lhb_app</code> &mdash; DML only, no <code>CREATE</code>, not the table owner. <b>Used only by the running backend.</b> You type it three times &mdash; 2c to create the role, then <code>.env</code> (4b) and <code>ecosystem.config.js</code> (4c) &mdash; and never again.</td><td>Choose now &mdash; a NEW one, not the test server's</td></tr>
+      <tr><td class="mono ph">&lt;APP_PW&gt;</td><td><code>lhb_app</code> &mdash; DML only, no <code>CREATE</code>, not the table owner. <b>Used only by the running backend.</b> You type it three times &mdash; 2c to create the role, then <code>.env</code> (4b) and <code>ecosystem.config.js</code> (4c) &mdash; and never again.</td><td>Choose now &mdash; a NEW one, not the staging server's</td></tr>
     </tbody>
   </table>
 </div>
@@ -183,7 +200,7 @@
   exist inside PostgreSQL and have no connection to any Windows account. Two of them rather than one is least
   privilege: the backend is a long-running process facing the network, so if a bug or a leaked config file
   exposes its credential, the damage is bounded by DML on one database instead of the whole instance. It also
-  mirrors the test server, which is what lets <code>deploy-test.ps1</code> work against this box unchanged
+  mirrors the staging server, which is what lets <code>deploy-test.ps1</code> work against this box unchanged
   &mdash; it swaps in a <code>postgres</code> URL for <code>migrate deploy</code>, then re-grants
   <code>lhb_app</code>.</p>
   <p><strong>3. LMMS logins</strong> &mdash; your own username, <code>jennifer</code>, <code>admin</code> and
@@ -248,7 +265,7 @@ Get-NetFirewallRule -DisplayGroup "Remote Desktop" | Get-NetFirewallAddressFilte
       office to prove it still works. If it does not, undo it from the session you still have:</p>
       <pre><code>Set-NetFirewallRule -DisplayGroup "Remote Desktop" -RemoteAddress Any</code></pre></div></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="1c"><span class="sn"></span><span class="body"><strong>Set a fixed 6 GB pagefile, then reboot</strong><span class="sub">The single most important setting on a 2 GB box &mdash; it is what stands between you and the error-1455 commit-limit crash that took PostgreSQL down on the test server. That is a Windows commit failure, so no <code>postgresql.conf</code> tuning substitutes for it.</span></span></span></label>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="1c"><span class="sn"></span><span class="body"><strong>Set a fixed 6 GB pagefile, then reboot</strong><span class="sub">The single most important setting on a 2 GB box &mdash; it is what stands between you and the error-1455 commit-limit crash that took PostgreSQL down on the staging server. That is a Windows commit failure, so no <code>postgresql.conf</code> tuning substitutes for it.</span></span></span></label>
       <pre><code>$cs = Get-CimInstance Win32_ComputerSystem
 if ($cs.AutomaticManagedPagefile) {
   Set-CimInstance $cs -Property @{ AutomaticManagedPagefile = $false }
@@ -279,7 +296,7 @@ Get-WindowsFeature Web-Server</code></pre>
       <div class="note"><p>If the port check does print something, name the process holding it:</p>
       <pre><code>Get-Process -Id (Get-NetTCPConnection -LocalPort 80 -State Listen).OwningProcess</code></pre></div></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="1f"><span class="sn"></span><span class="body"><strong>Confirm the drive layout, then create the folders</strong><span class="sub">If there is only a <code>C:</code> &mdash; the usual case &mdash; everything below is already written for it. If Shinjiru gave you an <code>E:</code>, use that instead and the paths match the test server exactly.</span></span></span></label>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="1f"><span class="sn"></span><span class="body"><strong>Confirm the drive layout, then create the folders</strong><span class="sub">If there is only a <code>C:</code> &mdash; the usual case &mdash; everything below is already written for it. If Shinjiru gave you an <code>E:</code>, use that instead and the paths match the staging server exactly.</span></span></span></label>
       <pre><code>Get-Volume | Where-Object DriveLetter
 New-Item -ItemType Directory -Force C:\Apps\lhb-mms\logs
 New-Item -ItemType Directory -Force C:\Apps\nginx
@@ -301,7 +318,7 @@ Get-Service Spooler,WSearch | Set-Service -StartupType Disabled -PassThru | Stop
   <code>C:\Program Files\PostgreSQL\18</code>. It keeps every path in the repo's scripts one drive letter
   away from correct instead of a different shape, and it keeps the space out of your command lines.</p>
   <ol class="steps">
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="2a"><span class="sn"></span><span class="body"><strong>Install PostgreSQL 18</strong><span class="sub">Installation directory <code>C:\PostgreSQL18</code>, data directory <code>C:\PostgreSQL18\data</code>, port 5432, default locale. Set the <code>postgres</code> password to <span class="ph">&lt;PG_PW&gt;</span>. Untick Stack Builder at the end. <strong>The major version must be 18</strong> &mdash; stage 5 restores a dump taken from the test server's PostgreSQL 18, and a restore into an older major version will fail.</span></span></span></label></li>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="2a"><span class="sn"></span><span class="body"><strong>Install PostgreSQL 18</strong><span class="sub">Installation directory <code>C:\PostgreSQL18</code>, data directory <code>C:\PostgreSQL18\data</code>, port 5432, default locale. Set the <code>postgres</code> password to <span class="ph">&lt;PG_PW&gt;</span>. Untick Stack Builder at the end. <strong>The major version must be 18</strong> &mdash; stage 5 restores a dump taken from the staging server's PostgreSQL 18, and a restore into an older major version will fail.</span></span></span></label></li>
 
     <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="2b"><span class="sn"></span><span class="body"><strong>Apply the 2 GB settings to <code>C:\PostgreSQL18\data\postgresql.conf</code>, then restart</strong><span class="sub">The stock config is wrong for this machine in both directions &mdash; too little cache, too much room for per-connection growth.</span></span></span></label>
       <p style="margin:12px 0 0; font-size:14px; color:var(--ink-2)">The settings go at the
@@ -374,7 +391,7 @@ Start-Service postgresql-x64-18</code></pre>
       rather than on the first batch. Forcing a custom plan each time costs a little planning CPU and
       removes the accumulation.</p></div></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="2c"><span class="sn"></span><span class="body"><strong>Create the role and the empty database</strong><span class="sub">Note the database is left owned by <code>postgres</code>, and <code>lhb_app</code> gets DML grants only in stage 5. That deliberately reproduces the test server's permission model, so <code>deploy-test.ps1 -MigrateDb</code> &mdash; which runs <code>migrate deploy</code> as the superuser and then re-grants &mdash; works against this box unchanged.</span></span></span></label>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="2c"><span class="sn"></span><span class="body"><strong>Create the role and the empty database</strong><span class="sub">Note the database is left owned by <code>postgres</code>, and <code>lhb_app</code> gets DML grants only in stage 5. That deliberately reproduces the staging server's permission model, so <code>deploy-test.ps1 -MigrateDb</code> &mdash; which runs <code>migrate deploy</code> as the superuser and then re-grants &mdash; works against this box unchanged.</span></span></span></label>
       <pre><code>$psql = 'C:\PostgreSQL18\bin\psql.exe'
 & $psql -U postgres -c "CREATE USER lhb_app WITH PASSWORD '<span class="ph">&lt;APP_PW&gt;</span>';"
 & $psql -U postgres -c "CREATE DATABASE lhb_mms;"
@@ -530,7 +547,7 @@ FRONTEND_URL=http://<span class="ph">&lt;VPS_IP&gt;</span></code></pre>
       <code>true</code> the moment HTTPS is in place. <code>FRONTEND_URL</code> must match what users type,
       with no trailing slash, or CORS rejects every request.</p></div></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="4c"><span class="sn"></span><span class="body"><strong>Edit <code>backend\ecosystem.config.js</code> &mdash; the first of the two files</strong><span class="sub">Five lines. The <code>.env</code> above overrides the environment block at runtime, but leaving the test server's values in a file on this machine is a trap for whoever next starts PM2 without one.</span></span></span></label>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="4c"><span class="sn"></span><span class="body"><strong>Edit <code>backend\ecosystem.config.js</code> &mdash; the first of the two files</strong><span class="sub">Five lines. The <code>.env</code> above overrides the environment block at runtime, but leaving the staging server's values in a file on this machine is a trap for whoever next starts PM2 without one.</span></span></span></label>
       <div class="scroll"><table>
         <thead><tr><th>Line</th><th>Change</th></tr></thead>
         <tbody>
@@ -558,27 +575,27 @@ npx prisma generate</code></pre></li>
 <section class="stage" id="s5">
   <div class="stage-head">
     <span class="num">05</span>
-    <div><h2>Copy the database across</h2><p class="when">1&ndash;2 hours, mostly transfer</p><span class="where test">Test server, then the VPS</span></div>
+    <div><h2>Copy the database across</h2><p class="when">1&ndash;2 hours, mostly transfer</p><span class="where test">Staging server, then the VPS</span></div>
   </div>
   <p class="why">This carries the schema, the migration history, all the Informix data <em>and</em> every
   staff edit made in UAT &mdash; departments, users, report grants, resort statuses, MAR flags, LVC
   retirements, RCI corrections. Re-importing from the exports would silently discard all of it.</p>
 
   <div class="note stop">
-    <span class="tag">Run pg_dump ON the test server, not from your desk</span>
-    <p>Your dev machine has <strong>PostgreSQL 16</strong>; the test server runs <strong>18</strong>. A
+    <span class="tag">Run pg_dump ON the staging server, not from your desk</span>
+    <p>Your dev machine has <strong>PostgreSQL 16</strong>; the staging server runs <strong>18</strong>. A
     version-16 <code>pg_dump</code> refuses to dump from a version-18 server outright, so pointing it at
-    <code>199.1.1.32</code> will simply fail. Take the dump over RDP with the test server's own binaries at
+    <code>199.1.1.32</code> will simply fail. Take the dump over RDP with the staging server's own binaries at
     <code>E:\PostgreSQL18\bin\</code>, which is also why stage 2 insisted the VPS gets 18 as well.</p>
   </div>
 
   <ol class="steps">
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5a"><span class="sn"></span><span class="body"><strong>On the test server (RDP to 199.1.1.32): take the dump</strong><span class="sub">No need to stop PM2 &mdash; <code>pg_dump</code> takes a transactionally consistent snapshot, so UAT users can keep working through it. Expect a few hundred MB.</span></span></span></label>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5a"><span class="sn"></span><span class="body"><strong>On the staging server (RDP to 199.1.1.32): take the dump</strong><span class="sub">No need to stop PM2 &mdash; <code>pg_dump</code> takes a transactionally consistent snapshot, so UAT users can keep working through it. Expect a few hundred MB.</span></span></span></label>
       <pre><code>& 'E:\PostgreSQL18\bin\pg_dump.exe' -U postgres -F c -Z 6 `
      -f E:\lhb_mms_20260917.dump lhb_mms
 Get-Item E:\lhb_mms_20260917.dump | Select-Object Length, LastWriteTime</code></pre></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5b"><span class="sn"></span><span class="body"><strong>Record the source row counts while you are there</strong><span class="sub">Run this on the test server and keep the output. It is what you will compare against after the restore &mdash; one query, every table, exact counts.</span></span></span></label>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5b"><span class="sn"></span><span class="body"><strong>Record the source row counts while you are there</strong><span class="sub">Run this on the staging server and keep the output. It is what you will compare against after the restore &mdash; one query, every table, exact counts.</span></span></span></label>
       <pre><code>& 'E:\PostgreSQL18\bin\psql.exe' -U postgres -d lhb_mms -A -F "," -o E:\counts_source.csv -c @"
 SELECT table_name,
        (xpath('/row/c/text()',
@@ -591,7 +608,7 @@ ORDER BY table_name;
 
     <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5c"><span class="sn"></span><span class="body"><strong>Move the dump to the VPS</strong><span class="sub">Copy it down to your machine over RDP drive redirection, then up to the VPS the same way. Keep a copy locally &mdash; it doubles as your first off-site backup.</span></span></span></label></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5d"><span class="sn"></span><span class="body"><strong>On the VPS: restore</strong><span class="sub"><code>--no-owner</code> makes every object land owned by <code>postgres</code>, matching the test server. Expect a few "role does not exist" notices if the dump references roles this box lacks; those are harmless. A non-zero exit with real ERROR lines is not &mdash; read them before continuing.</span></span></span></label>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="5d"><span class="sn"></span><span class="body"><strong>On the VPS: restore</strong><span class="sub"><code>--no-owner</code> makes every object land owned by <code>postgres</code>, matching the staging server. Expect a few "role does not exist" notices if the dump references roles this box lacks; those are harmless. A non-zero exit with real ERROR lines is not &mdash; read them before continuing.</span></span></span></label>
       <pre><code>& 'C:\PostgreSQL18\bin\pg_restore.exe' -U postgres -d lhb_mms `
      --no-owner --no-privileges --exit-on-error `
      C:\Users\Administrator\Desktop\lhb_mms_20260917.dump</code></pre></li>
@@ -715,7 +732,7 @@ pm2 list</code></pre></li>
       <div class="note"><p><code>/members</code> is the SPA-routing check: without nginx's
       <code>try_files</code> fallback it returns 404 and every page refresh in the app breaks.</p></div></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="7b"><span class="sn"></span><span class="body"><strong>Log in from a browser at <code>http://<span class="ph">&lt;VPS_IP&gt;</span></code></strong><span class="sub">Use your normal UAT account &mdash; the users came across in the dump, so the seeded <code>admin</code> / <code>LHB@Admin2026!</code> is not involved and its password is whatever it already was on the test server. If that account is still on its default password, change it now: this box is public.</span></span></span></label></li>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="7b"><span class="sn"></span><span class="body"><strong>Log in from a browser at <code>http://<span class="ph">&lt;VPS_IP&gt;</span></code></strong><span class="sub">Use your normal UAT account &mdash; the users came across in the dump, so the seeded <code>admin</code> / <code>LHB@Admin2026!</code> is not involved and its password is whatever it already was on the staging server. If that account is still on its default password, change it now: this box is public.</span></span></span></label></li>
 
     <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="7c"><span class="sn"></span><span class="body"><strong>Exercise one page per module</strong><span class="sub">A member enquiry with a phone search, an agreement detail with its entitlement card, an AMC invoice generate, a report download, and the RCI bulk-bank year grid. The report and day-end paths are the ones that depend on <code>proxy_buffering off</code>.</span></span></span></label></li>
 
@@ -743,12 +760,12 @@ Get-Service nginx; pm2 list; Invoke-WebRequest http://127.0.0.1/api/health -UseB
 New-NetFirewallRule -DisplayName "WinRM HTTP" -Direction Inbound -Protocol TCP `
                     -LocalPort 5985 -Action Allow -RemoteAddress <span class="ph">&lt;OFFICE_IP&gt;</span></code></pre></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="8b"><span class="sn"></span><span class="body"><strong>On your machine: trust the new host</strong><span class="sub">That order matters &mdash; <code>Set-Item WSMan:\</code> fails with a connection error if the service is not already running. This appends rather than replacing, so the test server stays reachable.</span></span></span></label>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="8b"><span class="sn"></span><span class="body"><strong>On your machine: trust the new host</strong><span class="sub">That order matters &mdash; <code>Set-Item WSMan:\</code> fails with a connection error if the service is not already running. This appends rather than replacing, so the staging server stays reachable.</span></span></span></label>
       <pre><code>winrm quickconfig -quiet
 $cur = (Get-Item WSMan:\localhost\Client\TrustedHosts).Value
 Set-Item WSMan:\localhost\Client\TrustedHosts -Value "$cur,<span class="ph">&lt;VPS_IP&gt;</span>" -Force</code></pre></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="8c"><span class="sn"></span><span class="body"><strong>Dry-run, then do one real round trip</strong><span class="sub">Pass the host and path as parameters &mdash; there is no need to edit the script's defaults, and leaving them alone keeps the test server one flag away.</span></span></span></label>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="8c"><span class="sn"></span><span class="body"><strong>Dry-run, then do one real round trip</strong><span class="sub">Pass the host and path as parameters &mdash; there is no need to edit the script's defaults, and leaving them alone keeps the staging server one flag away.</span></span></span></label>
       <pre><code>.\deploy-test.ps1 -RemoteHost <span class="ph">&lt;VPS_IP&gt;</span> -RemotePath "C:\Apps\lhb-mms" -SkipFrontend -DryRun
 .\deploy-test.ps1 -RemoteHost <span class="ph">&lt;VPS_IP&gt;</span> -RemotePath "C:\Apps\lhb-mms" -SkipFrontend</code></pre>
       <div class="note warn"><p>Run this in <strong>your own PowerShell window</strong>, not through an
@@ -983,11 +1000,11 @@ Register-ScheduledTask -TaskName 'LHB MMS nightly backup' -Action $a -Trigger $t
 Start-ScheduledTask -TaskName 'LHB MMS nightly backup'   # run it now
 Get-ChildItem C:\backups</code></pre></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9e"><span class="sn"></span><span class="body"><strong>Pull each dump onto the test server</strong><span class="sub">A backup that exists only on the box it protects is not a backup. <strong>Pull, not push</strong> &mdash; a compromised internet-facing VPS then holds no credentials to the backup store and cannot reach back to delete history. <strong>The test server (199.1.1.32) does the pulling:</strong> it is always on, it sits at the office while the VPS is in Shinjiru's datacentre, and it uses the same WinRM mechanism as <code>deploy-test.ps1</code>. Destination <code>E:\Backup\lmms</code>.</span></span></span></label>
-      <div class="note warn"><span class="tag">Everything below runs ON THE TEST SERVER, over RDP</span>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9e"><span class="sn"></span><span class="body"><strong>Pull each dump onto the staging server</strong><span class="sub">A backup that exists only on the box it protects is not a backup. <strong>Pull, not push</strong> &mdash; a compromised internet-facing VPS then holds no credentials to the backup store and cannot reach back to delete history. <strong>The staging server (199.1.1.32) does the pulling:</strong> it is always on, it sits at the office while the VPS is in Shinjiru's datacentre, and it uses the same WinRM mechanism as <code>deploy-test.ps1</code>. Destination <code>E:\Backup\lmms</code>.</span></span></span></label>
+      <div class="note warn"><span class="tag">Everything below runs ON THE STAGING SERVER, over RDP</span>
       <p>Not on your desktop. The DPAPI credential is bound to the user <em>and the machine</em> that created
       it, so exporting it anywhere else is wasted effort.</p>
-      <p>The test server needs the VPS in <strong>its</strong> TrustedHosts, or
+      <p>The staging server needs the VPS in <strong>its</strong> TrustedHosts, or
       <code>New-PSSession</code> fails with <em>"the client computer is not joined to a domain, then HTTPS
       transport must be used or the destination machine must be added to the TrustedHosts configuration
       setting"</em>. <strong>Elevated</strong>, and append rather than overwrite in case anything is already
@@ -1001,7 +1018,7 @@ if ($cur -notmatch '<span class="ph">&lt;VPS_IP&gt;</span>') {
 Test-WSMan -ComputerName <span class="ph">&lt;VPS_IP&gt;</span>       # wsmid back = the VPS side is healthy</code></pre>
       <p>A <em>timeout</em> rather than this error is the other half: the VPS firewall rule from stage 8 is
       scoped to the office public IP, so the pull must run from inside the office.</p></div>
-      <pre><code># ONE TIME, on the TEST SERVER, AS THE ACCOUNT THE TASK WILL RUN AS.
+      <pre><code># ONE TIME, on the STAGING SERVER, AS THE ACCOUNT THE TASK WILL RUN AS.
 # Export-Clixml encrypts with DPAPI: decryptable only by that user on
 # that machine, which is also why the task must run as the same account.
 New-Item -ItemType Directory -Force C:\Scripts | Out-Null
@@ -1014,7 +1031,7 @@ icacls C:\Scripts\vps-cred.xml /inheritance:r `
        /grant:r "${env:USERDOMAIN}\${env:USERNAME}:(R)" "Administrators:(F)"
 icacls C:\Scripts\vps-cred.xml          # confirm: just you (R) and Administrators (F)</code></pre>
       <div class="fileblk">
-        <div class="fh"><b>File contents &mdash; not commands.</b> C:\Scripts\pull-lmms-backup.ps1 &mdash; on the test server</div>
+        <div class="fh"><b>File contents &mdash; not commands.</b> C:\Scripts\pull-lmms-backup.ps1 &mdash; on the staging server</div>
         <pre><code>$ErrorActionPreference = 'Stop'
 $VpsHost = '<span class="ph">&lt;VPS_IP&gt;</span>'
 $Dest    = 'E:\Backup\lmms'
@@ -1092,7 +1109,7 @@ catch {
        -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\Scripts\pull-lmms-backup.ps1'
 $t = New-ScheduledTaskTrigger -Daily -At 02:30
 Register-ScheduledTask -TaskName 'LMMS backup pull' -Action $a -Trigger $t -RunLevel Highest `
-  -User 'Administrator' -Password (Read-Host 'Test server Administrator password')
+  -User 'Administrator' -Password (Read-Host 'Staging server Administrator password')
 
 Start-ScheduledTask -TaskName 'LMMS backup pull'
 Get-ScheduledTaskInfo -TaskName 'LMMS backup pull' |
@@ -1100,37 +1117,37 @@ Get-ScheduledTaskInfo -TaskName 'LMMS backup pull' |
 Get-ChildItem E:\Backup\lmms</code></pre>
       <div class="note warn"><span class="tag">02:30 on an always-on server, and what that costs</span>
       <p>The VPS dumps at 01:30, so an 02:30 pull collects that night's file. A desktop would have forced a
-      daytime schedule just to be sure the machine was awake; the test server removes that compromise. The
+      daytime schedule just to be sure the machine was awake; the staging server removes that compromise. The
       price is that the task needs <b>Run whether user is logged on or not</b>, and therefore a stored
-      Windows password &mdash; so <strong>changing the test server's Administrator password breaks this
+      Windows password &mdash; so <strong>changing the staging server's Administrator password breaks this
       task, silently.</strong> Put it on whatever checklist covers password rotation. If
       <code>Register-ScheduledTask</code> is awkward about the password, create the task in the Task
       Scheduler GUI and tick that box; same result.</p>
-      <p><strong>Watch the disk &mdash; <code>E:</code> is shared with the test server's own data.</strong>
+      <p><strong>Watch the disk &mdash; <code>E:</code> is shared with the staging server's own data.</strong>
       <code>E:\PostgreSQL18</code> and <code>E:\Apps\lhb-mms</code> sit on the same volume, so a backup folder
       left to grow would take the UAT database down with it. The retention prune bounds it at roughly 22
       files (14 daily plus 8 weekly), but check free space after the first fortnight, once you know the real
       dump size rather than an estimate of it.</p>
-      <p><strong>Phase 2 may retire this machine.</strong> If the test server goes at go-live the backup
+      <p><strong>Phase 2 may retire this machine.</strong> If the staging server goes at go-live the backup
       destination goes with it &mdash; name that in the decision rather than discovering it afterwards.</p>
       <p>The script also pulls <code>.env</code>, which carries <span class="ph">&lt;APP_PW&gt;</span> and the
       JWT secret. Keep <code>E:\Backup\lmms</code> off any file share.</p></div></li>
 
-    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9f"><span class="sn"></span><span class="body"><strong>Restore one dump into a scratch database</strong><span class="sub">Before UAT starts. An untested backup is an assumption, not a control. Run it against the file the scheduled task actually produced, not one you made by hand. <strong>Better still, run it on the test server</strong> against a <em>pulled</em> copy in <code>E:\Backup\lmms</code> &mdash; it runs PostgreSQL 18 too, and restoring on a different machine from the one that made the dump tests the transfer as well as the dump.</span></span></span></label>
-      <div class="note warn"><span class="tag">Runs on the TEST SERVER &mdash; mind three differences</span>
+    <li><label class="tick"><span class="hdr"><input type="checkbox" data-k="9f"><span class="sn"></span><span class="body"><strong>Restore one dump into a scratch database</strong><span class="sub">Before UAT starts. An untested backup is an assumption, not a control. Run it against the file the scheduled task actually produced, not one you made by hand. <strong>Better still, run it on the staging server</strong> against a <em>pulled</em> copy in <code>E:\Backup\lmms</code> &mdash; it runs PostgreSQL 18 too, and restoring on a different machine from the one that made the dump tests the transfer as well as the dump.</span></span></span></label>
+      <div class="note warn"><span class="tag">Runs on the STAGING SERVER &mdash; mind three differences</span>
       <p><strong>PostgreSQL is at <code>E:\PostgreSQL18</code> here</strong>, not <code>C:</code> as on the
       VPS.</p>
-      <p><strong>Use the TEST SERVER's <code>postgres</code> password</strong>, not the VPS's
+      <p><strong>Use the STAGING SERVER's <code>postgres</code> password</strong>, not the VPS's
       <span class="ph">&lt;PG_PW&gt;</span>. Two separate instances, two separate superusers &mdash; and the
       failure if you mix them up is an unhelpful authentication error.</p>
-      <p><strong>Check free space first.</strong> <code>E:</code> now carries the test server's own
+      <p><strong>Check free space first.</strong> <code>E:</code> now carries the staging server's own
       PostgreSQL data, its <code>E:\Apps\lhb-mms</code>, the pulled backups <em>and</em> this restore &mdash;
       which is another full copy of the database. Filling that volume would take the UAT instance down.</p></div>
       <pre><code>Get-Volume -DriveLetter E |
   Select-Object @{n='FreeGB';e={[math]::Round($_.SizeRemaining/1GB,1)}}
 
 $psql = 'E:\PostgreSQL18\bin\psql.exe'
-$env:PGPASSWORD = '<span class="ph">&lt;test server postgres password&gt;</span>'
+$env:PGPASSWORD = '<span class="ph">&lt;staging server postgres password&gt;</span>'
 
 # newest PULLED dump - restoring on a different machine from the one that
 # made it tests the transfer as well as the dump
@@ -1170,7 +1187,7 @@ Remove-Item Env:\PGPASSWORD</code></pre>
       through:</p>
       <pre><code>&amp; $psql -U postgres -d lhb_restoretest -t -A -c 'SELECT count(*) FROM \"Member\";'</code></pre></div>
       <div class="note warn"><span class="tag">Differences in that diff are expected, not failures</span>
-      <p><code>counts_source.csv</code> is the test server's own database as it stood on <b>18 September</b>
+      <p><code>counts_source.csv</code> is the staging server's own database as it stood on <b>18 September</b>
       &mdash; the snapshot this build started from. <code>counts_source_vps.csv</code> is the VPS today,
       several days of UAT later. So <code>Member</code>, <code>Agreement</code>, <code>AuditLog</code> and
       <code>RciEnrolment</code> should read <em>equal or slightly higher</em>, and
@@ -1184,7 +1201,7 @@ Remove-Item Env:\PGPASSWORD</code></pre>
       <b>31,973 / 33,406 / 17,904 / 139,440</b> as of the 18 Sep refresh. They will have grown by whatever
       UAT has done on the VPS since, which is expected; what you are looking for is the right order of
       magnitude and nothing at zero.</p>
-      <p><strong>Do not compare against the test server's own <code>lhb_mms</code>.</strong> It is the
+      <p><strong>Do not compare against the staging server's own <code>lhb_mms</code>.</strong> It is the
       18 Sep snapshot this whole build started from and has been diverging from the VPS ever since, so a
       difference there proves nothing either way.</p>
       <p>A <code>pg_restore</code> that exits non-zero, or a table that comes back empty, means the dump is
@@ -1199,7 +1216,7 @@ Remove-Item Env:\PGPASSWORD</code></pre>
       <code>-replace</code> had been matching nothing, so every run silently kept the previous password
       instead of writing the one it had just prompted for.</p>
       <p><strong>Scrubbing the tip does not scrub the history.</strong> That string is still reachable
-      through <code>git log -p</code> and has been pushed, so treat it as spent: the test server's
+      through <code>git log -p</code> and has been pushed, so treat it as spent: the staging server's
       <code>lhb_app</code> was rotated on 23 Sep. Rewriting history would break every existing clone for
       no real gain &mdash; rotation is the remedy.</p></div>
       <div class="note warn"><span class="tag">Percent-encode the new password into DATABASE_URL</span>
@@ -1229,13 +1246,13 @@ Remove-Item Env:\PGPASSWORD</code></pre>
     <table>
       <thead><tr><th>Credential</th><th>Set where</th><th>Used for</th><th>What breaks if you change it</th></tr></thead>
       <tbody>
-        <tr><td><b>VPS</b> &mdash; Windows <code>Administrator</code></td><td>step 1a</td><td>RDP into the VPS</td><td><code>C:\Scripts\vps-cred.xml</code> on the <em>test server</em> &mdash; re-export it or the nightly pull fails</td></tr>
+        <tr><td><b>VPS</b> &mdash; Windows <code>Administrator</code></td><td>step 1a</td><td>RDP into the VPS</td><td><code>C:\Scripts\vps-cred.xml</code> on the <em>staging server</em> &mdash; re-export it or the nightly pull fails</td></tr>
         <tr><td><b>VPS</b> &mdash; PostgreSQL <code>postgres</code></td><td>the installer, step 2a</td><td>Backups, restores, the <code>GRANT</code> block, <code>deploy-test.ps1 -MigrateDb</code></td><td><code>C:\Apps\backup-lhb-mms.ps1</code> line 4</td></tr>
         <tr><td><b>VPS</b> &mdash; PostgreSQL <code>lhb_app</code></td><td>step 2c</td><td><b>The running app, and nothing else</b></td><td><code>.env</code> <em>and</em> <code>ecosystem.config.js</code>, then <code>pm2 delete</code> + <code>pm2 start</code></td></tr>
         <tr><td><b>VPS</b> &mdash; <code>JWT_SECRET</code></td><td>step 3c</td><td>Signs session cookies. Not a password</td><td>Everyone is logged out. Same two files, same PM2 restart</td></tr>
-        <tr><td><b>Test server</b> &mdash; Windows <code>Administrator</code></td><td>pre-existing</td><td>RDP, <em>and stored inside</em> the "LMMS backup pull" task</td><td>The pull task fails silently &mdash; re-enter it in Task Scheduler</td></tr>
-        <tr><td><b>Test server</b> &mdash; PostgreSQL <code>postgres</code></td><td>pre-existing, <code>E:\PostgreSQL18</code></td><td>The restore test in step 8; test-server admin</td><td>Nothing automated</td></tr>
-        <tr><td><b>Test server</b> &mdash; PostgreSQL <code>lhb_app</code></td><td>pre-existing</td><td>The test server's own copy of the app</td><td>Its own <code>ecosystem.config.js</code></td></tr>
+        <tr><td><b>Staging server</b> &mdash; Windows <code>Administrator</code></td><td>pre-existing</td><td>RDP, <em>and stored inside</em> the "LMMS backup pull" task</td><td>The pull task fails silently &mdash; re-enter it in Task Scheduler</td></tr>
+        <tr><td><b>Staging server</b> &mdash; PostgreSQL <code>postgres</code></td><td>pre-existing, <code>E:\PostgreSQL18</code></td><td>The restore test in step 8; test-server admin</td><td>Nothing automated</td></tr>
+        <tr><td><b>Staging server</b> &mdash; PostgreSQL <code>lhb_app</code></td><td>pre-existing</td><td>The staging server's own copy of the app</td><td>Its own <code>ecosystem.config.js</code></td></tr>
       </tbody>
     </table>
   </div>
@@ -1245,7 +1262,7 @@ Remove-Item Env:\PGPASSWORD</code></pre>
   <code>C:\Apps\lhb-mms\backend\ecosystem.config.js</code> (both carry <code>lhb_app</code> +
   <code>JWT_SECRET</code>), and <code>C:\Apps\backup-lhb-mms.ps1</code> (<code>postgres</code>, in clear
   text &mdash; hence the <code>icacls</code> in step 6).</p>
-  <p><b>On the test server:</b> <code>C:\Scripts\vps-cred.xml</code> (the VPS's Windows Administrator,
+  <p><b>On the staging server:</b> <code>C:\Scripts\vps-cred.xml</code> (the VPS's Windows Administrator,
   DPAPI-encrypted &mdash; readable only by that user on that machine), the Task Scheduler entry for the pull,
   and <strong><code>E:\Backup\lmms\config\.env</code></strong> &mdash; a pulled copy of the VPS's
   <code>.env</code>. That last one is easy to forget: keep the backup folder off any file share.</p>
