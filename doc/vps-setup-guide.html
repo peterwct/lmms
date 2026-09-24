@@ -581,6 +581,24 @@ npx prisma generate</code></pre></li>
   staff edit made in UAT &mdash; departments, users, report grants, resort statuses, MAR flags, LVC
   retirements, RCI corrections. Re-importing from the exports would silently discard all of it.</p>
 
+  <div class="note good">
+    <span class="tag">This is now scripted &mdash; sync-vps-db.ps1</span>
+    <p>Everything in this stage was done by hand for the original build, and is kept here as the record
+    of it. <strong>For any subsequent refresh, run <code>sync-vps-db.ps1</code> from the dev machine
+    instead</strong> &mdash; it drives both boxes over WinRM and does the whole of stages 5 and 7 in one
+    pass: dump on staging, transfer with a SHA-256 check on each hop, safety dump on the VPS, drop and
+    restore, re-grant <code>lhb_app</code>, restart PM2, then compare row counts end to end.</p>
+    <pre><code>.\sync-vps-db.ps1 -DryRun     # opens both sessions, shows staging's counts, changes nothing
+.\sync-vps-db.ps1</code></pre>
+    <p>The full sequence for a data refresh is: re-export from Informix, run
+    <code>refresh-test-db.ps1</code> against <strong>staging</strong>, verify the row counts there where a
+    bad import is cheap to redo, then <code>sync-vps-db.ps1</code>. The importers must never run on the
+    2 GB VPS.</p>
+    <p><strong>Read the rest of this stage anyway before the first time you use it</strong> &mdash; the
+    pg_dump version rule below is the one thing the script cannot protect you from if you ever run the
+    steps manually.</p>
+  </div>
+
   <div class="note stop">
     <span class="tag">Run pg_dump ON the staging server, not from your desk</span>
     <p>Your dev machine has <strong>PostgreSQL 16</strong>; the staging server runs <strong>18</strong>. A
