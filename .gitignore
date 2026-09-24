@@ -25,6 +25,9 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Office owner/lock files - exist only while a doc is open in Word/Excel
+~$*
+
 # IDE
 .vscode/
 .idea/
